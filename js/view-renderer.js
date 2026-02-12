@@ -8,11 +8,17 @@ class AdvancedViewRenderer {
         div.className = `video-item ${video.filter || ''}`;
         div.dataset.id = video.id;
         div.dataset.views = video.views || 0;
+        div.dataset.author = video.author;
         
         const timeAgo = this.formatTimeAgo(video.timestamp);
         const hashtagsHTML = video.hashtags?.map(tag => 
             `<span class="hashtag">${tag}</span>`
         ).join(' ') || '';
+        
+        // Определяем текст кнопки подписки
+        const isSubscribed = options.isSubscribed ? true : false;
+        const followButtonText = isSubscribed ? '✓' : '+';
+        const followButtonStyle = isSubscribed ? 'var(--accent-secondary)' : 'var(--accent-color)';
         
         div.innerHTML = `
             <div class="video-progress">
@@ -27,9 +33,9 @@ class AdvancedViewRenderer {
             </div>
             <div class="video-overlay">
                 <div class="side-bar">
-                    <div class="avatar-container">
-                        <img src="${video.avatar}" alt="${video.author}">
-                        <div class="follow-plus">+</div>
+                    <div class="avatar-container" data-action="subscribe">
+                        <img src="${video.avatar}" alt="${video.author}" data-author="${video.author}">
+                        <div class="follow-plus" style="background: ${followButtonStyle}">${followButtonText}</div>
                     </div>
                     <div class="action-btn like-btn ${video.isLiked ? 'liked' : ''}" data-id="${video.id}" title="Лайк">
                         <svg viewBox="0 0 24 24">

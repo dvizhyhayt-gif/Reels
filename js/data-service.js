@@ -150,8 +150,11 @@ class AdvancedDataService {
         };
     }
 
-    getUserProfile() {
-        const user = this.getCurrentUser();
+    getUserProfile(userName = null) {
+        const user = userName ? 
+            this.getAllUsers().find(u => u.name === userName) : 
+            this.getCurrentUser();
+        
         if (!user) return null;
         
         const userVideos = this.userVideos.filter(v => v.author === user.name);
@@ -161,15 +164,107 @@ class AdvancedDataService {
             ...user,
             videos: userVideos,
             stats: {
-                following: 0,
-                followers: 0,
+                following: (user.subscriptions || []).length,
+                followers: (user.subscribers || []).length,
                 likes: totalLikes,
                 videos: userVideos.length
             }
         };
     }
 
+    getAllUsers() {
+        // Собираем всех уникальных пользователей из видео и текущего пользователя
+        const users = new Map();
+        
+        // Добавляем текущего пользователя
+        const currentUser = this.getCurrentUser();
+        if (currentUser) {
+            users.set(currentUser.name, currentUser);
+        }
+        
+        // Добавляем авторов видео
+        this.userVideos.forEach(video => {
+            if (!users.has(video.author)) {
+                users.set(video.author, {
+                    name: video.author,
+                    avatar: video.avatar,
+                    email: 'user@example.com',
+                    bio: 'Пользователь',
+                    subscriptions: [],
+                    subscribers: []
+                });
+            }
+        });
+        
+        return Array.from(users.values());
+    }
+
+    subscribe(authorName) {
+        const currentUser = this.getCurrentUser();
+        if (!currentUser) return false;
+        
+        // Не позволяем подписаться на себя
+        if (currentUser.name === authorName) return false;
+        
+        // Проверяем, не подписаны ли уже
+        if (!currentUser.subscriptions) {
+            currentUser.subscriptions = [];
+        }
+        
+        if (currentUser.subscriptions.includes(authorName)) {
+            return false;
+        }
+        
+        currentUser.subscriptions.push(authorName);
+        
+        // Добавляем текущего пользователя в подписчики автора
+        const allUsers = this.getAllUsers();
+        const author = allUsers.find(u => u.name === authorName);
+        if (author) {
+            if (!author.subscribers) {
+                author.subscribers = [];
+            }
+            if (!author.subscribers.includes(currentUser.name)) {
+                author.subscribers.push(currentUser.name);
+            }
+        }
+        
+        localStorage.setItem(this.AUTH_KEY, JSON.stringify(currentUser));
+        return true;
+    }
+
+    unsubscribe(authorName) {
+        const currentUser = this.getCurrentUser();
+        if (!currentUser) return false;
+        
+        if (!currentUser.subscriptions) {
+            currentUser.subscriptions = [];
+        }
+        
+        const index = currentUser.subscriptions.indexOf(authorName);
+        if (index > -1) {
+            currentUser.subscriptions.splice(index, 1);
+        }
+        
+        localStorage.setItem(this.AUTH_KEY, JSON.stringify(currentUser));
+        return true;
+    }
+
+    isSubscribed(authorName) {
+        const currentUser = this.getCurrentUser();
+        if (!currentUser) return false;
+        
+        return (currentUser.subscriptions || []).includes(authorName);
+    }
+
     getCurrentUser() {
+        // Сначала проверяем Firebase если доступен
+        if (typeof firebaseService !== 'undefined' && firebaseService && firebaseService.isInitialized()) {
+            const fbUser = firebaseService.getCurrentUser();
+            if (fbUser) return fbUser;
+        }
+        
+        // Fallback на локальное хранилище
         const auth = localStorage.getItem(this.AUTH_KEY);
         return auth ? JSON.parse(auth) : null;
     }
@@ -190,7 +285,9 @@ class AdvancedDataService {
             location: '',
             website: '',
             interests: '',
-            gender: 'other'
+            gender: 'other',
+            subscriptions: [],
+            subscribers: []
         };
         
         localStorage.setItem(this.AUTH_KEY, JSON.stringify(user));

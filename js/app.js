@@ -138,13 +138,24 @@ class AdvancedApp {
         });
         
         // Logout
-        this.logoutMenu.addEventListener('click', () => {
+        this.logoutMenu.addEventListener('click', async () => {
             if (confirm('Вы уверены, что хотите выйти из аккаунта?')) {
-                this.dataService.logout();
-                this.navigateTo('auth-view');
-                AdvancedViewRenderer.showToast('Вы вышли из аккаунта', 'success');
-                this.hamburgerBtn.classList.remove('active');
-                this.menuDropdown.classList.remove('active');
+                try {
+                    // Используем Firebase если доступен
+                    if (firebaseService && firebaseService.isInitialized()) {
+                        await firebaseService.logout();
+                        AdvancedViewRenderer.showToast('🔥 Вы вышли из аккаунта', 'success');
+                    } else {
+                        this.dataService.logout();
+                        AdvancedViewRenderer.showToast('Вы вышли из аккаунта', 'success');
+                    }
+                    
+                    this.navigateTo('auth-view');
+                    this.hamburgerBtn.classList.remove('active');
+                    this.menuDropdown.classList.remove('active');
+                } catch (error) {
+                    AdvancedViewRenderer.showToast('Ошибка при выходе: ' + error.message, 'error');
+                }
             }
         });
     }
@@ -353,6 +364,21 @@ class AdvancedApp {
     }
 
     setupAuthEvents() {
+        // Переключение между логином и регистрацией
+        document.getElementById('switch-to-reg').addEventListener('click', () => {
+            document.getElementById('login-form').style.display = 'none';
+            document.getElementById('register-form').style.display = 'block';
+        });
+
+        document.getElementById('switch-to-login').addEventListener('click', () => {
+            document.getElementById('login-form').style.display = 'block';
+            document.getElementById('register-form').style.display = 'none';
+            // Очищаем поля
+            document.getElementById('login-email').value = '';
+            document.getElementById('login-pass').value = '';
+        });
+
+        // LOGIN
         document.getElementById('login-btn').addEventListener('click', async () => {
             const email = document.getElementById('login-email').value.trim();
             const password = document.getElementById('login-pass').value.trim();
@@ -368,14 +394,86 @@ class AdvancedApp {
             btn.disabled = true;
             
             try {
-                await this.dataService.login(email, password);
-                AdvancedViewRenderer.showToast('Вход выполнен успешно!', 'success');
+                // Используем Firebase если доступен, иначе локальное хранилище
+                if (firebaseService && firebaseService.isInitialized()) {
+                    const result = await firebaseService.login(email, password);
+                    AdvancedViewRenderer.showToast('🔥 Вход через Firebase успешен!', 'success');
+                } else {
+                    // Fallback на локальное хранилище
+                    await this.dataService.login(email, password);
+                    AdvancedViewRenderer.showToast('Вход выполнен успешно!', 'success');
+                }
+                
                 this.navigateTo('feed-view');
                 this.updateProfileUI();
+                
+                // Очищаем форму
+                document.getElementById('login-email').value = '';
+                document.getElementById('login-pass').value = '';
             } catch (error) {
                 AdvancedViewRenderer.showToast(error.message, 'error');
+                console.error('Ошибка логина:', error);
             } finally {
                 btnText.textContent = 'Войти';
+                btn.disabled = false;
+            }
+        });
+
+        // REGISTER
+        document.getElementById('register-btn').addEventListener('click', async () => {
+            const email = document.getElementById('register-email').value.trim();
+            const password = document.getElementById('register-pass').value.trim();
+            const passwordConfirm = document.getElementById('register-pass-confirm').value.trim();
+            
+            if (!email || !password || !passwordConfirm) {
+                AdvancedViewRenderer.showToast('Заполните все поля', 'warning');
+                return;
+            }
+
+            if (password !== passwordConfirm) {
+                AdvancedViewRenderer.showToast('Пароли не совпадают', 'warning');
+                return;
+            }
+
+            if (password.length < 6) {
+                AdvancedViewRenderer.showToast('Пароль должен содержать минимум 6 символов', 'warning');
+                return;
+            }
+            
+            const btn = document.getElementById('register-btn');
+            const btnText = document.getElementById('register-btn-text');
+            btnText.textContent = 'Регистрация...';
+            btn.disabled = true;
+            
+            try {
+                // Используем Firebase если доступен, иначе локальное хранилище
+                if (firebaseService && firebaseService.isInitialized()) {
+                    const result = await firebaseService.register(email, password);
+                    AdvancedViewRenderer.showToast('🔥 Регистрация через Firebase успешна!', 'success');
+                } else {
+                    // Fallback на локальное хранилище
+                    await this.dataService.login(email, password);
+                    AdvancedViewRenderer.showToast('Регистрация успешна!', 'success');
+                }
+                
+                this.navigateTo('feed-view');
+                this.updateProfileUI();
+
+                // Переходим на форму логина
+                document.getElementById('login-form').style.display = 'block';
+                document.getElementById('register-form').style.display = 'none';
+                
+                // Очищаем формы
+                document.getElementById('login-email').value = '';
+                document.getElementById('login-pass').value = '';
+                document.getElementById('register-email').value = '';
+                document.getElementById('register-pass').value = '';
+                document.getElementById('register-pass-confirm').value = '';
+            } catch (error) {
+                AdvancedViewRenderer.showToast(error.message, 'error');
+                console.error('Ошибка регистрации:', error);
+            } finally {
+                btnText.textContent = 'Зарегистрироваться';
                 btn.disabled = false;
             }
         });
@@ -742,8 +840,10 @@ class AdvancedApp {
             }
             
             videos.forEach(video => {
+                const isSubscribed = this.dataService.isSubscribed(video.author);
                 const card = AdvancedViewRenderer.createVideoCard(video, {
-                    autoplay: this.dataService.settings.autoplay
+                    autoplay: this.dataService.settings.autoplay,
+                    isSubscribed: isSubscribed
                 });
                 this.feedContainer.appendChild(card);
                 this.dataService.incrementViews(video.id);
@@ -827,12 +927,32 @@ class AdvancedApp {
             
             avatar.addEventListener('click', (e) => {
                 e.stopPropagation();
+                
+                const currentUser = this.dataService.getCurrentUser();
+                const videosAuthor = this.dataService.userVideos.find(v => v.id === parseInt(videoId))?.author;
+                
+                // Если это свой профиль - переходим на профиль
+                if (currentUser && currentUser.name === videosAuthor) {
+                    this.navigateTo('profile-view');
+                    AdvancedViewRenderer.showToast('Вашего профиль', 'info');
+                    return;
+                }
+                
+                // Проверка - не позволять подписаться без входа
+                if (!currentUser) {
+                    this.navigateTo('auth-view');
+                    AdvancedViewRenderer.showToast('Войдите, чтобы подписаться', 'warning');
+                    return;
+                }
+                
                 const followPlus = avatar.querySelector('.follow-plus');
                 if (followPlus.textContent === '+') {
+                    this.dataService.subscribe(videosAuthor);
                     followPlus.textContent = '✓';
                     followPlus.style.background = 'var(--accent-secondary)';
                     AdvancedViewRenderer.showToast('Подписка оформлена', 'success');
                 } else {
+                    this.dataService.unsubscribe(videosAuthor);
                     followPlus.textContent = '+';
                     followPlus.style.background = 'var(--accent-color)';
                     AdvancedViewRenderer.showToast('Подписка отменена', 'info');
