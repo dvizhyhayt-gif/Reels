@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TikClone Pro - Advanced TikTok Clone</title>
+    <meta name="theme-color" content="#000000">
+    <link rel="manifest" href="/manifest.json">
+    
+    <!-- CSS Files -->
+    <link rel="stylesheet" href="css/variables.css">
+    <link rel="stylesheet" href="css/layout.css">
+    <link rel="stylesheet" href="css/navigation.css">
+    <link rel="stylesheet" href="css/feed.css">
+    <link rel="stylesheet" href="css/video-overlay.css">
+    <link rel="stylesheet" href="css/search.css">
+    <link rel="stylesheet" href="css/auth.css">
+    <link rel="stylesheet" href="css/upload.css">
+    <link rel="stylesheet" href="css/profile.css">
+    <link rel="stylesheet" href="css/comments.css">
+    <link rel="stylesheet" href="css/components.css">
+    <link rel="stylesheet" href="css/edit-profile.css">
+    <link rel="stylesheet" href="css/menu.css">
+    <link rel="stylesheet" href="css/notifications.css">
+    <link rel="stylesheet" href="css/messages.css">
+</head>
+<body>
+
+<div id="app">
+    <!-- Top Menu Bar -->
+    <div class="top-menu-bar">
+        <!-- Hamburger Menu -->
+        <button class="hamburger-btn" id="hamburger-btn">
+            <span></span>
+            <span></span>
+            <span></span>
+        </button>
+        
+        <!-- Menu Dropdown -->
+        <div class="menu-dropdown" id="menu-dropdown">
+            <div class="menu-item" id="theme-toggle-menu">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 3c-4.97 0-9 4.03-9 9s4.03 9 9 9 9-4.03 9-9c0-.46-.04-.92-.1-1.36-.98 1.37-2.58 2.26-4.4 2.26-3.03 0-5.5-2.47-5.5-5.5 0-1.82.89-3.42 2.26-4.4-.44-.06-.9-.1-1.36-.1z"/>
+                </svg>
+                <span id="theme-text">Светлая тема</span>
+            </div>
+            <div class="menu-divider"></div>
+            <div class="menu-item" id="logout-menu">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
+                </svg>
+                <span>Выход</span>
+            </div>
+        </div>
+        
+        <h1 class="top-logo">TikClone</h1>
+    </div>
+
+    <!-- View: Feed -->
+    <div id="feed-view" class="view active">
+        <div class="pull-indicator" id="pull-indicator">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/>
+            </svg>
+            Обновление...
+        </div>
+        <div class="feed-container" id="feed-container">
+            <div class="skeleton-video"></div>
+            <div class="skeleton-video"></div>
+            <div class="skeleton-video"></div>
+        </div>
+        
+        <!-- Swipe Indicator -->
+        <div class="swipe-indicator">
+            <svg viewBox="0 0 24 24" fill="white">
+                <path d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z"/>
+            </svg>
+            Листайте вверх
+        </div>
+    </div>
+
+    <!-- View: Search -->
+    <div id="search-view" class="view">
+        <div class="search-view-container">
+            <div class="search-input-wrapper">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <path d="m21 21-4.35-4.35"></path>
+                </svg>
+                <input type="text" class="search-view-input" id="search-view-input" placeholder="Поиск видео и хештегов...">
+                <button class="search-view-clear" id="search-view-clear" style="display: none;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="search-results" id="search-results"></div>
+            <div class="search-empty" id="search-empty" style="display: none;">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity="0.5">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <path d="m21 21-4.35-4.35"></path>
+                </svg>
+                <p style="color: var(--secondary-text); margin-top: 15px;">Начните печатать для поиска</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- View: Auth -->
+    <div id="auth-view" class="view">
+        <div class="auth-container">
+            <h2 class="auth-title">TikClone Pro</h2>
+            <div style="text-align: center; margin-bottom: 30px; font-size: 14px; color: var(--secondary-text);">
+                Войдите, чтобы создавать и делиться видео
+            </div>
+            <input type="email" id="login-email" class="form-input" placeholder="Введите email">
+            <input type="password" id="login-pass" class="form-input" placeholder="Пароль (минимум 6 символов)">
+            <button class="primary-btn" id="login-btn">
+                <span id="login-btn-text">Войти</span>
+            </button>
+            <div class="text-link" id="switch-to-reg">Нет аккаунта? Зарегистрироваться</div>
+            <div style="text-align: center; margin-top: 30px; font-size: 12px; color: var(--secondary-text);">
+                Нажимая "Войти", вы соглашаетесь с нашими<br>условиями использования
+            </div>
+        </div>
+    </div>
+
+    <!-- View: Upload -->
+    <div id="upload-view" class="view">
+        <div class="upload-container">
+            <h3 style="margin-bottom: 20px; display: flex; align-items: center; gap: 10px;">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="var(--accent-color)">
+                    <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+                </svg>
+                Создать видео
+            </h3>
+            
+            <!-- Camera Preview -->
+            <div class="camera-preview" id="camera-preview" style="display: none;">
+                <video id="camera-video" autoplay muted></video>
+                <canvas id="camera-canvas" style="display: none;"></canvas>
+                <div class="camera-controls">
+                    <button class="record-btn" id="record-btn"></button>
+                </div>
+            </div>
+
+            <!-- Upload Area -->
+            <div class="upload-area" id="upload-area">
+                <svg viewBox="0 0 24 24">
+                    <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+                </svg>
+                <span style="font-size: 16px; margin-bottom: 5px;">Загрузите видео</span>
+                <span style="font-size: 12px; margin-bottom: 15px;">или запишите с камеры</span>
+                <button class="primary-btn" style="width: auto; padding: 10px 20px; font-size: 14px;" id="camera-toggle">
+                    📷 Включить камеру
+                </button>
+                <input type="file" id="video-file-input" accept="video/mp4,video/webm,video/quicktime" style="display: none;">
+            </div>
+
+            <!-- Video Preview -->
+            <div id="upload-preview" style="display:none; margin-bottom: 20px; border-radius: 16px; overflow: hidden; background: #000;">
+                <video id="preview-video" style="width:100%; max-height: 300px;" controls></video>
+            </div>
+
+            <!-- Filters -->
+            <div style="margin-bottom: 20px;">
+                <div style="font-size: 14px; margin-bottom: 10px; color: var(--secondary-text);">Фильтры:</div>
+                <div class="filter-selector" id="filter-selector"></div>
+            </div>
+
+            <!-- Description & Tags -->
+            <input type="text" id="upload-desc" class="form-input" placeholder="Описание видео">
+            <input type="text" id="upload-tags" class="form-input" placeholder="#хэштеги (через пробел)">
+            
+            <!-- Advanced Options -->
+            <details style="margin-bottom: 20px;">
+                <summary style="font-size: 14px; color: var(--secondary-text); cursor: pointer; padding: 10px; border-radius: 8px; background: rgba(255,255,255,0.05);">
+                    Дополнительные настройки
+                </summary>
+                <div style="padding: 10px; background: rgba(255,255,255,0.02); border-radius: 8px; margin-top: 10px;">
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                        <input type="checkbox" id="allow-comments" checked style="transform: scale(1.2);">
+                        <label for="allow-comments" style="font-size: 13px;">Разрешить комментарии</label>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <input type="checkbox" id="private-video" style="transform: scale(1.2);">
+                        <label for="private-video" style="font-size: 13px;">Приватное видео</label>
+                    </div>
+                </div>
+            </details>
+
+            <button class="primary-btn" id="publish-btn">
+                <span id="publish-btn-text">Опубликовать</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- View: Notifications -->
+    <div id="notifications-view" class="view">
+        <div class="notifications-container">
+            <div class="notifications-tabs">
+                <button class="notification-tab active" data-tab="all">Все</button>
+                <button class="notification-tab" data-tab="likes">❤️ Лайки</button>
+                <button class="notification-tab" data-tab="comments">💬 Комментарии</button>
+            </div>
+            <div class="notifications-list" id="notifications-list">
+                <!-- Notifications will be rendered here -->
+            </div>
+            <div class="empty-state" id="notifications-empty">
+                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity="0.5">
+                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                    <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                </svg>
+                <p>Уведомлений нет</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- View: Messages -->
+    <div id="messages-view" class="view">
+        <div class="messages-container">
+            <!-- Messages List -->
+            <div class="messages-list-section" id="messages-list-section">
+                <div class="messages-header">
+                    <h3>Сообщения</h3>
+                    <button class="new-message-btn" id="new-message-btn">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+                        </svg>
+                    </button>
+                </div>
+                <div class="message-search">
+                    <input type="text" id="message-search-input" placeholder="Поиск...">
+                </div>
+                <div class="chat-list" id="chat-list">
+                    <!-- Chat items will be rendered here -->
+                </div>
+                <div class="empty-state" id="messages-empty">
+                    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity="0.5">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                    </svg>
+                    <p>Нет сообщений</p>
+                </div>
+            </div>
+            
+            <!-- Chat Dialog -->
+            <div class="chat-dialog" id="chat-dialog" style="display: none;">
+                <div class="chat-header" id="chat-header">
+                    <button class="back-btn" id="back-to-list">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
+                        </svg>
+                    </button>
+                    <div class="chat-user-info">
+                        <img id="chat-user-avatar" src="https://ui-avatars.com/api/?name=User&background=random&size=40" class="chat-avatar">
+                        <div>
+                            <h4 id="chat-user-name">@username</h4>
+                            <span id="chat-user-status" class="chat-status">Online</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="messages" id="messages-container">
+                    <!-- Messages will be rendered here -->
+                </div>
+                
+                <div class="message-input-area">
+                    <input type="text" id="message-input" placeholder="Напишите сообщение...">
+                    <button class="send-message-btn" id="send-message-btn">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M16.6915026,12.4744748 L3.50612381,13.2599618 C3.19218622,13.2599618 3.03521743,13.4170592 3.03521743,13.5741566 L1.15159189,20.0151496 C0.8376543,20.8006365 0.99,21.89 1.77946707,22.52 C2.41,22.99 3.50612381,23.1 4.13399899,22.8429026 L21.714504,14.0454487 C22.6563168,13.5741566 23.1272231,12.6315722 22.9702544,11.6889879 L4.13399899,1.16151496 C3.34915502,0.9 2.40734225,1.00636533 1.77946707,1.4776575 C0.994623095,2.10604706 0.837654326,3.0486314 1.15159189,3.99 L3.03521743,10.4310068 C3.03521743,10.5881042 3.19218622,10.7452015 3.50612381,10.7452015 L16.6915026,11.5306884 C16.6915026,11.5306884 17.1624089,11.5306884 17.1624089,12.0019805 C17.1624089,12.4732727 16.6915026,12.4744748 16.6915026,12.4744748 Z"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- View: Profile -->
+    <div id="profile-view" class="view">
+        <div class="profile-header">
+            <img src="https://ui-avatars.com/api/?name=Guest&background=random&size=150" class="profile-avatar" id="profile-avatar-img">
+            <h3 id="profile-name">@guest</h3>
+            <div style="font-size: 13px; color: var(--secondary-text); margin-bottom: 5px;" id="profile-bio">
+                🎬 Создаю крутые видео
+            </div>
+            <div id="profile-additional-info" style="font-size: 12px; color: var(--secondary-text); display: flex; flex-direction: column; gap: 3px; margin-bottom: 10px;">
+                <div id="profile-location" style="display: none;"><strong>📍</strong> <span id="location-text"></span></div>
+                <div id="profile-website" style="display: none;"><strong>🔗</strong> <a id="website-link" href="#" target="_blank" style="color: #fe2c55; text-decoration: none;"></a></div>
+                <div id="profile-interests" style="display: none;"><strong>✨</strong> <span id="interests-text"></span></div>
+                <div id="profile-gender" style="display: none;"><strong>👤</strong> <span id="gender-text"></span></div>
+            </div>
+            <div class="stats-row">
+                <div class="stat-item" id="following-stat">
+                    <span class="stat-num">142</span>
+                    <span class="stat-label">Подписки</span>
+                </div>
+                <div class="stat-item" id="followers-stat">
+                    <span class="stat-num">8.2M</span>
+                    <span class="stat-label">Подписчики</span>
+                </div>
+                <div class="stat-item" id="likes-stat">
+                    <span class="stat-num">120K</span>
+                    <span class="stat-label">Лайки</span>
+                </div>
+            </div>
+            <div style="display: flex; gap: 10px; margin-top: 15px; justify-content: center;">
+                <button class="primary-btn" style="padding: 10px 20px; font-size: 13px; width: auto; background: #333;" id="edit-profile-btn">
+                    Редактировать
+                </button>
+                <button class="primary-btn" style="padding: 10px 20px; font-size: 13px; width: auto;" id="share-profile-btn">
+                    Поделиться
+                </button>
+            </div>
+        </div>
+        <div class="video-grid" id="profile-grid"></div>
+    </div>
+
+    <!-- Navigation -->
+    <div class="bottom-nav">
+        <div class="nav-item active" data-target="feed-view">
+            <svg viewBox="0 0 24 24">
+                <path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>
+            </svg>
+            <span>Главная</span>
+        </div>
+        <div class="nav-item" data-target="search-view">
+            <svg viewBox="0 0 24 24">
+                <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/>
+            </svg>
+            <span>Поиск</span>
+        </div>
+        <div class="nav-item" data-target="upload-view">
+            <div class="upload-btn-ui"></div>
+        </div>
+        <div class="nav-item" data-target="notifications-view">
+            <svg viewBox="0 0 24 24">
+                <path d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 12H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"/>
+            </svg>
+            <span>Уведомления</span>
+            <div class="notification-badge" id="notification-badge" style="display: none;">3</div>
+        </div>
+        <div class="nav-item" data-target="profile-view">
+            <svg viewBox="0 0 24 24">
+                <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+            </svg>
+            <span>Профиль</span>
+        </div>
+    </div>
+
+    <!-- FAB for Quick Actions -->
+    <div class="fab" id="quick-fab" title="Быстрые действия">
+        <svg viewBox="0 0 24 24">
+            <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+        </svg>
+    </div>
+
+    <!-- Components: Comments Sheet -->
+    <div class="bottom-sheet" id="comments-sheet">
+        <div class="sheet-header">
+            <span>Комментарии (<span id="comment-count">0</span>)</span>
+            <span class="close-sheet" id="close-comments">✕</span>
+        </div>
+        <div class="comments-list" id="comments-list"></div>
+        <div class="comment-input-area">
+            <input type="text" id="comment-input" placeholder="Оставьте комментарий...">
+            <button style="background:none; border:none; color:var(--accent-color); font-weight:bold; cursor:pointer; padding: 5px 15px; border-radius: 15px; background: rgba(254, 44, 85, 0.1);" id="send-comment">
+                Отправить
+            </button>
+        </div>
+    </div>
+
+    <!-- Components: Share Modal -->
+    <div class="share-modal" id="share-modal"></div>
+
+    <!-- Components: Edit Profile Modal -->
+    <div class="edit-profile-modal" id="edit-profile-modal">
+        <div class="edit-profile-content">
+            <div class="edit-profile-header">
+                <h2>Редактировать профиль</h2>
+                <span class="close-modal" id="close-edit-profile">✕</span>
+            </div>
+
+            <div class="edit-profile-body">
+                <!-- Avatar Upload -->
+                <div class="avatar-upload-section">
+                    <div class="avatar-preview-large" id="avatar-preview">
+                        <img id="avatar-img-large" src="https://ui-avatars.com/api/?name=Guest&background=random&size=200" alt="Аватар">
+                        <div class="avatar-upload-overlay">
+                            <svg width="30" height="30" viewBox="0 0 24 24" fill="white">
+                                <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+                            </svg>
+                        </div>
+                    </div>
+                    <input type="file" id="avatar-file-input" accept="image/*" style="display: none;">
+                    <p style="font-size: 12px; color: var(--secondary-text); margin-top: 10px; text-align: center;">Нажмите на аватар чтобы изменить</p>
+                </div>
+
+                <!-- Username Field -->
+                <div class="edit-field">
+                    <label for="edit-username">Имя пользователя</label>
+                    <input type="text" id="edit-username" class="form-input" placeholder="Ваше имя" maxlength="30">
+                    <p class="char-count"><span id="username-count">0</span>/30</p>
+                </div>
+
+                <!-- Bio Field -->
+                <div class="edit-field">
+                    <label for="edit-bio">Биография</label>
+                    <textarea id="edit-bio" class="form-input" placeholder="Расскажите о себе максимум 150 символов" maxlength="150" style="resize: vertical; min-height: 80px;"></textarea>
+                    <p class="char-count"><span id="bio-count">0</span>/150</p>
+                </div>
+
+                <!-- Social Links -->
+                <div class="edit-field">
+                    <label for="edit-location">Город</label>
+                    <input type="text" id="edit-location" class="form-input" placeholder="Например: Москва" maxlength="50">
+                </div>
+
+                <!-- Website -->
+                <div class="edit-field">
+                    <label for="edit-website">Веб-сайт</label>
+                    <input type="url" id="edit-website" class="form-input" placeholder="https://example.com" maxlength="100">
+                </div>
+
+                <!-- Email -->
+                <div class="edit-field">
+                    <label for="edit-email" style="opacity: 0.6;">Email (только для чтения)</label>
+                    <input type="email" id="edit-email" class="form-input" disabled style="background: rgba(255,255,255,0.05);">
+                </div>
+
+                <!-- Interests/Hashtags -->
+                <div class="edit-field">
+                    <label for="edit-interests">Интересы</label>
+                    <input type="text" id="edit-interests" class="form-input" placeholder="#путешествия #музыка #танцы" maxlength="100">
+                    <p style="font-size: 12px; color: var(--secondary-text); margin-top: 5px;">Добавьте хэштеги через пробел</p>
+                </div>
+
+                <!-- Sex Selection -->
+                <div class="edit-field">
+                    <label>Пол</label>
+                    <div class="gender-selector">
+                        <button class="gender-btn" data-gender="male" id="gender-male">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M17.75 7L14 3.25l-10 10V17h3.75L17.75 7zm2.96-2.96c.39-.39.39-1.02 0-1.41L18.37.29c-.39-.39-1.02-.39-1.41 0L15 2.25 18.75 6l1.96-1.96z"/>
+                            </svg>
+                            Мужчина
+                        </button>
+                        <button class="gender-btn" data-gender="female" id="gender-female">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M17.5 1.5h-2v2h-3v-2h-2v2h-3v-2h-2v2c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-14c0-1.1-.9-2-2-2v-2zm-6 20c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
+                            </svg>
+                            Женщина
+                        </button>
+                        <button class="gender-btn" data-gender="other" id="gender-other">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M15.5 1h-8C6.12 1 5 2.12 5 3.5v17C5 21.88 6.12 23 7.5 23h8c1.38 0 2.5-1.12 2.5-2.5v-17C18 2.12 16.88 1 15.5 1zm-4 21h-2v-2h2v2zm0-4h-2V4h2v14z"/>
+                            </svg>
+                            Другое
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Verification Info -->
+                <div style="background: rgba(37, 244, 238, 0.1); padding: 15px; border-radius: 12px; margin-bottom: 20px;">
+                    <p style="font-size: 12px; color: var(--secondary-text); margin: 0;">
+                        💡 <strong>Совет:</strong> Интересное описание и аватар помогут вам получить больше подписчиков!
+                    </p>
+                </div>
+            </div>
+
+            <div class="edit-profile-footer">
+                <button class="primary-btn" style="background: rgba(255,255,255,0.1);" id="cancel-edit">
+                    Отмена
+                </button>
+                <button class="primary-btn" id="save-profile">
+                    Сохранить изменения
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- UI Feedback -->
+    <div class="toast" id="toast">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+        </svg>
+        <span id="toast-text">Message</span>
+    </div>
+</div>
+
+<!-- JavaScript Files -->
+<script src="js/data-service.js"></script>
+<script src="js/view-renderer.js"></script>
+<script src="js/app.js"></script>
+
+</body>
+</html>

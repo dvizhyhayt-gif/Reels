@@ -1,0 +1,427 @@
+/**
+ * AdvancedDataService
+ * Управление данными приложения (видео, пользователи, настройки)
+ */
+class AdvancedDataService {
+    constructor() {
+        this.STORAGE_KEY = 'tikclone_advanced_data';
+        this.AUTH_KEY = 'tikclone_advanced_auth';
+        this.SETTINGS_KEY = 'tikclone_settings';
+        
+        this.filters = [
+            { id: 'none', name: 'Оригинал', css: '' },
+            { id: 'vibrant', name: 'Яркий', css: 'contrast(1.2) saturate(1.5)' },
+            { id: 'warm', name: 'Теплый', css: 'sepia(0.5) hue-rotate(-30deg)' },
+            { id: 'cool', name: 'Холодный', css: 'sepia(0.3) hue-rotate(180deg) brightness(1.1)' },
+            { id: 'vintage', name: 'Винтаж', css: 'sepia(0.7) contrast(1.1)' },
+            { id: 'bw', name: 'Ч/Б', css: 'grayscale(1) contrast(1.2)' }
+        ];
+
+        this.videoFilters = [
+            { id: 'none', name: 'Оригинал', class: '' },
+            { id: 'filter-1', name: 'Яркий', class: 'filter-1' },
+            { id: 'filter-2', name: 'Теплый', class: 'filter-2' },
+            { id: 'filter-3', name: 'Холодный', class: 'filter-3' },
+            { id: 'filter-4', name: 'Винтаж', class: 'filter-4' }
+        ];
+
+        this.init();
+    }
+
+    init() {
+        const stored = localStorage.getItem(this.STORAGE_KEY);
+        if (!stored) {
+            // Начинаем с пустого массива видео
+            localStorage.setItem(this.STORAGE_KEY, JSON.stringify([]));
+            this.userVideos = [];
+        } else {
+            this.userVideos = JSON.parse(stored);
+        }
+
+        const settings = localStorage.getItem(this.SETTINGS_KEY);
+        this.settings = settings ? JSON.parse(settings) : {
+            theme: 'dark',
+            autoplay: true,
+            notifications: true,
+            videoQuality: 'auto'
+        };
+
+        // Инициализация уведомлений и сообщений
+        this.NOTIFICATIONS_KEY = 'tikclone_notifications';
+        this.MESSAGES_KEY = 'tikclone_messages';
+        
+        const notifications = localStorage.getItem(this.NOTIFICATIONS_KEY);
+        this.notifications = notifications ? JSON.parse(notifications) : this.getDefaultNotifications();
+        
+        const messages = localStorage.getItem(this.MESSAGES_KEY);
+        this.messages = messages ? JSON.parse(messages) : this.getDefaultMessages();
+    }
+
+    getDefaultNotifications() {
+        const now = Date.now();
+        return [
+            {
+                id: 1,
+                type: 'like',
+                data: {
+                    fromUser: 'alex_creator',
+                    videoThumbnail: 'https://via.placeholder.com/48x48?text=Video'
+                },
+                timestamp: now - 300000,
+                read: false
+            },
+            {
+                id: 2,
+                type: 'like',
+                data: {
+                    fromUser: 'sophia_films',
+                    videoThumbnail: 'https://via.placeholder.com/48x48?text=Video'
+                },
+                timestamp: now - 600000,
+                read: false
+            },
+            {
+                id: 3,
+                type: 'comment',
+                data: {
+                    fromUser: 'mike_vibes',
+                    text: 'Классное видео! 🔥',
+                    videoThumbnail: 'https://via.placeholder.com/48x48?text=Video'
+                },
+                timestamp: now - 1200000,
+                read: false
+            }
+        ];
+    }
+
+    getDefaultMessages() {
+        const now = Date.now();
+        const currentUser = this.getCurrentUser();
+        const userName = currentUser ? currentUser.name : 'user';
+        
+        return [
+            {
+                id: 1,
+                chatId: ['alex_creator', userName].sort().join('_'),
+                fromUser: 'alex_creator',
+                toUser: userName,
+                content: 'Привет! Твои видео очень крутые!',
+                timestamp: now - 1800000,
+                read: true
+            },
+            {
+                id: 2,
+                chatId: ['alex_creator', userName].sort().join('_'),
+                fromUser: userName,
+                toUser: 'alex_creator',
+                content: 'Спасибо! Твои тоже класс 😊',
+                timestamp: now - 1700000,
+                read: true
+            },
+            {
+                id: 3,
+                chatId: ['sophia_films', userName].sort().join('_'),
+                fromUser: 'sophia_films',
+                toUser: userName,
+                content: 'Давай сделаем колабор?',
+                timestamp: now - 600000,
+                read: false
+            }
+        ];
+    }
+
+    saveSettings() {
+        localStorage.setItem(this.SETTINGS_KEY, JSON.stringify(this.settings));
+    }
+
+    async getFeed(page = 0, limit = 5) {
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        const start = page * limit;
+        const end = start + limit;
+        const allVideos = [...this.userVideos];
+        
+        allVideos.sort((a, b) => b.timestamp - a.timestamp);
+        
+        return {
+            videos: allVideos.slice(start, end),
+            hasMore: end < allVideos.length,
+            total: allVideos.length
+        };
+    }
+
+    getUserProfile() {
+        const user = this.getCurrentUser();
+        if (!user) return null;
+        
+        const userVideos = this.userVideos.filter(v => v.author === user.name);
+        const totalLikes = userVideos.reduce((sum, v) => sum + v.likes, 0);
+        
+        return {
+            ...user,
+            videos: userVideos,
+            stats: {
+                following: 0,
+                followers: 0,
+                likes: totalLikes,
+                videos: userVideos.length
+            }
+        };
+    }
+
+    getCurrentUser() {
+        const auth = localStorage.getItem(this.AUTH_KEY);
+        return auth ? JSON.parse(auth) : null;
+    }
+
+    async login(email, password) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        if (password.length < 6) {
+            throw new Error('Пароль должен содержать минимум 6 символов');
+        }
+        
+        const user = {
+            name: email.split('@')[0],
+            email,
+            avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(email.split('@')[0])}&background=0D8ABC&color=fff&size=150`,
+            verified: false,
+            bio: '',
+            location: '',
+            website: '',
+            interests: '',
+            gender: 'other'
+        };
+        
+        localStorage.setItem(this.AUTH_KEY, JSON.stringify(user));
+        
+        if (this.settings.notifications && 'Notification' in window && Notification.permission === 'granted') {
+            new Notification('Добро пожаловать в TikClone!', {
+                body: `Привет, ${user.name}! Начните создавать видео.`,
+                icon: user.avatar
+            });
+        }
+        
+        return user;
+    }
+
+    logout() {
+        localStorage.removeItem(this.AUTH_KEY);
+    }
+
+    async uploadVideo(file, metadata) {
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const videoData = e.target.result;
+                
+                const newVideo = {
+                    id: Date.now(),
+                    url: videoData,
+                    author: this.getCurrentUser().name,
+                    avatar: this.getCurrentUser().avatar,
+                    desc: metadata.desc,
+                    likes: 0,
+                    comments: [],
+                    views: 0,
+                    shares: 0,
+                    filter: metadata.filter || 'none',
+                    hashtags: metadata.tags ? metadata.tags.split(' ').filter(t => t.startsWith('#')) : [],
+                    isLiked: false,
+                    timestamp: Date.now(),
+                    ...metadata
+                };
+                
+                this.userVideos.unshift(newVideo);
+                localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.userVideos));
+                
+                resolve(newVideo);
+            };
+            reader.readAsDataURL(file);
+        });
+    }
+
+    toggleLike(videoId) {
+        const video = this.userVideos.find(v => v.id === videoId);
+        if (video) {
+            video.isLiked = !video.isLiked;
+            video.likes += video.isLiked ? 1 : -1;
+            localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.userVideos));
+            return video.isLiked;
+        }
+        return false;
+    }
+
+    addComment(videoId, text) {
+        const user = this.getCurrentUser();
+        const video = this.userVideos.find(v => v.id === videoId);
+        
+        if (video && user) {
+            const comment = {
+                user: user.name,
+                text,
+                time: Date.now(),
+                likes: 0
+            };
+            
+            video.comments.push(comment);
+            localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.userVideos));
+            return comment;
+        }
+        return null;
+    }
+
+    incrementViews(videoId) {
+        const video = this.userVideos.find(v => v.id === videoId);
+        if (video) {
+            video.views = (video.views || 0) + 1;
+            localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.userVideos));
+        }
+    }
+
+    searchVideos(query) {
+        const searchTerm = query.toLowerCase();
+        return this.userVideos.filter(video => 
+            video.desc.toLowerCase().includes(searchTerm) ||
+            video.author.toLowerCase().includes(searchTerm) ||
+            video.hashtags.some(tag => tag.toLowerCase().includes(searchTerm))
+        );
+    }
+
+    getFilteredVideos(filter) {
+        return this.userVideos.filter(video => 
+            filter === 'all' || video.filter === filter
+        );
+    }
+
+    updateUserProfile(profileData) {
+        const user = this.getCurrentUser();
+        if (!user) return null;
+        
+        // Обновляем пользователя с новыми данными
+        const updatedUser = {
+            ...user,
+            ...profileData
+        };
+        
+        localStorage.setItem(this.AUTH_KEY, JSON.stringify(updatedUser));
+        return updatedUser;
+    }
+
+    getUserSettings() {
+        const user = this.getCurrentUser();
+        if (!user) return null;
+        return {
+            name: user.name,
+            email: user.email,
+            avatar: user.avatar,
+            bio: user.bio || '',
+            location: user.location || '',
+            website: user.website || '',
+            interests: user.interests || '',
+            gender: user.gender || 'other',
+            verified: user.verified || false
+        };
+    }
+
+    // Notifications methods
+    addNotification(type, data) {
+        const notification = {
+            id: Date.now(),
+            type, // 'like', 'comment'
+            data,
+            timestamp: Date.now(),
+            read: false
+        };
+        this.notifications.unshift(notification);
+        localStorage.setItem(this.NOTIFICATIONS_KEY, JSON.stringify(this.notifications));
+        return notification;
+    }
+
+    getNotifications(filter = 'all') {
+        if (filter === 'all') return this.notifications;
+        return this.notifications.filter(n => n.type === filter);
+    }
+
+    markNotificationAsRead(id) {
+        const notification = this.notifications.find(n => n.id === id);
+        if (notification) {
+            notification.read = true;
+            localStorage.setItem(this.NOTIFICATIONS_KEY, JSON.stringify(this.notifications));
+        }
+    }
+
+    getUnreadNotificationsCount() {
+        return this.notifications.filter(n => !n.read).length;
+    }
+
+    // Messages methods
+    addMessage(chatId, fromUser, toUser, content) {
+        const message = {
+            id: Date.now(),
+            chatId,
+            fromUser,
+            toUser,
+            content,
+            timestamp: Date.now(),
+            read: false
+        };
+        this.messages.push(message);
+        localStorage.setItem(this.MESSAGES_KEY, JSON.stringify(this.messages));
+        return message;
+    }
+
+    getChats() {
+        const currentUser = this.getCurrentUser();
+        if (!currentUser) return [];
+
+        // Получаем уникальные чаты
+        const chatsMap = new Map();
+        
+        this.messages.forEach(msg => {
+            const otherUser = msg.fromUser === currentUser.name ? msg.toUser : msg.fromUser;
+            const chatId = [msg.fromUser, msg.toUser].sort().join('_');
+            
+            if (!chatsMap.has(chatId)) {
+                chatsMap.set(chatId, {
+                    id: chatId,
+                    otherUser,
+                    lastMessage: msg.content,
+                    lastMessageTime: msg.timestamp,
+                    unread: msg.toUser === currentUser.name && !msg.read
+                });
+            } else {
+                const chat = chatsMap.get(chatId);
+                if (msg.timestamp > chat.lastMessageTime) {
+                    chat.lastMessage = msg.content;
+                    chat.lastMessageTime = msg.timestamp;
+                }
+                if (msg.toUser === currentUser.name && !msg.read) {
+                    chat.unread = true;
+                }
+            }
+        });
+
+        // Сортируем по времени последнего сообщения
+        return Array.from(chatsMap.values()).sort((a, b) => b.lastMessageTime - a.lastMessageTime);
+    }
+
+    getChatMessages(chatId) {
+        return this.messages.filter(m => m.chatId === chatId);
+    }
+
+    markChatAsRead(chatId) {
+        const currentUser = this.getCurrentUser();
+        this.messages.forEach(msg => {
+            if (msg.chatId === chatId && msg.toUser === currentUser.name) {
+                msg.read = true;
+            }
+        });
+        localStorage.setItem(this.MESSAGES_KEY, JSON.stringify(this.messages));
+    }
+
+    getUnreadMessagesCount() {
+        const currentUser = this.getCurrentUser();
+        return this.messages.filter(m => m.toUser === currentUser.name && !m.read).length;
+    }
+}
