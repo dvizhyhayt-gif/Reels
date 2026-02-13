@@ -45,6 +45,26 @@
                 </svg>
                 <span id="theme-text">Светлая тема</span>
             </div>
+                <script>
+                    document.addEventListener('DOMContentLoaded', function() {
+                        var loginForm = document.getElementById('login-form');
+                        var registerForm = document.getElementById('register-form');
+                        var switchToReg = document.getElementById('switch-to-reg');
+                        var switchToLogin = document.getElementById('switch-to-login');
+                        if (switchToReg) {
+                            switchToReg.addEventListener('click', function() {
+                                loginForm.style.display = 'none';
+                                registerForm.style.display = 'block';
+                            });
+                        }
+                        if (switchToLogin) {
+                            switchToLogin.addEventListener('click', function() {
+                                registerForm.style.display = 'none';
+                                loginForm.style.display = 'block';
+                            });
+                        }
+                    });
+                </script>
             <div class="menu-divider"></div>
             <div class="menu-item" id="logout-menu">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
@@ -88,7 +108,7 @@
                     <circle cx="11" cy="11" r="8"></circle>
                     <path d="m21 21-4.35-4.35"></path>
                 </svg>
-                <input type="text" class="search-view-input" id="search-view-input" placeholder="Поиск видео и хештегов...">
+                <input type="text" class="search-view-input" id="search-view-input" placeholder="Поиск видео, профилей и хештегов...">
                 <button class="search-view-clear" id="search-view-clear" style="display: none;">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                         <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41z"/>
@@ -134,8 +154,10 @@
             <input type="email" id="register-email" class="form-input" placeholder="Email">
             <input type="password" id="register-pass" class="form-input" placeholder="Пароль (минимум 6 символов)">
             <input type="password" id="register-pass-confirm" class="form-input" placeholder="Подтвердите пароль">
+            <input type="text" id="register-username" class="form-input" placeholder="Имя профиля (уникальное)">
             <button class="primary-btn" id="register-btn">
                 <span id="register-btn-text">Зарегистрироваться</span>
+            </button>
             </button>
             <div class="text-link" id="switch-to-login">Уже есть аккаунт? Войти</div>
             <div style="text-align: center; margin-top: 30px; font-size: 12px; color: var(--secondary-text);">
