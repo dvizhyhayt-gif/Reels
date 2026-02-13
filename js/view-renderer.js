@@ -19,6 +19,7 @@ class AdvancedViewRenderer {
         const isSubscribed = options.isSubscribed ? true : false;
         const followButtonText = isSubscribed ? '✓' : '+';
         const followButtonStyle = isSubscribed ? 'var(--accent-secondary)' : 'var(--accent-color)';
+        const verifiedBadge = this.getVerifiedBadge(video.authorVerified || video.verified);
         
         div.innerHTML = `
             <div class="video-progress">
@@ -59,7 +60,7 @@ class AdvancedViewRenderer {
                 <div class="video-info">
                     <div class="username">
                         @${video.author}
-                        ${Math.random() > 0.7 ? '<svg class="verified-badge" viewBox="0 0 24 24"><path d="M23 12l-2.44-2.78.34-3.68-3.61-.82-1.89-3.18L12 3 8.6 1.54 6.71 4.72l-3.61.81.34 3.68L1 12l2.44 2.78-.34 3.69 3.61.82 1.89 3.18L12 21l3.4 1.46 1.89-3.18 3.61-.82-.34-3.68L23 12zm-10 5l-4-4 1.41-1.41L12 14.17l2.59-2.58L16 13l-4 4z"/></svg>' : ''}
+                        ${verifiedBadge}
                     </div>
                     <div class="description">${video.desc}</div>
                     ${hashtagsHTML ? `<div class="hashtags">${hashtagsHTML}</div>` : ''}
@@ -74,6 +75,11 @@ class AdvancedViewRenderer {
             </div>
         `;
         return div;
+    }
+
+    static getVerifiedBadge(isVerified = false) {
+        if (!isVerified) return '';
+        return '<svg class="verified-badge" viewBox="0 0 24 24"><path d="M23 12l-2.44-2.78.34-3.68-3.61-.82-1.89-3.18L12 3 8.6 1.54 6.71 4.72l-3.61.81.34 3.68L1 12l2.44 2.78-.34 3.69 3.61.82 1.89 3.18L12 21l3.4 1.46 1.89-3.18 3.61-.82-.34-3.68L23 12zm-10 5l-4-4 1.41-1.41L12 14.17l2.59-2.58L16 13l-4 4z"/></svg>';
     }
 
     static renderComments(comments) {

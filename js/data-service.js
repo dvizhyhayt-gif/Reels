@@ -5,7 +5,6 @@
 class AdvancedDataService {
     constructor() {
         this.STORAGE_KEY = 'tikclone_advanced_data';
-        this.AUTH_KEY = 'tikclone_advanced_auth';
         this.SETTINGS_KEY = 'tikclone_settings';
         
         this.filters = [
@@ -14,7 +13,7 @@ class AdvancedDataService {
             { id: 'warm', name: 'Теплый', css: 'sepia(0.5) hue-rotate(-30deg)' },
             { id: 'cool', name: 'Холодный', css: 'sepia(0.3) hue-rotate(180deg) brightness(1.1)' },
             { id: 'vintage', name: 'Винтаж', css: 'sepia(0.7) contrast(1.1)' },
-            { id: 'bw', name: 'Ч/Б', css: 'grayscale(1) contrast(1.2)' }
+            { id: 'bw', name: 'Р§/Р‘', css: 'grayscale(1) contrast(1.2)' }
         ];
 
         this.videoFilters = [
@@ -30,6 +29,7 @@ class AdvancedDataService {
 
     init() {
         // Удалено всё, что связано с localStorage
+        localStorage.removeItem('tikclone_advanced_auth');
         this.userVideos = [];
         this.settings = {
             theme: 'dark',
@@ -212,8 +212,6 @@ class AdvancedDataService {
                 author.subscribers.push(currentUser.name);
             }
         }
-        
-        localStorage.setItem(this.AUTH_KEY, JSON.stringify(currentUser));
         return true;
     }
 
@@ -242,52 +240,24 @@ class AdvancedDataService {
     }
 
     getCurrentUser() {
-        // Всегда используем только Firebase
         if (typeof firebaseService !== 'undefined' && firebaseService && firebaseService.isInitialized()) {
-            const fbUser = firebaseService.getCurrentUser();
-            if (fbUser) return fbUser;
+            return firebaseService.getCurrentUser();
         }
-        
-        // Fallback на локальное хранилище
-        const auth = localStorage.getItem(this.AUTH_KEY);
-        return auth ? JSON.parse(auth) : null;
+        return null;
     }
 
     async login(email, password) {
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        if (password.length < 6) {
-            throw new Error('Пароль должен содержать минимум 6 символов');
+        if (!(typeof firebaseService !== 'undefined' && firebaseService && firebaseService.isInitialized())) {
+            throw new Error('Firebase не инициализирован');
         }
-        
-        const user = {
-            name: email.split('@')[0],
-            email,
-            avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(email.split('@')[0])}&background=0D8ABC&color=fff&size=150`,
-            verified: false,
-            bio: '',
-            location: '',
-            website: '',
-            interests: '',
-            gender: 'other',
-            subscriptions: [],
-            subscribers: []
-        };
-        
-        localStorage.setItem(this.AUTH_KEY, JSON.stringify(user));
-        
-        if (this.settings.notifications && 'Notification' in window && Notification.permission === 'granted') {
-            new Notification('Добро пожаловать в TikClone!', {
-                body: `Привет, ${user.name}! Начните создавать видео.`,
-                icon: user.avatar
-            });
-        }
-        
-        return user;
+        return firebaseService.login(email, password);
     }
 
-    logout() {
-        localStorage.removeItem(this.AUTH_KEY);
+    async logout() {
+        if (!(typeof firebaseService !== 'undefined' && firebaseService && firebaseService.isInitialized())) {
+            throw new Error('Firebase не инициализирован');
+        }
+        return firebaseService.logout();
     }
 
     async uploadVideo(file, metadata) {
@@ -301,6 +271,7 @@ class AdvancedDataService {
                     url: videoData,
                     author: this.getCurrentUser().name,
                     avatar: this.getCurrentUser().avatar,
+                    authorVerified: !!this.getCurrentUser().verified,
                     desc: metadata.desc,
                     likes: 0,
                     comments: [],
@@ -375,18 +346,16 @@ class AdvancedDataService {
         );
     }
 
-    updateUserProfile(profileData) {
+    async updateUserProfile(profileData) {
         const user = this.getCurrentUser();
         if (!user) return null;
-        
-        // Обновляем пользователя с новыми данными
-        const updatedUser = {
-            ...user,
-            ...profileData
-        };
-        
-        localStorage.setItem(this.AUTH_KEY, JSON.stringify(updatedUser));
-        return updatedUser;
+
+        if (!(typeof firebaseService !== 'undefined' && firebaseService && firebaseService.isInitialized())) {
+            throw new Error('Firebase не инициализирован');
+        }
+
+        await firebaseService.updateUserProfile(user.uid, profileData);
+        return firebaseService.getCurrentUser();
     }
 
     getUserSettings() {

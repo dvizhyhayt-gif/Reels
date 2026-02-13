@@ -22,6 +22,12 @@
         rgba(254, 44, 85, 0.1) 50%, 
         transparent 70%);
     animation: gradientMove 8s infinite linear;
+    pointer-events: none;
+}
+
+.auth-container > * {
+    position: relative;
+    z-index: 1;
 }
 
 @keyframes gradientMove {

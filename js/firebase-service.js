@@ -48,6 +48,7 @@ class FirebaseService {
                 interests: '',
                 gender: 'other',
                 verified: false,
+                canVerify: false,
                 subscriptions: [],
                 subscribers: [],
                 createdAt: new Date(),
@@ -69,10 +70,18 @@ class FirebaseService {
         try {
             const { user } = await this.auth.signInWithEmailAndPassword(email, password);
             const userProfile = await this.getUserProfile(user.uid);
-            console.log('✅ Логин успешен:', user.uid);
+            if (!userProfile) {
+                await this.auth.signOut();
+                throw new Error('Профиль пользователя не найден. Зарегистрируйтесь снова.');
+            }
+            this.currentUser = userProfile;
+            console.log('Вход выполнен успешно:', user.uid);
             return { success: true, user: userProfile, uid: user.uid };
         } catch (error) {
-            console.error('❌ Ошибка логина:', error.message);
+            console.error('Ошибка входа:', error.message);
+            if (error.message === 'Профиль пользователя не найден. Зарегистрируйтесь снова.') {
+                throw error;
+            }
             throw new Error(this.getFirebaseErrorMessage(error.code));
         }
     }
@@ -114,15 +123,68 @@ class FirebaseService {
 
     async updateUserProfile(uid, updates) {
         try {
+            if (updates && typeof updates.name === 'string' && updates.name.trim()) {
+                const normalizedName = updates.name.trim();
+                const existing = await this.getUserByName(normalizedName);
+                if (existing && existing.uid !== uid) {
+                    throw new Error('Имя профиля уже занято');
+                }
+                updates.name = normalizedName;
+            }
+
             await this.db.collection('users').doc(uid).update({
                 ...updates,
                 updatedAt: new Date()
             });
             this.currentUser = await this.getUserProfile(uid);
-            console.log('✅ Профиль обновлен');
+            console.log('Профиль обновлен');
             return true;
         } catch (error) {
-            console.error('❌ Ошибка обновления профиля:', error);
+            console.error('Ошибка обновления профиля:', error);
+            throw error;
+        }
+    }
+
+    async setUserVerified(targetUid, verified) {
+        const current = this.getCurrentUser();
+        if (!current || current.canVerify !== true) {
+            throw new Error('Недостаточно прав для выдачи галочки');
+        }
+        if (!targetUid) {
+            throw new Error('Не указан пользователь');
+        }
+
+        const verifiedValue = !!verified;
+
+        try {
+            await this.db.collection('users').doc(targetUid).update({
+                verified: verifiedValue,
+                updatedAt: new Date()
+            });
+
+            // Синхронизируем статус галочки в опубликованных видео автора.
+            const videosSnapshot = await this.db.collection('videos')
+                .where('uid', '==', targetUid)
+                .get();
+
+            if (!videosSnapshot.empty) {
+                const batch = this.db.batch();
+                videosSnapshot.forEach(doc => {
+                    batch.update(doc.ref, {
+                        authorVerified: verifiedValue,
+                        updatedAt: new Date()
+                    });
+                });
+                await batch.commit();
+            }
+
+            if (this.currentUser && this.currentUser.uid === targetUid) {
+                this.currentUser.verified = verifiedValue;
+            }
+
+            return true;
+        } catch (error) {
+            console.error('❌ Ошибка обновления верификации:', error);
             throw error;
         }
     }
@@ -180,6 +242,7 @@ class FirebaseService {
                 uid: uid,
                 author: userProfile.name,
                 avatar: userProfile.avatar,
+                authorVerified: !!userProfile.verified,
                 url: videoUrl,
                 storagePath: fileName,
                 desc: metadata.desc || '',
@@ -385,6 +448,184 @@ class FirebaseService {
         } catch (error) {
             console.error('❌ Ошибка получения комментариев:', error);
             return [];
+        }
+    }
+
+    // ===================== MESSAGES =====================
+
+    buildChatId(uidA, uidB) {
+        if (!uidA || !uidB) return null;
+        return [uidA, uidB].sort().join('_');
+    }
+
+    normalizeTimestamp(value) {
+        if (typeof value === 'number') return value;
+        if (value && typeof value.toMillis === 'function') return value.toMillis();
+        if (value instanceof Date) return value.getTime();
+        return Date.now();
+    }
+
+    async addMessage(chatId, fromUser, toUser, content, toUid = null) {
+        const currentUid = this.getCurrentUid();
+        if (!currentUid) throw new Error('Необходимо авторизироваться');
+
+        const text = (content || '').trim();
+        if (!text) throw new Error('Пустое сообщение');
+
+        try {
+            const senderProfile = await this.getUserProfile(currentUid);
+            const senderName = senderProfile?.name || fromUser || 'user';
+
+            let targetUid = toUid;
+            let targetName = (toUser || '').trim();
+
+            if (!targetUid && targetName) {
+                const targetProfileByName = await this.getUserByName(targetName);
+                if (targetProfileByName) {
+                    targetUid = targetProfileByName.uid;
+                    targetName = targetProfileByName.name || targetName;
+                }
+            }
+
+            if (!targetUid) {
+                throw new Error('Получатель не найден');
+            }
+            if (targetUid === currentUid) {
+                throw new Error('Нельзя отправить сообщение самому себе');
+            }
+
+            if (!targetName) {
+                const targetProfile = await this.getUserProfile(targetUid);
+                targetName = targetProfile?.name || 'user';
+            }
+
+            const normalizedChatId = chatId || this.buildChatId(currentUid, targetUid);
+            if (!normalizedChatId) {
+                throw new Error('Не удалось создать чат');
+            }
+
+            const message = {
+                chatId: normalizedChatId,
+                participants: [currentUid, targetUid],
+                fromUid: currentUid,
+                fromUser: senderName,
+                toUid: targetUid,
+                toUser: targetName,
+                content: text,
+                timestamp: Date.now(),
+                read: false
+            };
+
+            const ref = await this.db.collection('messages').add(message);
+            return { id: ref.id, ...message };
+        } catch (error) {
+            console.error('❌ Ошибка отправки сообщения:', error);
+            throw error;
+        }
+    }
+
+    async getChatMessages(chatId) {
+        const currentUid = this.getCurrentUid();
+        if (!currentUid || !chatId) return [];
+
+        try {
+            const snapshot = await this.db.collection('messages')
+                .where('chatId', '==', chatId)
+                .get();
+
+            return snapshot.docs
+                .map(doc => {
+                    const data = doc.data();
+                    return {
+                        id: doc.id,
+                        ...data,
+                        timestamp: this.normalizeTimestamp(data.timestamp)
+                    };
+                })
+                .sort((a, b) => a.timestamp - b.timestamp);
+        } catch (error) {
+            console.error('❌ Ошибка загрузки сообщений чата:', error);
+            return [];
+        }
+    }
+
+    async getChats() {
+        const currentUid = this.getCurrentUid();
+        if (!currentUid) return [];
+
+        try {
+            const snapshot = await this.db.collection('messages')
+                .where('participants', 'array-contains', currentUid)
+                .get();
+
+            const chatsMap = new Map();
+
+            snapshot.forEach(doc => {
+                const msg = doc.data();
+                const timestamp = this.normalizeTimestamp(msg.timestamp);
+                const chatId = msg.chatId || this.buildChatId(msg.fromUid, msg.toUid);
+                if (!chatId) return;
+
+                const otherUid = msg.fromUid === currentUid ? msg.toUid : msg.fromUid;
+                const otherUser = msg.fromUid === currentUid ? msg.toUser : msg.fromUser;
+
+                if (!chatsMap.has(chatId)) {
+                    chatsMap.set(chatId, {
+                        id: chatId,
+                        otherUid: otherUid || null,
+                        otherUser: otherUser || 'user',
+                        lastMessage: msg.content || '',
+                        lastMessageTime: timestamp,
+                        unread: msg.toUid === currentUid && !msg.read
+                    });
+                    return;
+                }
+
+                const chat = chatsMap.get(chatId);
+                if (timestamp > chat.lastMessageTime) {
+                    chat.lastMessage = msg.content || '';
+                    chat.lastMessageTime = timestamp;
+                }
+                if (msg.toUid === currentUid && !msg.read) {
+                    chat.unread = true;
+                }
+            });
+
+            return Array.from(chatsMap.values()).sort((a, b) => b.lastMessageTime - a.lastMessageTime);
+        } catch (error) {
+            console.error('❌ Ошибка загрузки чатов:', error);
+            return [];
+        }
+    }
+
+    async markChatAsRead(chatId) {
+        const currentUid = this.getCurrentUid();
+        if (!currentUid || !chatId) return 0;
+
+        try {
+            const snapshot = await this.db.collection('messages')
+                .where('chatId', '==', chatId)
+                .get();
+
+            let updatesCount = 0;
+            const batch = this.db.batch();
+
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                if (data.toUid === currentUid && !data.read) {
+                    batch.update(doc.ref, { read: true });
+                    updatesCount += 1;
+                }
+            });
+
+            if (updatesCount > 0) {
+                await batch.commit();
+            }
+
+            return updatesCount;
+        } catch (error) {
+            console.error('❌ Ошибка отметки сообщений как прочитанных:', error);
+            return 0;
         }
     }
 

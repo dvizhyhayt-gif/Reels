@@ -31,18 +31,20 @@
     -webkit-tap-highlight-color: transparent;
 }
 
-body {
-    background: linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 100%);
-    font-family: var(--font-main);
-    color: var(--text-color);
-    height: 100vh;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    overflow: hidden;
-    transition: var(--transition);
+body{
+  background:
+    radial-gradient(900px 500px at 15% 10%, rgba(142,154,99,0.18), transparent 60%),
+    radial-gradient(700px 500px at 90% 25%, rgba(178,192,122,0.10), transparent 55%),
+    linear-gradient(135deg, #050705 0%, #0B0F0B 100%);
+  font-family: var(--font-main);
+  color: var(--text-color);
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+  transition: var(--transition);
 }
-
 [data-theme="light"] body {
     background: linear-gradient(135deg, #f8f8f8 0%, #fafafa 100%);
 }
