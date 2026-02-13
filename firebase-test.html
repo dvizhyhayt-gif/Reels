@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Firebase Test - TikClone Pro</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #000;
+            color: #fff;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        
+        .section {
+            background: #1a1a1a;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            border-left: 4px solid #fe2c55;
+        }
+        
+        .section h2 {
+            margin-bottom: 15px;
+            font-size: 18px;
+        }
+        
+        .check {
+            display: flex;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .check:last-child {
+            border-bottom: none;
+        }
+        
+        .check-icon {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 10px;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        
+        .check-icon.ok {
+            background: #25f4ee;
+            color: #000;
+        }
+        
+        .check-icon.bad {
+            background: #fe2c55;
+            color: #fff;
+        }
+        
+        .check-text {
+            flex: 1;
+        }
+        
+        .check-value {
+            font-size: 12px;
+            color: #aaa;
+            margin-top: 5px;
+            font-family: monospace;
+            word-break: break-all;
+        }
+        
+        button {
+            background: #fe2c55;
+            color: #fff;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+            margin-top: 10px;
+            width: 100%;
+        }
+        
+        button:hover {
+            background: #ff3a5f;
+        }
+        
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+        
+        .console {
+            background: #0a0a0a;
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-family: monospace;
+            overflow-y: auto;
+            max-height: 300px;
+            margin-top: 10px;
+            border: 1px solid #333;
+        }
+        
+        .log {
+            margin-bottom: 8px;
+            padding: 5px;
+        }
+        
+        .log.info { color: #25f4ee; }
+        .log.success { color: #00d084; }
+        .log.error { color: #fe2c55; }
+        .log.warning { color: #ffb300; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1 style="margin-bottom: 30px; text-align: center;">🔥 Firebase Проверка</h1>
+    
+    <!-- Firebase Status -->
+    <div class="section">
+        <h2>1. Firebase SDK</h2>
+        <div class="check">
+            <div class="check-icon" id="firebase-check">❓</div>
+            <div class="check-text">Firebase загружен</div>
+        </div>
+        <div class="check">
+            <div class="check-icon" id="config-check">❓</div>
+            <div class="check-text">Config заполнен
+                <div class="check-value" id="config-value"></div>
+            </div>
+        </div>
+        <div class="check">
+            <div class="check-icon" id="service-check">❓</div>
+            <div class="check-text">FirebaseService инициализирован
+                <div class="check-value" id="service-value"></div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Auth Test -->
+    <div class="section">
+        <h2>2. Authentication</h2>
+        <div class="check">
+            <div class="check-icon" id="auth-check">❓</div>
+            <div class="check-text">Firebase Auth готов</div>
+        </div>
+        
+        <input type="email" id="test-email" placeholder="Тестовый email" style="width: 100%; padding: 10px; margin-top: 10px; background: #0a0a0a; border: 1px solid #333; color: #fff; border-radius: 6px;">
+        
+        <button id="test-register" onclick="testRegister()">Тестовая Регистрация</button>
+        <button id="test-login" onclick="testLogin()" style="margin-top: 5px;">Тестовый Логин</button>
+        <button id="test-logout" onclick="testLogout()" style="margin-top: 5px; background: #999;">Logout</button>
+    </div>
+    
+    <!-- Firestore Test -->
+    <div class="section">
+        <h2>3. Firestore</h2>
+        <div class="check">
+            <div class="check-icon" id="firestore-check">❓</div>
+            <div class="check-text">Firestore готов</div>
+        </div>
+        
+        <button id="test-firestore" onclick="testFirestore()" style="margin-top: 10px;">Проверить Firestore</button>
+    </div>
+    
+    <!-- Storage Test -->
+    <div class="section">
+        <h2>4. Storage</h2>
+        <div class="check">
+            <div class="check-icon" id="storage-check">❓</div>
+            <div class="check-text">Firebase Storage готов</div>
+        </div>
+    </div>
+    
+    <!-- Console -->
+    <div class="section">
+        <h2>📋 Логи</h2>
+        <div class="console" id="console"></div>
+    </div>
+</div>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-storage.js"></script>
+
+<script src="js/firebase-config.js"></script>
+<script src="js/firebase-service.js"></script>
+
+<script>
+    function log(message, type = 'info') {
+        const console_el = document.getElementById('console');
+        const log_el = document.createElement('div');
+        log_el.className = `log ${type}`;
+        log_el.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+        console_el.appendChild(log_el);
+        console_el.scrollTop = console_el.scrollHeight;
+    }
+    
+    function updateCheck(elementId, status, message = '') {
+        const el = document.getElementById(elementId);
+        const valueEl = document.getElementById(elementId.replace('-check', '-value'));
+        
+        if (status === true) {
+            el.className = 'check-icon ok';
+            el.textContent = '✓';
+        } else if (status === false) {
+            el.className = 'check-icon bad';
+            el.textContent = '✗';
+        } else {
+            el.className = 'check-icon';
+            el.textContent = '...';
+        }
+        
+        if (valueEl && message) {
+            valueEl.textContent = message;
+        }
+    }
+    
+    // Проверка при загрузке
+    setTimeout(() => {
+        log('🔥 Начинаю проверку Firebase...', 'info');
+        
+        // 1. Firebase SDK
+        if (typeof firebase !== 'undefined') {
+            updateCheck('firebase-check', true);
+            log('✅ Firebase SDK загружен', 'success');
+        } else {
+            updateCheck('firebase-check', false);
+            log('❌ Firebase SDK не найден!', 'error');
+        }
+        
+        // 2. Config
+        if (typeof firebaseConfig !== 'undefined' && firebaseConfig.projectId) {
+            updateCheck('config-check', true, firebaseConfig.projectId);
+            log(`✅ Firebase Config OK (projectId: ${firebaseConfig.projectId})`, 'success');
+        } else {
+            updateCheck('config-check', false);
+            log('❌ Firebase Config не найден!', 'error');
+        }
+        
+        // 3. Firebase Services
+        if (typeof firebase !== 'undefined') {
+            try {
+                const app = firebase.app();
+                if (app) {
+                    updateCheck('auth-check', true);
+                    log('✅ Firebase App инициализировано', 'success');
+                } else {
+                    updateCheck('auth-check', false);
+                    log('❌ Firebase App is null', 'error');
+                }
+            } catch (error) {
+                updateCheck('auth-check', false);
+                log('❌ Firebase Auth ошибка: ' + error.message, 'error');
+            }
+        } else {
+            updateCheck('auth-check', false);
+            log('❌ Firebase не доступен', 'error');
+        }
+        
+        if (typeof db !== 'undefined') {
+            updateCheck('firestore-check', true);
+            log('✅ Firestore готов', 'success');
+        } else {
+            updateCheck('firestore-check', false);
+            log('⚠️ Firestore не готов (попробуем позже)', 'warning');
+        }
+        
+        if (typeof storage !== 'undefined') {
+            updateCheck('storage-check', true);
+            log('✅ Firebase Storage готов', 'success');
+        } else {
+            updateCheck('storage-check', false);
+            log('⚠️ Firebase Storage не готов', 'warning');
+        }
+        
+        // 4. FirebaseService - ждем инициализации
+        log('📝 Ожидаю инициализацию Firebase Service...', 'info');
+        
+        waitForFirebaseService(5000).then((ready) => {
+            if (ready && typeof firebaseService !== 'undefined' && firebaseService) {
+                updateCheck('service-check', true, firebaseService.isInitialized() ? 'Да' : 'Готов');
+                log('✅ FirebaseService инициализирован и готов', 'success');
+            } else {
+                updateCheck('service-check', false);
+                log('❌ FirebaseService не инициализирован - используем fallback', 'error');
+            }
+        }).catch((error) => {
+            updateCheck('service-check', false);
+            log('❌ Ошибка при инициализации FirebaseService: ' + error.message, 'error');
+        });
+        
+    }, 1000);
+    
+    // Тесты
+    async function testRegister() {
+        const email = document.getElementById('test-email').value;
+        const password = 'test123456';
+        
+        if (!email) {
+            log('❌ Введи email', 'error');
+            return;
+        }
+        
+        try {
+            log(`📝 Ожидаю инициализацию Firebase...`, 'info');
+            const fbReady = await waitForFirebaseService(5000);
+            
+            if (!fbReady || !firebaseService) {
+                log('❌ Firebase не инициализирован', 'error');
+                return;
+            }
+            
+            log(`📝 Регистрация: ${email}...`, 'info');
+            const result = await firebaseService.register(email, password);
+            log(`✅ Регистрация успешна! UID: ${result.uid}`, 'success');
+            
+            setTimeout(() => {
+                testFirestore();
+            }, 1000);
+        } catch (error) {
+            log(`❌ Ошибка регистрации: ${error.message}`, 'error');
+        }
+    }
+    
+    async function testLogin() {
+        const email = document.getElementById('test-email').value;
+        const password = 'test123456';
+        
+        if (!email) {
+            log('❌ Введи email', 'error');
+            return;
+        }
+        
+        try {
+            log(`📝 Ожидаю инициализацию Firebase...`, 'info');
+            const fbReady = await waitForFirebaseService(5000);
+            
+            if (!fbReady || !firebaseService) {
+                log('❌ Firebase не инициализирован', 'error');
+                return;
+            }
+            
+            log(`📝 Логин: ${email}...`, 'info');
+            const result = await firebaseService.login(email, password);
+            log(`✅ Логин успешен! UID: ${result.uid}`, 'success');
+        } catch (error) {
+            log(`❌ Ошибка логина: ${error.message}`, 'error');
+        }
+    }
+    
+    async function testLogout() {
+        try {
+            log(`📝 Ожидаю инициализацию Firebase...`, 'info');
+            const fbReady = await waitForFirebaseService(5000);
+            
+            if (!fbReady || !firebaseService) {
+                log('❌ Firebase не инициализирован', 'error');
+                return;
+            }
+            
+            log('📝 Logout...', 'info');
+            await firebaseService.logout();
+            log('✅ Logout успешен!', 'success');
+        } catch (error) {
+            log(`❌ Ошибка logout: ${error.message}`, 'error');
+        }
+    }
+    
+    async function testFirestore() {
+        try {
+            log('📝 Проверяю Firestore...', 'info');
+            const snapshot = await db.collection('users').limit(5).get();
+            log(`✅ Firestore OK! Найдено ${snapshot.size} пользователей`, 'success');
+            
+            snapshot.forEach(doc => {
+                log(`   └─ ${doc.data().name} (${doc.id})`, 'info');
+            });
+        } catch (error) {
+            log(`❌ Ошибка Firestore: ${error.message}`, 'error');
+        }
+    }
+</script>
+
+</body>
+</html>
