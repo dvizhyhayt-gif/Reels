@@ -21,24 +21,7 @@ class AdvancedApp {
         
         this.init();
         // Переключение между формами логина и регистрации
-        document.addEventListener('DOMContentLoaded', () => {
-            const loginForm = document.getElementById('login-form');
-            const registerForm = document.getElementById('register-form');
-            const switchToReg = document.getElementById('switch-to-reg');
-            const switchToLogin = document.getElementById('switch-to-login');
-            if (switchToReg) {
-                switchToReg.addEventListener('click', () => {
-                    loginForm.style.display = 'none';
-                    registerForm.style.display = 'block';
-                });
-            }
-            if (switchToLogin) {
-                switchToLogin.addEventListener('click', () => {
-                    registerForm.style.display = 'none';
-                    loginForm.style.display = 'block';
-                });
-            }
-        });
+        
     }
 
     async init() {

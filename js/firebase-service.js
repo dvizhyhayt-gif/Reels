@@ -28,21 +28,19 @@ class FirebaseService {
         });
     }
 
-    async register(email, password) {
+    async register(email, password, userName) {
         try {
             // Проверяем уникальность имени профиля
             const existing = await this.getUserByName(userName);
-            if (existing) {
-                throw new Error('Имя профиля уже занято');
-            }
-            // Создаем пользователя в Firebase Auth
-            const { user } = await this.auth.createUserWithEmailAndPassword(email, password);
-            // Создаем профиль пользователя в Firestore
-            const userProfile = {
-                uid: user.uid,
-                email,
-                name: userName,
-                avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(userName)}&background=0D8ABC&color=fff&size=150`,
+    if (existing) {
+        throw new Error('Имя профиля уже занято');
+    }
+    const { user } = await this.auth.createUserWithEmailAndPassword(email, password);
+    const userProfile = {
+        uid: user.uid,
+        email,
+        name: userName,
+        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(userName)}&background=0D8ABC&color=fff&size=150`,
                 avatar_local: null,
                 bio: '',
                 location: '',
