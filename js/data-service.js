@@ -29,32 +29,16 @@ class AdvancedDataService {
     }
 
     init() {
-        const stored = localStorage.getItem(this.STORAGE_KEY);
-        if (!stored) {
-            // Начинаем с пустого массива видео
-            localStorage.setItem(this.STORAGE_KEY, JSON.stringify([]));
-            this.userVideos = [];
-        } else {
-            this.userVideos = JSON.parse(stored);
-        }
-
-        const settings = localStorage.getItem(this.SETTINGS_KEY);
-        this.settings = settings ? JSON.parse(settings) : {
+        // Удалено всё, что связано с localStorage
+        this.userVideos = [];
+        this.settings = {
             theme: 'dark',
             autoplay: true,
             notifications: true,
             videoQuality: 'auto'
         };
-
-        // Инициализация уведомлений и сообщений
-        this.NOTIFICATIONS_KEY = 'tikclone_notifications';
-        this.MESSAGES_KEY = 'tikclone_messages';
-        
-        const notifications = localStorage.getItem(this.NOTIFICATIONS_KEY);
-        this.notifications = notifications ? JSON.parse(notifications) : this.getDefaultNotifications();
-        
-        const messages = localStorage.getItem(this.MESSAGES_KEY);
-        this.messages = messages ? JSON.parse(messages) : this.getDefaultMessages();
+        this.notifications = this.getDefaultNotifications();
+        this.messages = this.getDefaultMessages();
     }
 
     getDefaultNotifications() {
@@ -131,7 +115,7 @@ class AdvancedDataService {
     }
 
     saveSettings() {
-        localStorage.setItem(this.SETTINGS_KEY, JSON.stringify(this.settings));
+        // Удалено сохранение настроек в localStorage
     }
 
     async getFeed(page = 0, limit = 5) {
@@ -246,7 +230,7 @@ class AdvancedDataService {
             currentUser.subscriptions.splice(index, 1);
         }
         
-        localStorage.setItem(this.AUTH_KEY, JSON.stringify(currentUser));
+        // Удалено сохранение подписки в localStorage
         return true;
     }
 
@@ -258,7 +242,7 @@ class AdvancedDataService {
     }
 
     getCurrentUser() {
-        // Сначала проверяем Firebase если доступен
+        // Всегда используем только Firebase
         if (typeof firebaseService !== 'undefined' && firebaseService && firebaseService.isInitialized()) {
             const fbUser = firebaseService.getCurrentUser();
             if (fbUser) return fbUser;

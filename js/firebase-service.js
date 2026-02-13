@@ -30,17 +30,20 @@ class FirebaseService {
 
     async register(email, password) {
         try {
+            // Проверяем уникальность имени профиля
+            const existing = await this.getUserByName(userName);
+            if (existing) {
+                throw new Error('Имя профиля уже занято');
+            }
             // Создаем пользователя в Firebase Auth
             const { user } = await this.auth.createUserWithEmailAndPassword(email, password);
-            
             // Создаем профиль пользователя в Firestore
-            const userName = email.split('@')[0];
             const userProfile = {
                 uid: user.uid,
                 email,
                 name: userName,
                 avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(userName)}&background=0D8ABC&color=fff&size=150`,
-                avatar_local: null, // для локального хранилища аватара
+                avatar_local: null,
                 bio: '',
                 location: '',
                 website: '',
@@ -52,14 +55,14 @@ class FirebaseService {
                 createdAt: new Date(),
                 updatedAt: new Date()
             };
-
-            // Сохраняем в Firestore
             await this.db.collection('users').doc(user.uid).set(userProfile);
-
             console.log('✅ Регистрация успешна:', user.uid);
             return { success: true, user: userProfile, uid: user.uid };
         } catch (error) {
             console.error('❌ Ошибка регистрации:', error.message);
+            if (error.message === 'Имя профиля уже занято') {
+                throw error;
+            }
             throw new Error(this.getFirebaseErrorMessage(error.code));
         }
     }
@@ -503,10 +506,87 @@ class FirebaseService {
 
 // Инициализируем Firebase Service когда будет ready
 let firebaseService = null;
-if (typeof firebase !== 'undefined') {
-    // Даем firebaseConfig время на инициализацию
-    setTimeout(() => {
-        firebaseService = new FirebaseService();
-        console.log('🔥 Firebase Service готов');
-    }, 1000);
+let firebaseReady = false;
+
+async function initializeFirebaseService() {
+    return new Promise((resolve) => {
+        console.log('🔥 [DEBUG] Начало инициализации FirebaseService...');
+        
+        // Проверяем, что Firebase SDK загружен
+        if (typeof firebase === 'undefined') {
+            console.error('❌ Firebase SDK не найден (firebase undefined)');
+            resolve(false);
+            return;
+        }
+        console.log('✅ [DEBUG] Firebase SDK загружен');
+        
+        // Проверяем, что приложение Firebase инициализировано (это должно быть в firebase-config.js)
+        try {
+            const app = firebase.app();
+            console.log('✅ [DEBUG] Firebase App инициализировано:', app.name);
+            
+            if (!app) {
+                console.error('❌ Firebase App вернул null');
+                resolve(false);
+                return;
+            }
+        } catch (error) {
+            console.error('❌ Firebase App ошибка:', error.message);
+            console.error('❌ Убедись, что firebase-config.js содержит firebase.initializeApp()');
+            resolve(false);
+            return;
+        }
+        
+        // Если все проверки пройдены - создаем FirebaseService
+        try {
+            console.log('🔥 [DEBUG] Создаю новый FirebaseService...');
+            firebaseService = new FirebaseService();
+            firebaseReady = true;
+            console.log('✅ Firebase Service инициализирован успешно!');
+            resolve(true);
+        } catch (error) {
+            console.error('❌ Ошибка создания Firebase Service:', error.message);
+            console.error('❌ Stack:', error.stack);
+            resolve(false);
+        }
+    });
 }
+
+// Функция для ожидания готовности Firebase
+async function waitForFirebaseService(timeout = 5000) {
+    const startTime = Date.now();
+    console.log('⏳ Ожидаю инициализацию Firebase (timeout: ' + timeout + 'ms)...');
+    
+    while (Date.now() - startTime < timeout) {
+        if (firebaseService && firebaseReady) {
+            console.log('✅ Firebase Service готов!');
+            return true;
+        }
+        await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    
+    console.error('❌ Firebase не инициализирован (' + Math.round((Date.now() - startTime) / 1000) + ' сек)');
+    return false;
+}
+
+// Начинаем инициализацию после небольшой задержки (даем время на загрузку всех скриптов)
+console.log('🔥 firebase-service.js загружен, инициализация запланирована');
+setTimeout(() => {
+    console.log('🔥 [DEBUG] Проверяю firebase через 200ms...');
+    if (typeof firebase !== 'undefined') {
+        console.log('🔥 Начинаю инициализацию Firebase Service...');
+        initializeFirebaseService();
+    } else {
+        console.error('❌ Firebase SDK все еще не найден!');
+        // Пробуем еще раз через 500ms
+        setTimeout(() => {
+            if (typeof firebase !== 'undefined') {
+                console.log('🔥 Firebase SDK появился, повторная попытка инициализации...');
+                initializeFirebaseService();
+            } else {
+                console.error('❌ Firebase SDK так и не загрузился!');
+            }
+        }, 500);
+    }
+}, 200);
+

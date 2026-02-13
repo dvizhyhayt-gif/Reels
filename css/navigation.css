@@ -23,36 +23,34 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    padding: 8px 12px;
-    border-radius: 12px;
+    padding: 6px 0;
     transition: var(--transition);
     position: relative;
+    background: transparent;
 }
 
 .nav-item:hover {
-    background: var(--glass-bg-bright);
     color: var(--text-color);
     transform: translateY(-2px);
 }
 
 .nav-item.active { 
     color: var(--accent-color); 
-    background: rgba(255, 0, 110, 0.15);
+    background: transparent;
 }
 
 .nav-item svg { 
     width: 22px; 
     height: 22px; 
-    margin-bottom: 3px; 
+    margin-bottom: 4px; 
     fill: currentColor;
     transition: var(--transition);
 }
 
 .nav-item.active svg {
-    transform: scale(1.15);
+    transform: scale(1.1);
     filter: drop-shadow(0 0 4px var(--accent-color));
 }
-
 /* Upload Button */
 .upload-btn-ui {
     width: 48px;

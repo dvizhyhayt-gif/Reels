@@ -20,6 +20,25 @@ class AdvancedApp {
         };
         
         this.init();
+        // Переключение между формами логина и регистрации
+        document.addEventListener('DOMContentLoaded', () => {
+            const loginForm = document.getElementById('login-form');
+            const registerForm = document.getElementById('register-form');
+            const switchToReg = document.getElementById('switch-to-reg');
+            const switchToLogin = document.getElementById('switch-to-login');
+            if (switchToReg) {
+                switchToReg.addEventListener('click', () => {
+                    loginForm.style.display = 'none';
+                    registerForm.style.display = 'block';
+                });
+            }
+            if (switchToLogin) {
+                switchToLogin.addEventListener('click', () => {
+                    registerForm.style.display = 'none';
+                    loginForm.style.display = 'block';
+                });
+            }
+        });
     }
 
     async init() {
@@ -141,14 +160,9 @@ class AdvancedApp {
         this.logoutMenu.addEventListener('click', async () => {
             if (confirm('Вы уверены, что хотите выйти из аккаунта?')) {
                 try {
-                    // Используем Firebase если доступен
-                    if (firebaseService && firebaseService.isInitialized()) {
-                        await firebaseService.logout();
-                        AdvancedViewRenderer.showToast('🔥 Вы вышли из аккаунта', 'success');
-                    } else {
-                        this.dataService.logout();
-                        AdvancedViewRenderer.showToast('Вы вышли из аккаунта', 'success');
-                    }
+                    // Используем dataService для logout
+                    await this.dataService.logout();
+                    AdvancedViewRenderer.showToast('Вы вышли из аккаунта', 'success');
                     
                     this.navigateTo('auth-view');
                     this.hamburgerBtn.classList.remove('active');
@@ -170,7 +184,7 @@ class AdvancedApp {
                     const targetId = item.dataset.target;
                     console.log(`🖱️ Nav click detected: ${targetId}`);
                     
-                    if (targetId === 'upload-view' && !this.dataService.getCurrentUser()) {
+                if (targetId === 'upload-view' && !this.dataService.getCurrentUser()) {
                         this.navigateTo('auth-view');
                         AdvancedViewRenderer.showToast('Сначала войдите в аккаунт', 'warning');
                         return;
@@ -394,9 +408,11 @@ class AdvancedApp {
             btn.disabled = true;
             
             try {
-                // Используем Firebase если доступен, иначе локальное хранилище
-                if (firebaseService && firebaseService.isInitialized()) {
-                    const result = await firebaseService.login(email, password);
+                // Ждем инициализации Firebase
+                const fbReady = await waitForFirebaseService(5000);
+                
+                if (fbReady && firebaseService && firebaseService.isInitialized()) {
+                    const result = await this.dataService.login(email, password);
                     AdvancedViewRenderer.showToast('🔥 Вход через Firebase успешен!', 'success');
                 } else {
                     // Fallback на локальное хранилище
@@ -424,8 +440,9 @@ class AdvancedApp {
             const email = document.getElementById('register-email').value.trim();
             const password = document.getElementById('register-pass').value.trim();
             const passwordConfirm = document.getElementById('register-pass-confirm').value.trim();
-            
-            if (!email || !password || !passwordConfirm) {
+            const userName = document.getElementById('register-username').value.trim();
+
+            if (!email || !password || !passwordConfirm || !userName) {
                 AdvancedViewRenderer.showToast('Заполните все поля', 'warning');
                 return;
             }
@@ -439,36 +456,32 @@ class AdvancedApp {
                 AdvancedViewRenderer.showToast('Пароль должен содержать минимум 6 символов', 'warning');
                 return;
             }
-            
+
             const btn = document.getElementById('register-btn');
             const btnText = document.getElementById('register-btn-text');
             btnText.textContent = 'Регистрация...';
             btn.disabled = true;
-            
+
             try {
-                // Используем Firebase если доступен, иначе локальное хранилище
-                if (firebaseService && firebaseService.isInitialized()) {
-                    const result = await firebaseService.register(email, password);
+                // Ждем инициализации Firebase
+                const fbReady = await waitForFirebaseService(5000);
+                if (fbReady && firebaseService && firebaseService.isInitialized()) {
+                    const result = await firebaseService.register(email, password, userName);
                     AdvancedViewRenderer.showToast('🔥 Регистрация через Firebase успешна!', 'success');
                 } else {
-                    // Fallback на локальное хранилище
-                    await this.dataService.login(email, password);
-                    AdvancedViewRenderer.showToast('Регистрация успешна!', 'success');
+                    AdvancedViewRenderer.showToast('Firebase недоступен', 'error');
+                    return;
                 }
-                
                 this.navigateTo('feed-view');
                 this.updateProfileUI();
-
-                // Переходим на форму логина
                 document.getElementById('login-form').style.display = 'block';
                 document.getElementById('register-form').style.display = 'none';
-                
-                // Очищаем формы
                 document.getElementById('login-email').value = '';
                 document.getElementById('login-pass').value = '';
                 document.getElementById('register-email').value = '';
                 document.getElementById('register-pass').value = '';
                 document.getElementById('register-pass-confirm').value = '';
+                document.getElementById('register-username').value = '';
             } catch (error) {
                 AdvancedViewRenderer.showToast(error.message, 'error');
                 console.error('Ошибка регистрации:', error);
@@ -898,20 +911,17 @@ class AdvancedApp {
             likeBtn.addEventListener('click', async (e) => {
                 e.stopPropagation();
                 
-                if (!this.dataService.getCurrentUser()) {
+                if (!firebaseService.getCurrentUser()) {
                     this.navigateTo('auth-view');
                     AdvancedViewRenderer.showToast('Войдите, чтобы ставить лайки', 'warning');
                     return;
                 }
-                
-                const isLiked = this.dataService.toggleLike(parseInt(videoId));
+                const isLiked = firebaseService.toggleLike(parseInt(videoId));
                 likeBtn.classList.toggle('liked', isLiked);
-                
                 const countSpan = likeBtn.querySelector('.like-count');
                 let count = parseInt(countSpan.textContent.replace(/[KM]/g, '')) || 0;
                 count = isLiked ? count + 1 : Math.max(0, count - 1);
                 countSpan.textContent = AdvancedViewRenderer.formatNumber(count);
-                
                 AdvancedViewRenderer.showToast(isLiked ? '❤️ Вам понравилось' : '💔 Лайк удален', isLiked ? 'success' : 'info');
             });
             
@@ -928,8 +938,8 @@ class AdvancedApp {
             avatar.addEventListener('click', (e) => {
                 e.stopPropagation();
                 
-                const currentUser = this.dataService.getCurrentUser();
-                const videosAuthor = this.dataService.userVideos.find(v => v.id === parseInt(videoId))?.author;
+                const currentUser = firebaseService.getCurrentUser();
+                const videosAuthor = video.author;
                 
                 // Если это свой профиль - переходим на профиль
                 if (currentUser && currentUser.name === videosAuthor) {
@@ -947,12 +957,12 @@ class AdvancedApp {
                 
                 const followPlus = avatar.querySelector('.follow-plus');
                 if (followPlus.textContent === '+') {
-                    this.dataService.subscribe(videosAuthor);
+                    firebaseService.subscribe(videosAuthor);
                     followPlus.textContent = '✓';
                     followPlus.style.background = 'var(--accent-secondary)';
                     AdvancedViewRenderer.showToast('Подписка оформлена', 'success');
                 } else {
-                    this.dataService.unsubscribe(videosAuthor);
+                    firebaseService.unsubscribe(videosAuthor);
                     followPlus.textContent = '+';
                     followPlus.style.background = 'var(--accent-color)';
                     AdvancedViewRenderer.showToast('Подписка отменена', 'info');
@@ -1095,7 +1105,7 @@ class AdvancedApp {
             const commentsList = document.getElementById('comments-list');
             const newCommentHTML = `
                 <div class="comment-item">
-                    <img src="${this.dataService.getCurrentUser().avatar}" class="comment-avatar">
+                    <img src="${firebaseService.getCurrentUser().avatar}" class="comment-avatar">
                     <div class="comment-content">
                         <div class="comment-author">
                             @${comment.user}
@@ -1121,9 +1131,8 @@ class AdvancedApp {
 
     showShareModal(videoId, title = '', url = '') {
         if (!url) {
-            const video = this.dataService.userVideos.find(v => v.id === videoId);
+            const video = firebaseService.userVideos.find(v => v.id === videoId);
             if (!video) return;
-            
             title = video.desc;
             url = `${window.location.origin}?video=${videoId}`;
         }
@@ -1171,12 +1180,20 @@ class AdvancedApp {
             this.searchResults.innerHTML = '';
             return;
         }
-        
-        const results = this.dataService.searchVideos(query);
+
+        // Поиск видео
+        const videoResults = this.dataService.searchVideos(query);
+        // Поиск профилей
+        let profileResults = [];
+        if (firebaseService && firebaseService.isInitialized()) {
+            profileResults = await firebaseService.getAllUsers();
+            profileResults = profileResults.filter(u => u.name && u.name.toLowerCase().includes(query.toLowerCase()));
+        }
+
         this.searchResults.innerHTML = '';
         this.searchEmpty.style.display = 'none';
-        
-        if (results.length === 0) {
+
+        if (videoResults.length === 0 && profileResults.length === 0) {
             this.searchEmpty.style.display = 'flex';
             this.searchEmpty.innerHTML = `
                 <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity="0.5">
@@ -1187,8 +1204,27 @@ class AdvancedApp {
             `;
             return;
         }
-        
-        results.forEach(video => {
+
+        // Сначала профили
+        profileResults.forEach(profile => {
+            const profileItem = document.createElement('div');
+            profileItem.className = 'search-result-item profile-result';
+            profileItem.innerHTML = `
+                <img src="${profile.avatar || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(profile.name)}" alt="Аватар" class="search-result-thumbnail">
+                <div class="search-result-info">
+                    <div class="search-result-author">@${profile.name}</div>
+                    <div class="search-result-desc">${profile.bio || ''}</div>
+                </div>
+            `;
+            profileItem.addEventListener('click', () => {
+                // Переход на профиль
+                window.location.hash = `profile-${profile.uid}`;
+            });
+            this.searchResults.appendChild(profileItem);
+        });
+
+        // Затем видео
+        videoResults.forEach(video => {
             const resultItem = document.createElement('div');
             resultItem.className = 'search-result-item';
             resultItem.innerHTML = `
@@ -1561,13 +1597,13 @@ class AdvancedApp {
         const content = this.messageInput.value.trim();
         if (!content) return;
 
-        const currentUser = this.dataService.getCurrentUser();
+        const currentUser = firebaseService.getCurrentUser();
         if (!currentUser) {
             this.navigateTo('auth-view');
             return;
         }
 
-        const message = this.dataService.addMessage(
+        const message = firebaseService.addMessage(
             this.state.currentChatId,
             currentUser.name,
             this.state.currentChatUser,
