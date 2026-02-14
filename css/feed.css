@@ -8,6 +8,7 @@
     overflow-y: scroll;
     scroll-snap-type: y mandatory;
     scroll-behavior: smooth;
+    overscroll-behavior-y: contain;
     position: relative;
     background-color: var(--bg-color-dark);
 }
@@ -43,6 +44,34 @@
     fill: var(--accent-primary);
 }
 
+.feed-back-btn {
+    position: absolute;
+    top: calc(var(--top-bar-height) + var(--safe-top) + 10px);
+    left: 16px;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 50%;
+    color: var(--text-color-primary);
+    cursor: pointer;
+    z-index: 20;
+    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px);
+    transition: transform var(--transition-fast), background var(--transition-fast);
+}
+
+.feed-back-btn:active {
+    transform: scale(0.94);
+}
+
+.feed-back-btn:hover {
+    background: var(--glass-bg-bright);
+}
+
 
 /* Loading Skeleton */
 .skeleton-video {
@@ -65,6 +94,7 @@
     height: 100%;
     position: relative;
     scroll-snap-align: start;
+    scroll-snap-stop: always;
     background: #000;
     overflow: hidden;
 }

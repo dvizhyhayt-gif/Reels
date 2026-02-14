@@ -11,6 +11,9 @@ class AdvancedApp {
             currentPage: 0,
             loading: false,
             hasMore: true,
+            activeFeedIndex: 0,
+            feedMode: 'global', // 'global' | 'custom' (e.g. opened from profile grid)
+            feedReturnViewId: null,
             isRecording: false,
             mediaRecorder: null,
             recordedChunks: [],
@@ -34,6 +37,24 @@ class AdvancedApp {
         this.lastTypingAt = 0;
         this.keyboardHandlersBound = false;
         this.emojiList = ['😀', '😂', '😍', '😎', '🥳', '🔥', '❤️', '👍', '👏', '🤝', '🤔', '😢', '🙌', '✨', '😅', '🎉'];
+
+        // Feed video lifecycle / paging
+        this.feedVideoObserver = null;
+        this.feedIntersectionRatios = new Map();
+        this.savedGlobalFeed = null;
+        this.customFeed = null;
+        this.deletedVideoIds = new Set();
+        this.boundFeedItems = new WeakSet();
+        this.observedFeedItems = new WeakSet();
+        this.profileGridObserver = null;
+        this.feedPaging = {
+            touchStartScrollTop: 0,
+            touchStartIndex: 0,
+            pendingSettle: false,
+            settleTimer: null,
+            programmaticScroll: false,
+            programmaticTimer: null
+        };
         
         this.init();
     }
@@ -45,6 +66,7 @@ class AdvancedApp {
         this.setupEventListeners();
         this.setupNotifications();
         this.setupPullToRefresh();
+        this.setupFeedPaging();
         this.setupSwipe();
 
         // FirebaseService инициализируется асинхронно в firebase-service.js (через setTimeout).
@@ -62,14 +84,14 @@ class AdvancedApp {
         if (videoId) {
             this.navigateTo('feed-view');
             setTimeout(() => {
-                const videoElement = document.querySelector(`[data-id="${videoId}"]`);
-                if (videoElement) videoElement.scrollIntoView({ behavior: 'smooth' });
-            }, 1000);
+                this.scrollToFeedVideoById(videoId, { play: true });
+            }, 300);
         }
     }
 
     cacheElements() {
         this.feedContainer = document.getElementById('feed-container');
+        this.feedBackBtn = document.getElementById('feed-back-btn');
         this.views = document.querySelectorAll('.view');
         this.navItems = document.querySelectorAll('.nav-item');
         this.toast = document.getElementById('toast');
@@ -211,6 +233,12 @@ class AdvancedApp {
         this.navItems.forEach(item => {
             item.addEventListener('click', () => {
                 const targetId = item.dataset.target;
+
+                // If we opened a custom feed (e.g. from profile grid), tapping "Home" should restore global feed.
+                if (targetId === 'feed-view' && this.state.feedMode !== 'global') {
+                    this.exitCustomFeedMode({ navigateBack: false });
+                }
+
                 if (targetId === 'upload-view' && !this.dataService.getCurrentUser()) {
                     this.navigateTo('auth-view');
                     return;
@@ -244,9 +272,16 @@ class AdvancedApp {
         this.setupEditProfileEvents();
 
         this.feedContainer.addEventListener('scroll', () => {
+            if (this.state.feedMode !== 'global') return;
             const { scrollTop, scrollHeight, clientHeight } = this.feedContainer;
             if (scrollHeight - scrollTop - clientHeight < 100 && !this.state.loading && this.state.hasMore) {
                 this.loadFeed();
+            }
+        });
+
+        this.feedBackBtn?.addEventListener('click', () => {
+            if (this.state.feedMode === 'custom') {
+                this.exitCustomFeedMode({ navigateBack: true });
             }
         });
     }
@@ -773,7 +808,7 @@ class AdvancedApp {
             if (!pulling) return;
             pulling = false;
             const diff = e.changedTouches[0].pageY - startY;
-            if (diff > 100) {
+            if (diff > 100 && this.state.feedMode === 'global') {
                 await this.loadFeed(true);
                 AdvancedViewRenderer.showToast('Лента обновлена', 'success');
             }
@@ -781,6 +816,178 @@ class AdvancedApp {
             pullIndicator.style.transform = 'translateY(0)';
             pullIndicator.classList.remove('active');
         });
+    }
+
+    setupFeedPaging() {
+        const feedContainer = this.feedContainer;
+        if (!feedContainer) return;
+
+        // Bind once (loadFeed() is called many times)
+        if (feedContainer.dataset.pagingBound === '1') return;
+        feedContainer.dataset.pagingBound = '1';
+
+        const paging = this.feedPaging;
+
+        const scheduleSettle = () => {
+            if (!paging.pendingSettle || paging.programmaticScroll) return;
+            clearTimeout(paging.settleTimer);
+            paging.settleTimer = setTimeout(() => {
+                paging.pendingSettle = false;
+
+                const items = this.getFeedVideoItems();
+                if (!items.length) return;
+
+                const thresholdPx = 30;
+                const delta = feedContainer.scrollTop - paging.touchStartScrollTop;
+                let targetIndex = paging.touchStartIndex;
+
+                if (delta > thresholdPx) targetIndex = paging.touchStartIndex + 1;
+                else if (delta < -thresholdPx) targetIndex = paging.touchStartIndex - 1;
+
+                targetIndex = Math.max(0, Math.min(targetIndex, items.length - 1));
+                this.scrollFeedToIndex(targetIndex, 'smooth');
+            }, 120);
+        };
+
+        feedContainer.addEventListener('touchstart', () => {
+            paging.pendingSettle = false;
+            clearTimeout(paging.settleTimer);
+            paging.touchStartScrollTop = feedContainer.scrollTop;
+            paging.touchStartIndex = this.getNearestFeedIndex();
+        }, { passive: true });
+
+        feedContainer.addEventListener('touchend', () => {
+            paging.pendingSettle = true;
+            scheduleSettle();
+        }, { passive: true });
+
+        feedContainer.addEventListener('touchcancel', () => {
+            paging.pendingSettle = true;
+            scheduleSettle();
+        }, { passive: true });
+
+        feedContainer.addEventListener('scroll', () => {
+            scheduleSettle();
+        }, { passive: true });
+    }
+
+    resetFeedVideoLifecycle() {
+        if (this.feedVideoObserver) {
+            this.feedVideoObserver.disconnect();
+            this.feedVideoObserver = null;
+        }
+        this.feedIntersectionRatios.clear();
+        this.observedFeedItems = new WeakSet();
+    }
+
+    saveGlobalFeedSnapshot() {
+        if (this.savedGlobalFeed || !this.feedContainer) return;
+
+        this.savedGlobalFeed = {
+            html: this.feedContainer.innerHTML,
+            scrollTop: this.feedContainer.scrollTop,
+            currentPage: this.state.currentPage,
+            hasMore: this.state.hasMore,
+            activeFeedIndex: this.state.activeFeedIndex
+        };
+    }
+
+    restoreGlobalFeedSnapshot() {
+        if (!this.savedGlobalFeed || !this.feedContainer) return false;
+
+        this.resetFeedVideoLifecycle();
+
+        this.feedContainer.innerHTML = this.savedGlobalFeed.html;
+        this.feedContainer.scrollTop = this.savedGlobalFeed.scrollTop || 0;
+
+        this.state.currentPage = this.savedGlobalFeed.currentPage || 0;
+        this.state.hasMore = this.savedGlobalFeed.hasMore !== false;
+        this.state.activeFeedIndex = this.savedGlobalFeed.activeFeedIndex || 0;
+
+        // Remove any videos deleted while we were in a custom feed.
+        if (this.deletedVideoIds && this.deletedVideoIds.size) {
+            this.deletedVideoIds.forEach((id) => {
+                this.feedContainer.querySelectorAll(`.video-item[data-id="${id}"]`).forEach(el => el.remove());
+            });
+        }
+
+        this.attachVideoEvents();
+        this.setupVideoProgress();
+
+        this.savedGlobalFeed = null;
+        return true;
+    }
+
+    renderFeedVideos(videos = []) {
+        if (!this.feedContainer) return;
+
+        this.resetFeedVideoLifecycle();
+        this.feedContainer.innerHTML = '';
+
+        const list = Array.isArray(videos) ? videos : [];
+        list.forEach(video => {
+            const isSubscribed = this.dataService.isSubscribed(video.author);
+            const card = AdvancedViewRenderer.createVideoCard(video, {
+                autoplay: this.dataService.settings.autoplay,
+                isSubscribed
+            });
+            this.feedContainer.appendChild(card);
+        });
+
+        this.attachVideoEvents();
+        this.setupVideoProgress();
+    }
+
+    enterCustomFeedMode(videos = [], { startIndex = 0, returnViewId = 'profile-view' } = {}) {
+        const list = Array.isArray(videos) ? videos : [];
+        if (!list.length) return;
+
+        if (this.state.feedMode === 'global') {
+            this.saveGlobalFeedSnapshot();
+        }
+
+        this.customFeed = { videos: list, returnViewId };
+        this.state.feedMode = 'custom';
+        this.state.feedReturnViewId = returnViewId;
+
+        this.navigateTo('feed-view');
+        this.renderFeedVideos(list);
+
+        this.feedBackBtn?.classList.remove('hidden');
+
+        const safeIndex = Math.max(0, Math.min(parseInt(startIndex, 10) || 0, list.length - 1));
+        this.setActiveFeedIndex(safeIndex, {
+            scroll: true,
+            behavior: 'auto',
+            play: this.dataService.settings.autoplay
+        });
+    }
+
+    exitCustomFeedMode({ navigateBack = true } = {}) {
+        if (this.state.feedMode !== 'custom') return;
+
+        const returnView = this.state.feedReturnViewId || 'profile-view';
+
+        this.state.feedMode = 'global';
+        this.state.feedReturnViewId = null;
+        this.customFeed = null;
+
+        this.feedBackBtn?.classList.add('hidden');
+
+        // Free resources aggressively without forcing extra loads.
+        this.feedContainer?.querySelectorAll('video').forEach(v => {
+            try { v.pause(); } catch (_) {}
+            v.muted = true;
+        });
+
+        const restored = this.restoreGlobalFeedSnapshot();
+        if (!restored) {
+            this.loadFeed(true).catch(() => {});
+        }
+
+        if (navigateBack) {
+            this.navigateTo(returnView);
+        }
     }
 
     setupSwipe() {
@@ -808,6 +1015,14 @@ class AdvancedApp {
         if (clear) {
             this.state.currentPage = 0;
             this.state.hasMore = true;
+
+            // We are about to replace the feed DOM; drop old observers/ratios to prevent leaks and stale state.
+            if (this.feedVideoObserver) {
+                this.feedVideoObserver.disconnect();
+                this.feedVideoObserver = null;
+            }
+            this.feedIntersectionRatios.clear();
+
             this.feedContainer.innerHTML = '<div class="skeleton-video"></div><div class="skeleton-video"></div><div class="skeleton-video"></div>';
         } else {
             AdvancedViewRenderer.showLoading();
@@ -835,10 +1050,10 @@ class AdvancedApp {
             this.state.hasMore = hasMore;
             
             if (clear) {
-                const firstVideo = this.feedContainer.querySelector('video');
-                if (firstVideo && this.dataService.settings.autoplay) {
-                    setTimeout(() => firstVideo.play().catch(console.error), 500);
-                }
+                this.setActiveFeedIndex(0, { play: this.dataService.settings.autoplay });
+            } else {
+                // Keep the currently active video loaded after appending new items
+                this.setActiveFeedIndex(this.state.activeFeedIndex, { play: false });
             }
         } catch (error) {
             console.error('Error loading feed:', error);
@@ -849,10 +1064,194 @@ class AdvancedApp {
         }
     }
 
+    getFeedVideoItems() {
+        if (!this.feedContainer) return [];
+        return Array.from(this.feedContainer.querySelectorAll('.video-item'));
+    }
+
+    getNearestFeedIndex() {
+        const items = this.getFeedVideoItems();
+        if (!items.length || !this.feedContainer) return 0;
+
+        // Items are full-height, so this is fast and reliable.
+        const height = this.feedContainer.clientHeight || 1;
+        const index = Math.round(this.feedContainer.scrollTop / height);
+        return Math.max(0, Math.min(index, items.length - 1));
+    }
+
+    scrollFeedToIndex(index, behavior = 'smooth') {
+        const items = this.getFeedVideoItems();
+        if (!items.length || !this.feedContainer) return;
+
+        const clamped = Math.max(0, Math.min(parseInt(index, 10) || 0, items.length - 1));
+        const target = items[clamped];
+        if (!target) return;
+
+        const paging = this.feedPaging;
+        paging.pendingSettle = false;
+        clearTimeout(paging.settleTimer);
+        paging.programmaticScroll = true;
+        clearTimeout(paging.programmaticTimer);
+
+        this.feedContainer.scrollTo({ top: target.offsetTop, behavior });
+
+        paging.programmaticTimer = setTimeout(() => {
+            paging.programmaticScroll = false;
+        }, behavior === 'auto' ? 0 : 450);
+    }
+
+    ensureVideoSource(videoEl) {
+        if (!videoEl) return;
+
+        const desiredSrc = videoEl.dataset.src;
+        if (!desiredSrc) return;
+
+        const currentSrc = videoEl.getAttribute('src');
+        if (currentSrc !== desiredSrc) {
+            videoEl.setAttribute('src', desiredSrc);
+            try { videoEl.load(); } catch (_) {}
+        }
+    }
+
+    unloadVideo(videoEl) {
+        if (!videoEl) return;
+
+        try { videoEl.pause(); } catch (_) {}
+        videoEl.muted = true;
+
+        if (videoEl.getAttribute('src')) {
+            videoEl.removeAttribute('src');
+            try { videoEl.load(); } catch (_) {}
+        }
+
+        try { videoEl.currentTime = 0; } catch (_) {}
+    }
+
+    bindGridPreviewVideo(videoEl) {
+        if (!videoEl) return;
+        if (videoEl.dataset.previewBound === '1') return;
+        videoEl.dataset.previewBound = '1';
+
+        videoEl.addEventListener('loadedmetadata', () => {
+            // Seek a tiny bit to force a real frame to render (many browsers show black at t=0).
+            try {
+                const t = 0.1;
+                if (Number.isFinite(videoEl.duration) && videoEl.duration > 0) {
+                    videoEl.currentTime = Math.min(t, Math.max(0, videoEl.duration - 0.01));
+                } else {
+                    videoEl.currentTime = t;
+                }
+            } catch (_) {}
+        });
+
+        videoEl.addEventListener('seeked', () => {
+            try { videoEl.pause(); } catch (_) {}
+        });
+    }
+
+    setupProfileGridPreviews(gridEl) {
+        if (!gridEl) return;
+
+        if (this.profileGridObserver) {
+            this.profileGridObserver.disconnect();
+            this.profileGridObserver = null;
+        }
+
+        const root = document.getElementById('profile-view') || null;
+        this.profileGridObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                const video = entry.target.querySelector('video');
+                if (!video) return;
+
+                if (entry.isIntersecting) {
+                    this.bindGridPreviewVideo(video);
+                    this.ensureVideoSource(video);
+                    return;
+                }
+
+                if (entry.intersectionRatio === 0) {
+                    this.unloadVideo(video);
+                }
+            });
+        }, { root, threshold: [0, 0.1] });
+
+        gridEl.querySelectorAll('.grid-item').forEach(item => this.profileGridObserver.observe(item));
+    }
+
+    setActiveFeedIndex(index, { play = true, scroll = false, behavior = 'smooth' } = {}) {
+        const items = this.getFeedVideoItems();
+        if (!items.length) return;
+
+        const clamped = Math.max(0, Math.min(parseInt(index, 10) || 0, items.length - 1));
+        this.state.activeFeedIndex = clamped;
+
+        if (scroll) {
+            this.scrollFeedToIndex(clamped, behavior);
+        }
+
+        // Only one video should ever be allowed to play with sound.
+        items.forEach((item, i) => {
+            const video = item.querySelector('video');
+            if (!video) return;
+
+            if (i === clamped) {
+                this.ensureVideoSource(video);
+                video.muted = false;
+                if (play && this.dataService?.settings?.autoplay) {
+                    video.play().catch(() => {});
+                }
+                return;
+            }
+
+            // Non-active: always stop sound/playback. Unload only when fully offscreen.
+            try { video.pause(); } catch (_) {}
+            video.muted = true;
+
+            const ratio = this.feedIntersectionRatios.get(item);
+            if (ratio === 0) {
+                this.unloadVideo(video);
+            }
+        });
+    }
+
+    setActiveFeedItem(item, opts) {
+        const items = this.getFeedVideoItems();
+        const index = items.indexOf(item);
+        if (index === -1) return;
+        this.setActiveFeedIndex(index, opts);
+    }
+
+    scrollToFeedVideoById(videoId, { play = true } = {}) {
+        if (!this.feedContainer) return false;
+
+        const item = this.feedContainer.querySelector(`.video-item[data-id="${videoId}"]`);
+        if (!item) return false;
+
+        const items = this.getFeedVideoItems();
+        const index = items.indexOf(item);
+        if (index === -1) return false;
+
+        // Scroll + make it active (loads src, pauses others, etc).
+        this.setActiveFeedIndex(index, { play: false, scroll: true });
+
+        const video = item.querySelector('video');
+        this.ensureVideoSource(video);
+
+        if (play && video) {
+            // After the snap/scroll, try to play. (If autoplay is blocked, user can tap.)
+            setTimeout(() => video.play().catch(() => {}), 500);
+        }
+
+        return true;
+    }
+
     attachVideoEvents() {
         const videoItems = this.feedContainer.querySelectorAll('.video-item');
         
         videoItems.forEach(item => {
+            if (this.boundFeedItems.has(item)) return;
+            this.boundFeedItems.add(item);
+
             const video = item.querySelector('video');
             const likeBtn = item.querySelector('.like-btn');
             const commentBtn = item.querySelector('.comment-btn');
@@ -863,15 +1262,15 @@ class AdvancedApp {
             
             item.addEventListener('click', (e) => {
                 if (e.target.closest('.action-btn') || e.target.closest('.avatar-container')) return;
-                if (video.paused) {
-                    video.play();
-                    document.querySelectorAll('video').forEach(v => { if (v !== video) v.pause(); });
-                } else {
-                    video.pause();
-                }
+                this.setActiveFeedItem(item, { play: false });
+                this.ensureVideoSource(video);
+                if (!video) return;
+
+                if (video.paused) video.play().catch(() => {});
+                else video.pause();
             });
             
-            likeBtn.addEventListener('click', (e) => {
+            likeBtn?.addEventListener('click', (e) => {
                 e.stopPropagation();
                 if (!firebaseService.getCurrentUser()) {
                     this.navigateTo('auth-view');
@@ -887,17 +1286,17 @@ class AdvancedApp {
                 AdvancedViewRenderer.showToast(isLiked ? '❤️ Вам понравилось' : '💔 Лайк удален', isLiked ? 'success' : 'info');
             });
             
-            commentBtn.addEventListener('click', (e) => {
+            commentBtn?.addEventListener('click', (e) => {
                 e.stopPropagation();
                 this.openComments(parseInt(videoId));
             });
             
-            shareBtn.addEventListener('click', (e) => {
+            shareBtn?.addEventListener('click', (e) => {
                 e.stopPropagation();
                 this.showShareModal(parseInt(videoId));
             });
             
-            avatar.addEventListener('click', (e) => {
+            avatar?.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const currentUser = firebaseService.getCurrentUser();
                 const videosAuthor = video.author;
@@ -959,19 +1358,57 @@ class AdvancedApp {
     }
 
     setupVideoProgress() {
-        const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                const video = entry.target.querySelector('video');
-                if (!video) return;
-                if (entry.isIntersecting && this.dataService.settings.autoplay) {
-                    video.play().catch(e => console.log('Autoplay blocked:', e));
-                } else {
-                    video.pause();
+        if (!this.feedContainer) return;
+
+        if (!this.feedVideoObserver) {
+            this.feedVideoObserver = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    this.feedIntersectionRatios.set(entry.target, entry.intersectionRatio);
+
+                    const video = entry.target.querySelector('video');
+                    if (!video) return;
+
+                    if (entry.intersectionRatio > 0) {
+                        // Lazy-load when the item becomes visible at all.
+                        this.ensureVideoSource(video);
+                    }
+
+                    if (entry.intersectionRatio === 0) {
+                        // Fully offscreen: stop and unload so it doesn't keep buffering/playing audio.
+                        this.unloadVideo(video);
+                        return;
+                    }
+
+                    if (entry.intersectionRatio < 0.6) {
+                        // Partially visible (during swipe): never allow background audio.
+                        try { video.pause(); } catch (_) {}
+                        video.muted = true;
+                    }
+                });
+
+                // Pick the most visible item (>= 60%) as "active" and play only that one.
+                let bestItem = null;
+                let bestRatio = 0.6;
+                for (const [item, ratio] of this.feedIntersectionRatios.entries()) {
+                    if (!item || !item.isConnected) continue;
+                    if (ratio >= bestRatio) {
+                        bestRatio = ratio;
+                        bestItem = item;
+                    }
                 }
-            });
-        }, { threshold: 0.6 });
-        
-        document.querySelectorAll('.video-item').forEach(item => observer.observe(item));
+
+                if (bestItem) {
+                    this.setActiveFeedItem(bestItem, { play: true });
+                }
+            }, { root: this.feedContainer, threshold: [0, 0.01, 0.6] });
+        }
+
+        // Observe items (WeakSet prevents duplicates, and doesn't break on innerHTML restores).
+        this.feedContainer.querySelectorAll('.video-item').forEach(item => {
+            if (this.observedFeedItems.has(item)) return;
+            this.observedFeedItems.add(item);
+            this.feedVideoObserver.observe(item);
+        });
     }
 
     previewVideo(file) {
@@ -1028,11 +1465,10 @@ class AdvancedApp {
             }
             if (viewId === 'feed-view') {
                 setTimeout(() => {
-                    const currentVideo = this.feedContainer.querySelector('.video-item:first-child video');
-                    if (currentVideo && this.dataService.settings.autoplay) {
-                        currentVideo.play().catch(console.error);
-                    }
-                }, 300);
+                    if (this.state.feedMode !== 'global') return;
+                    const index = this.getNearestFeedIndex();
+                    this.setActiveFeedIndex(index, { play: this.dataService.settings.autoplay });
+                }, 50);
             }
             if (viewId === 'upload-view') {
                 this.setupCamera();
@@ -1102,40 +1538,138 @@ class AdvancedApp {
         }
     }
 
+    canCurrentUserDeleteVideo(video) {
+        const currentUser = firebaseService && firebaseService.getCurrentUser ? firebaseService.getCurrentUser() : null;
+        if (!currentUser || !video) return false;
+        return !!(currentUser.name && video.author && currentUser.name === video.author);
+    }
+
+    async deleteVideoWithConfirm(video) {
+        if (!video) return false;
+
+        if (!this.canCurrentUserDeleteVideo(video)) {
+            AdvancedViewRenderer.showToast('Можно удалять только свои видео', 'warning');
+            return false;
+        }
+
+        if (!confirm('Удалить это видео?')) return false;
+
+        try {
+            if (typeof waitForFirebaseService === 'function') {
+                await waitForFirebaseService(5000);
+            }
+
+            if (video.firestoreId
+                && firebaseService
+                && typeof firebaseService.isInitialized === 'function'
+                && firebaseService.isInitialized()
+                && typeof firebaseService.deleteVideo === 'function') {
+                await firebaseService.deleteVideo(video.firestoreId, video.storagePath, video.storageProvider);
+            } else if (this.dataService && Array.isArray(this.dataService.userVideos)) {
+                // Local fallback
+                this.dataService.userVideos = this.dataService.userVideos.filter(v => String(v.id) !== String(video.id));
+                try { localStorage.setItem(this.dataService.STORAGE_KEY, JSON.stringify(this.dataService.userVideos)); } catch (_) {}
+            }
+
+            this.deletedVideoIds.add(String(video.id));
+
+            if (this.dataService && Array.isArray(this.dataService.userVideos)) {
+                this.dataService.userVideos = this.dataService.userVideos.filter(v => String(v.id) !== String(video.id));
+            }
+
+            // Remove from profile grid(s)
+            document.querySelectorAll(`.grid-item[data-id=\"${video.id}\"]`).forEach(el => el.remove());
+
+            // Remove from feed (global/custom) if present
+            if (this.feedContainer) {
+                this.feedContainer.querySelectorAll(`.video-item[data-id=\"${video.id}\"]`).forEach(item => {
+                    const vid = item.querySelector('video');
+                    if (vid) this.unloadVideo(vid);
+                    this.feedIntersectionRatios.delete(item);
+                    item.remove();
+                });
+            }
+
+            // Keep custom feed list in sync if we are in it
+            if (this.customFeed && Array.isArray(this.customFeed.videos)) {
+                this.customFeed.videos = this.customFeed.videos.filter(v => String(v.id) !== String(video.id));
+            }
+
+            // Best-effort: update likes total on own profile
+            const currentUser = firebaseService && firebaseService.getCurrentUser ? firebaseService.getCurrentUser() : null;
+            if (currentUser && currentUser.name) {
+                const likesTotal = (this.dataService.userVideos || [])
+                    .filter(v => v.author === currentUser.name)
+                    .reduce((sum, v) => sum + (parseInt(v.likes, 10) || 0), 0);
+                const likesEl = document.getElementById('likes-stat')?.querySelector('.stat-num');
+                if (likesEl) likesEl.textContent = AdvancedViewRenderer.formatNumber(likesTotal);
+            }
+
+            // Ensure feed keeps a valid active item (and no ghost audio)
+            if (this.feedContainer && this.feedContainer.querySelectorAll('.video-item').length) {
+                const index = this.getNearestFeedIndex();
+                this.setActiveFeedIndex(index, { play: this.dataService.settings.autoplay });
+            }
+
+            AdvancedViewRenderer.showToast('Видео удалено', 'success');
+            return true;
+        } catch (err) {
+            console.error(err);
+            AdvancedViewRenderer.showToast(err?.message || 'Не удалось удалить видео', 'error');
+            return false;
+        }
+    }
+
     showShareModal(videoId) {
         const video = this.dataService.userVideos.find(v => v.id === videoId);
         if (!video) return;
         
         const shareModal = document.getElementById('share-modal');
         shareModal.innerHTML = AdvancedViewRenderer.renderShareOptions(videoId);
+        if (this.canCurrentUserDeleteVideo(video)) {
+            shareModal.insertAdjacentHTML('beforeend', `
+                <div class="share-option danger" data-action="delete">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M6 7h12l-1 14H7L6 7zm3-3h6l1 2H8l1-2zM4 7h16v2H4V7z"></path>
+                    </svg>
+                    <span>Удалить</span>
+                </div>
+            `);
+        }
         shareModal.classList.add('open');
         
         shareModal.querySelectorAll('.share-option').forEach(option => {
-            option.addEventListener('click', () => {
+            option.addEventListener('click', async () => {
                 const action = option.dataset.action;
-                const shareUrl = option.dataset.url;
                 
                 switch(action) {
                     case 'copy':
-                        navigator.clipboard.writeText(shareUrl).then(() => AdvancedViewRenderer.showToast('Ссылка скопирована', 'success'));
+                        navigator.clipboard.writeText(option.dataset.url || '')
+                            .then(() => AdvancedViewRenderer.showToast('Ссылка скопирована', 'success'));
                         break;
                     case 'whatsapp':
-                        window.open(`https://wa.me/?text=${encodeURIComponent(video.desc + ' ' + shareUrl)}`, '_blank');
+                        window.open(`https://wa.me/?text=${encodeURIComponent(video.desc + ' ' + (option.dataset.url || ''))}`, '_blank');
                         break;
                     case 'telegram':
-                        window.open(`https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${encodeURIComponent(video.desc)}`, '_blank');
+                        window.open(`https://t.me/share/url?url=${encodeURIComponent(option.dataset.url || '')}&text=${encodeURIComponent(video.desc)}`, '_blank');
                         break;
                     case 'twitter':
-                        window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(video.desc)}&url=${encodeURIComponent(shareUrl)}`, '_blank');
+                        window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(video.desc)}&url=${encodeURIComponent(option.dataset.url || '')}`, '_blank');
+                        break;
+                    case 'delete':
+                        await this.deleteVideoWithConfirm(video);
                         break;
                 }
                 shareModal.classList.remove('open');
             });
         });
         
-        shareModal.addEventListener('click', (e) => {
-            if (e.target === shareModal) shareModal.classList.remove('open');
-        });
+        if (shareModal.dataset.backdropBound !== '1') {
+            shareModal.dataset.backdropBound = '1';
+            shareModal.addEventListener('click', (e) => {
+                if (e.target === shareModal) shareModal.classList.remove('open');
+            });
+        }
     }
 
     async performSearch(query) {
@@ -1201,11 +1735,7 @@ class AdvancedApp {
             resultItem.addEventListener('click', () => {
                 this.navigateTo('feed-view');
                 setTimeout(() => {
-                    const videoElement = document.querySelector(`[data-id="${video.id}"]`);
-                    if (videoElement) {
-                        videoElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                        videoElement.querySelector('video').play();
-                    }
+                    this.scrollToFeedVideoById(video.id, { play: true });
                 }, 300);
             });
             this.searchResults.appendChild(resultItem);
@@ -1293,9 +1823,20 @@ class AdvancedApp {
             list.forEach(video => {
                 const gridItem = document.createElement('div');
                 gridItem.className = 'grid-item';
+                gridItem.dataset.id = video.id;
+                if (video.firestoreId) gridItem.dataset.firestoreId = video.firestoreId;
+
                 const commentsCount = Array.isArray(video.comments) ? video.comments.length : 0;
+                const safeUrl = this.escapeHtml(video.url || '');
+                const safePoster = video.thumbnail ? this.escapeHtml(video.thumbnail) : '';
+                const posterAttr = safePoster ? ` poster="${safePoster}"` : '';
                 gridItem.innerHTML = `
-                    <video src="${video.url}" muted loop playsinline preload="metadata"></video>
+                    <video muted playsinline preload="none" data-src="${safeUrl}"${posterAttr}></video>
+                    <button class="grid-delete-btn" type="button" title="Удалить" aria-label="Удалить видео">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M6 7h12l-1 14H7L6 7zm3-3h6l1 2H8l1-2zM4 7h16v2H4V7z"></path>
+                        </svg>
+                    </button>
                     <div class="grid-overlay">
                         <div style="display: flex; align-items: center; gap: 5px; font-size: 11px;">
                             <span>❤️ ${AdvancedViewRenderer.formatNumber(video.likes || 0)}</span>
@@ -1304,21 +1845,25 @@ class AdvancedApp {
                     </div>
                 `;
 
-                gridItem.addEventListener('click', async () => {
-                    // Обновляем ленту, чтобы видео точно было в DOM и его можно было посмотреть.
-                    await this.loadFeed(true);
-                    this.navigateTo('feed-view');
-                    setTimeout(() => {
-                        const videoElement = document.querySelector(`[data-id="${video.id}"]`);
-                        if (videoElement) {
-                            videoElement.scrollIntoView({ behavior: 'smooth' });
-                            videoElement.querySelector('video')?.play();
-                        }
-                    }, 500);
+                gridItem.querySelector('.grid-delete-btn')?.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    const ok = await this.deleteVideoWithConfirm(video);
+                    if (ok) {
+                        const idx = list.findIndex(v => String(v.id) === String(video.id));
+                        if (idx !== -1) list.splice(idx, 1);
+                    }
+                });
+
+                gridItem.addEventListener('click', (e) => {
+                    if (e.target.closest('.grid-delete-btn')) return;
+                    const startIndex = list.findIndex(v => String(v.id) === String(video.id));
+                    this.enterCustomFeedMode(list, { startIndex: startIndex >= 0 ? startIndex : 0, returnViewId: 'profile-view' });
                 });
 
                 grid.appendChild(gridItem);
             });
+
+            this.setupProfileGridPreviews(grid);
         };
 
         // If Firebase is available, load videos from Firestore so they persist after reload (and include private).
@@ -2389,29 +2934,35 @@ class AdvancedApp {
                 return;
             }
 
-            grid.innerHTML = videos.map(v => `
-                <div class="grid-item" data-id="${v.id}">
-                    <img src="${v.thumbnail}" alt="Видео">
-                    <div class="grid-overlay">
-                        <span>в–¶ ${v.views || 0}</span>
-                    </div>
-                </div>
-            `).join('');
+            grid.innerHTML = '';
+            const list = Array.isArray(videos) ? videos : [];
 
-            grid.querySelectorAll('.grid-item').forEach(item => {
-                item.addEventListener('click', () => {
-                    const videoId = item.dataset.id;
-                    this.navigateTo('feed-view');
-                    setTimeout(() => {
-                        const videoElement = document.querySelector(`[data-id="${videoId}"]`);
-                        if (videoElement) {
-                            videoElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                            const vid = videoElement.querySelector('video');
-                            if (vid) vid.play();
-                        }
-                    }, 300);
+            list.forEach(v => {
+                const gridItem = document.createElement('div');
+                gridItem.className = 'grid-item';
+                gridItem.dataset.id = v.id;
+                if (v.firestoreId) gridItem.dataset.firestoreId = v.firestoreId;
+
+                const safeUrl = this.escapeHtml(v.url || '');
+                const safePoster = v.thumbnail ? this.escapeHtml(v.thumbnail) : '';
+                const posterAttr = safePoster ? ` poster="${safePoster}"` : '';
+
+                gridItem.innerHTML = `
+                    <video muted playsinline preload="none" data-src="${safeUrl}"${posterAttr}></video>
+                    <div class="grid-overlay">
+                        <span>▶ ${v.views || 0}</span>
+                    </div>
+                `;
+
+                gridItem.addEventListener('click', () => {
+                    const startIndex = list.findIndex(x => String(x.id) === String(v.id));
+                    this.enterCustomFeedMode(list, { startIndex: startIndex >= 0 ? startIndex : 0, returnViewId: 'profile-view' });
                 });
+
+                grid.appendChild(gridItem);
             });
+
+            this.setupProfileGridPreviews(grid);
         } catch (err) {
             console.error(err);
             AdvancedViewRenderer.showToast('Ошибка загрузки профиля', 'error');

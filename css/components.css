@@ -51,6 +51,19 @@
     filter: drop-shadow(0 0 6px var(--accent-color));
 }
 
+.share-option.danger {
+    border-color: rgba(254, 44, 85, 0.35);
+}
+
+.share-option.danger svg {
+    fill: var(--accent-primary);
+}
+
+.share-option.danger:hover {
+    background: rgba(254, 44, 85, 0.18);
+    border-color: rgba(254, 44, 85, 0.55);
+}
+
 /* Theme Switcher */
 .theme-switcher {
     position: fixed;

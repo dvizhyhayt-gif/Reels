@@ -7,6 +7,7 @@ class AdvancedViewRenderer {
         const div = document.createElement('div');
         div.className = `video-item ${video.filter || ''}`;
         div.dataset.id = video.id;
+        if (video.firestoreId) div.dataset.firestoreId = video.firestoreId;
         div.dataset.views = video.views || 0;
         div.dataset.author = video.author;
         
@@ -14,6 +15,8 @@ class AdvancedViewRenderer {
         const hashtagsHTML = video.hashtags?.map(tag => 
             `<span class="hashtag">${tag}</span>`
         ).join(' ') || '';
+
+        const commentsCount = Array.isArray(video.comments) ? video.comments.length : 0;
         
         // Определяем текст кнопки подписки
         const isSubscribed = options.isSubscribed ? true : false;
@@ -21,11 +24,13 @@ class AdvancedViewRenderer {
         const followButtonStyle = isSubscribed ? 'var(--accent-secondary)' : 'var(--accent-color)';
         const verifiedBadge = this.getVerifiedBadge(video.authorVerified || video.verified);
         
+        const posterAttr = video.thumbnail ? ` poster="${video.thumbnail}"` : '';
+
         div.innerHTML = `
             <div class="video-progress">
                 <div class="video-progress-bar"></div>
             </div>
-            <video src="${video.url}" loop playsinline preload="metadata" ${options.autoplay ? 'autoplay' : ''}></video>
+            <video loop playsinline preload="none" data-src="${video.url}"${posterAttr}></video>
             <div class="view-count">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="white">
                     <path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
@@ -48,7 +53,7 @@ class AdvancedViewRenderer {
                         <svg viewBox="0 0 24 24">
                             <path d="M21.99 4c0-1.1-.89-2-1.99-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14l4 4-.01-18zM18 14H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"/>
                         </svg>
-                        <span>${video.comments.length}</span>
+                        <span>${commentsCount}</span>
                     </div>
                     <div class="action-btn share-btn" data-id="${video.id}" title="Поделиться">
                         <svg viewBox="0 0 24 24">
