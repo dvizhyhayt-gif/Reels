@@ -348,23 +348,46 @@ class FirebaseService {
         const uid = this.getCurrentUid();
         
         try {
-            let query = this.db.collection('videos')
-                .where('private', '==', false)
-                .orderBy('timestamp', 'desc')
-                .limit(limit);
-
-            const snapshot = await query.get();
-            const videos = snapshot.docs.map(doc => {
-                const data = doc.data();
+            const mapVideoDoc = (doc) => {
+                const data = doc.data() || {};
                 return {
                     ...data,
+                    // Firestore возвращает Timestamp, UI ждёт number (ms)
+                    timestamp: this.normalizeTimestamp(data.timestamp),
                     firestoreId: doc.id,
                     isLiked: uid ? data.likedBy?.includes(uid) : false
                 };
-            });
+            };
 
-            console.log('✅ Лента загружена:', videos.length, 'видео');
-            return videos;
+            try {
+                // Оптимальный вариант (может требовать composite index)
+                const snapshot = await this.db.collection('videos')
+                    .where('private', '==', false)
+                    .orderBy('timestamp', 'desc')
+                    .limit(limit)
+                    .get();
+
+                const videos = snapshot.docs.map(mapVideoDoc);
+                console.log('✅ Лента загружена:', videos.length, 'видео');
+                return videos;
+            } catch (indexError) {
+                // Fallback без where+orderBy (чтобы не упираться в отсутствие индекса)
+                console.warn('⚠️ getFeed(): query with where+orderBy failed, using fallback query:', indexError?.message || indexError);
+
+                const fallbackLimit = Math.max(limit * 3, limit);
+                const snapshot = await this.db.collection('videos')
+                    .orderBy('timestamp', 'desc')
+                    .limit(fallbackLimit)
+                    .get();
+
+                const videos = snapshot.docs
+                    .map(mapVideoDoc)
+                    .filter(v => v.private !== true)
+                    .slice(0, limit);
+
+                console.log('✅ Лента загружена (fallback):', videos.length, 'видео');
+                return videos;
+            }
         } catch (error) {
             console.error('❌ Ошибка загрузки ленты:', error);
             return [];
@@ -373,15 +396,31 @@ class FirebaseService {
 
     async getVideosByAuthor(authorName) {
         try {
-            const snapshot = await this.db.collection('videos')
-                .where('author', '==', authorName)
-                .orderBy('timestamp', 'desc')
-                .get();
+            const mapVideoDoc = (doc) => {
+                const data = doc.data() || {};
+                return {
+                    ...data,
+                    timestamp: this.normalizeTimestamp(data.timestamp),
+                    firestoreId: doc.id
+                };
+            };
 
-            return snapshot.docs.map(doc => ({
-                ...doc.data(),
-                firestoreId: doc.id
-            }));
+            let snapshot;
+            try {
+                snapshot = await this.db.collection('videos')
+                    .where('author', '==', authorName)
+                    .orderBy('timestamp', 'desc')
+                    .get();
+            } catch (indexError) {
+                console.warn('⚠️ getVideosByAuthor(): query with where+orderBy failed, using fallback query:', indexError?.message || indexError);
+                snapshot = await this.db.collection('videos')
+                    .where('author', '==', authorName)
+                    .get();
+            }
+
+            const videos = snapshot.docs.map(mapVideoDoc);
+            videos.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+            return videos;
         } catch (error) {
             console.error('❌ Ошибка получения видео автора:', error);
             return [];

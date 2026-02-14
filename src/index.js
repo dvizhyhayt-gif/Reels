@@ -20,6 +20,43 @@ function safeFileName(name) {
   return raw.replace(/[^\w.\-]+/g, "_");
 }
 
+function parseRangeHeader(value, size) {
+  if (!value || !size || size <= 0) return null;
+
+  const match = /^bytes=(\d*)-(\d*)$/i.exec(String(value).trim());
+  if (!match) return null;
+
+  const startStr = match[1];
+  const endStr = match[2];
+  if (!startStr && !endStr) return null;
+
+  let start = 0;
+  let end = size - 1;
+
+  if (!startStr) {
+    // suffix-byte-range-spec: bytes=-N (last N bytes)
+    const suffix = parseInt(endStr, 10);
+    if (!Number.isFinite(suffix) || suffix <= 0) return { invalid: true };
+    const length = Math.min(suffix, size);
+    start = size - length;
+    end = size - 1;
+    return { start, end, length, range: { offset: start, length } };
+  }
+
+  start = parseInt(startStr, 10);
+  if (!Number.isFinite(start) || start < 0) return { invalid: true };
+  if (start >= size) return { invalid: true };
+
+  if (endStr) {
+    end = parseInt(endStr, 10);
+    if (!Number.isFinite(end) || end < start) return { invalid: true };
+    if (end >= size) end = size - 1;
+  }
+
+  const length = end - start + 1;
+  return { start, end, length, range: { offset: start, length } };
+}
+
 function buildCorsHeaders(request, env) {
   const origin = request.headers.get("Origin") || "";
   const allowList = String(env.CORS_ORIGINS || "")
@@ -38,6 +75,7 @@ function buildCorsHeaders(request, env) {
     "Access-Control-Allow-Origin": allowOrigin,
     "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type,Authorization",
+    "Access-Control-Expose-Headers": "ETag,Content-Range,Accept-Ranges,Content-Length",
     "Access-Control-Max-Age": "86400",
     "Vary": "Origin"
   };
@@ -100,7 +138,26 @@ async function handleFile(request, env, pathName) {
     return new Response("Missing key", { status: 400 });
   }
 
-  const object = await env.MEDIA_BUCKET.get(key);
+  const head = await env.MEDIA_BUCKET.head(key);
+  if (!head) {
+    return new Response("Not found", { status: 404 });
+  }
+
+  const size = head.size || 0;
+  const rangeHeader = request.headers.get("Range") || "";
+  const parsed = rangeHeader ? parseRangeHeader(rangeHeader, size) : null;
+  if (parsed && parsed.invalid) {
+    const headers = new Headers({
+      "Accept-Ranges": "bytes",
+      "Content-Range": `bytes */${size}`
+    });
+    head.writeHttpMetadata(headers);
+    return new Response("Range Not Satisfiable", { status: 416, headers });
+  }
+
+  const object = parsed
+    ? await env.MEDIA_BUCKET.get(key, { range: parsed.range })
+    : await env.MEDIA_BUCKET.get(key);
   if (!object) {
     return new Response("Not found", { status: 404 });
   }
@@ -108,6 +165,15 @@ async function handleFile(request, env, pathName) {
   const headers = new Headers();
   object.writeHttpMetadata(headers);
   headers.set("etag", object.httpEtag);
+  headers.set("Accept-Ranges", "bytes");
+
+  if (parsed) {
+    headers.set("Content-Range", `bytes ${parsed.start}-${parsed.end}/${size}`);
+    headers.set("Content-Length", String(parsed.length));
+    return new Response(object.body, { status: 206, headers });
+  }
+
+  headers.set("Content-Length", String(size));
   return new Response(object.body, { headers });
 }
 

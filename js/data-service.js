@@ -56,14 +56,36 @@ class AdvancedDataService {
     }
 
     async getFeed(page = 0, limit = 5) {
-        await new Promise(resolve => setTimeout(resolve, 300));
-        
         const start = page * limit;
         const end = start + limit;
+
+        // Firebase source-of-truth: fetch videos from Firestore so they persist after reload.
+        try {
+            if (typeof firebaseService !== 'undefined'
+                && firebaseService
+                && typeof firebaseService.isInitialized === 'function'
+                && firebaseService.isInitialized()
+                && typeof firebaseService.getFeed === 'function') {
+                // Fetch "end + 1" items so we can detect hasMore without proper cursor pagination.
+                const fetchLimit = end + 1;
+                const feedVideos = await firebaseService.getFeed(fetchLimit);
+                this.userVideos = Array.isArray(feedVideos) ? feedVideos : [];
+                return {
+                    videos: this.userVideos.slice(start, end),
+                    hasMore: this.userVideos.length > end,
+                    total: this.userVideos.length
+                };
+            }
+        } catch (error) {
+            console.error('Ошибка загрузки ленты из Firebase:', error);
+        }
+
+        // Local fallback
+        await new Promise(resolve => setTimeout(resolve, 300));
+
         const allVideos = [...this.userVideos];
-        
         allVideos.sort((a, b) => b.timestamp - a.timestamp);
-        
+
         return {
             videos: allVideos.slice(start, end),
             hasMore: end < allVideos.length,

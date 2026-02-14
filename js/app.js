@@ -14,6 +14,7 @@ class AdvancedApp {
             isRecording: false,
             mediaRecorder: null,
             recordedChunks: [],
+            recordedMimeType: 'video/webm',
             selectedFilter: 'none',
             theme: 'dark',
             avatarData: null,
@@ -45,7 +46,13 @@ class AdvancedApp {
         this.setupNotifications();
         this.setupPullToRefresh();
         this.setupSwipe();
-        
+
+        // FirebaseService инициализируется асинхронно в firebase-service.js (через setTimeout).
+        // Чтобы лента/профиль после перезагрузки брали данные из Firestore, ждём готовности (с таймаутом).
+        if (typeof waitForFirebaseService === 'function') {
+            await waitForFirebaseService(5000);
+        }
+
         await this.loadFeed(true);
         this.updateProfileUI();
         
@@ -410,7 +417,14 @@ class AdvancedApp {
             try {
                 let videoBlob;
                 if (this.state.recordedChunks.length) {
-                    videoBlob = new Blob(this.state.recordedChunks, { type: 'video/webm' });
+                    const mime = this.state.recordedMimeType || 'video/webm';
+                    const blob = new Blob(this.state.recordedChunks, { type: mime });
+                    const ext = mime.includes('mp4') ? 'mp4' : 'webm';
+                    try {
+                        videoBlob = new File([blob], `recording_${Date.now()}.${ext}`, { type: mime });
+                    } catch (_) {
+                        videoBlob = blob;
+                    }
                 } else {
                     videoBlob = file;
                 }
@@ -677,14 +691,37 @@ class AdvancedApp {
         if (!this.cameraStream) return;
         this.state.recordedChunks = [];
         this.recordBtn.classList.add('recording');
-        this.state.mediaRecorder = new MediaRecorder(this.cameraStream, { mimeType: 'video/webm;codecs=vp9' });
+
+        // Prefer MP4 on Safari/iOS when available, otherwise WebM.
+        const candidates = [
+            'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+            'video/mp4',
+            'video/webm;codecs=vp9',
+            'video/webm;codecs=vp8',
+            'video/webm'
+        ];
+        let selectedMime = '';
+        try {
+            if (typeof MediaRecorder !== 'undefined' && typeof MediaRecorder.isTypeSupported === 'function') {
+                selectedMime = candidates.find(t => MediaRecorder.isTypeSupported(t)) || '';
+            }
+        } catch (_) {
+            selectedMime = '';
+        }
+        this.state.recordedMimeType = selectedMime || 'video/webm';
+
+        if (selectedMime) {
+            this.state.mediaRecorder = new MediaRecorder(this.cameraStream, { mimeType: selectedMime });
+        } else {
+            this.state.mediaRecorder = new MediaRecorder(this.cameraStream);
+        }
         
         this.state.mediaRecorder.ondataavailable = (event) => {
             if (event.data.size > 0) this.state.recordedChunks.push(event.data);
         };
         
         this.state.mediaRecorder.onstop = () => {
-            const blob = new Blob(this.state.recordedChunks, { type: 'video/webm' });
+            const blob = new Blob(this.state.recordedChunks, { type: this.state.recordedMimeType || 'video/webm' });
             const url = URL.createObjectURL(blob);
             const previewVideo = document.getElementById('preview-video');
             if (previewVideo) {
@@ -1233,36 +1270,43 @@ class AdvancedApp {
         document.getElementById('likes-stat').querySelector('.stat-num').textContent = AdvancedViewRenderer.formatNumber(userProfile.stats.likes);
         
         const grid = document.getElementById('profile-grid');
-        grid.innerHTML = '';
-        
-        if (userProfile.videos.length === 0) {
-            grid.innerHTML = `
-                <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--secondary-text);">
-                    <svg width="48" height="48" viewBox="0 0 24 24" fill="currentColor" style="opacity: 0.5; margin-bottom: 20px;">
-                        <path d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4z"/>
-                    </svg>
-                    <h3>Нет видео</h3>
-                    <p style="font-size: 14px; margin-top: 10px;">Создайте свое первое видео!</p>
-                    <button class="primary-btn" style="margin-top: 20px; width: auto; padding: 10px 20px;" onclick="app.navigateTo('upload-view')">
-                        Создать видео
-                    </button>
-                </div>
-            `;
-        } else {
-            userProfile.videos.forEach(video => {
+        const renderGrid = (videos = []) => {
+            grid.innerHTML = '';
+
+            const list = Array.isArray(videos) ? videos : [];
+            if (list.length === 0) {
+                grid.innerHTML = `
+                    <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--secondary-text);">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="currentColor" style="opacity: 0.5; margin-bottom: 20px;">
+                            <path d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4z"/>
+                        </svg>
+                        <h3>Нет видео</h3>
+                        <p style="font-size: 14px; margin-top: 10px;">Создайте свое первое видео!</p>
+                        <button class="primary-btn" style="margin-top: 20px; width: auto; padding: 10px 20px;" onclick="app.navigateTo('upload-view')">
+                            Создать видео
+                        </button>
+                    </div>
+                `;
+                return;
+            }
+
+            list.forEach(video => {
                 const gridItem = document.createElement('div');
                 gridItem.className = 'grid-item';
+                const commentsCount = Array.isArray(video.comments) ? video.comments.length : 0;
                 gridItem.innerHTML = `
-                    <video src="${video.url}" muted loop></video>
+                    <video src="${video.url}" muted loop playsinline preload="metadata"></video>
                     <div class="grid-overlay">
                         <div style="display: flex; align-items: center; gap: 5px; font-size: 11px;">
-                            <span>❤️ ${AdvancedViewRenderer.formatNumber(video.likes)}</span>
-                            <span>💬 ${video.comments.length}</span>
+                            <span>❤️ ${AdvancedViewRenderer.formatNumber(video.likes || 0)}</span>
+                            <span>💬 ${commentsCount}</span>
                         </div>
                     </div>
                 `;
-                
-                gridItem.addEventListener('click', () => {
+
+                gridItem.addEventListener('click', async () => {
+                    // Обновляем ленту, чтобы видео точно было в DOM и его можно было посмотреть.
+                    await this.loadFeed(true);
                     this.navigateTo('feed-view');
                     setTimeout(() => {
                         const videoElement = document.querySelector(`[data-id="${video.id}"]`);
@@ -1272,10 +1316,46 @@ class AdvancedApp {
                         }
                     }, 500);
                 });
-                
+
                 grid.appendChild(gridItem);
             });
+        };
+
+        // If Firebase is available, load videos from Firestore so they persist after reload (and include private).
+        if (typeof firebaseService !== 'undefined'
+            && firebaseService
+            && typeof firebaseService.isInitialized === 'function'
+            && firebaseService.isInitialized()
+            && typeof firebaseService.getVideosByAuthor === 'function'
+            && userProfile.name) {
+            grid.innerHTML = `
+                <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--secondary-text);">
+                    <p>Загрузка видео...</p>
+                </div>
+            `;
+            firebaseService.getVideosByAuthor(userProfile.name)
+                .then((videos) => {
+                    const list = Array.isArray(videos) ? videos : [];
+
+                    // Sync local cache used by comments/share UI.
+                    if (this.dataService && Array.isArray(this.dataService.userVideos)) {
+                        this.dataService.userVideos = this.dataService.userVideos.filter(v => v.author !== userProfile.name);
+                        this.dataService.userVideos.push(...list);
+                    }
+
+                    const likesTotal = list.reduce((sum, v) => sum + (parseInt(v.likes, 10) || 0), 0);
+                    document.getElementById('likes-stat').querySelector('.stat-num').textContent = AdvancedViewRenderer.formatNumber(likesTotal);
+                    renderGrid(list);
+                })
+                .catch((err) => {
+                    console.error('Ошибка загрузки видео профиля:', err);
+                    renderGrid(userProfile.videos);
+                });
+            return;
         }
+
+        // Fallback: render from local cache
+        renderGrid(userProfile.videos);
     }
 
     setupNotificationsEvents() {
