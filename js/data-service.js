@@ -199,7 +199,12 @@ class AdvancedDataService {
 
     async uploadVideo(file, metadata) {
         if (typeof firebaseService !== 'undefined' && firebaseService && firebaseService.isInitialized()) {
-            return firebaseService.uploadVideo(file, metadata);
+            const uploaded = await firebaseService.uploadVideo(file, metadata);
+            // UI (лента/профиль) сейчас читает из this.userVideos, поэтому синхронизируем локальный кэш.
+            if (uploaded) {
+                this.userVideos.unshift(uploaded);
+            }
+            return uploaded;
         }
 
         return new Promise((resolve) => {
