@@ -1,4 +1,4 @@
-/**
+﻿/**
  * AdvancedApp
  * Основное приложение - управление состоянием и событиями
  */
@@ -2168,7 +2168,7 @@ class AdvancedApp {
             this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
         } catch (error) {
             console.error('Ошибка отправки файла:', error);
-            AdvancedViewRenderer.showToast('Не удалось отправить файл', 'error');
+            AdvancedViewRenderer.showToast(error?.message || 'Не удалось отправить файл', 'error');
         }
     }
 

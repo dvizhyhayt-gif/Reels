@@ -27,12 +27,19 @@ function buildCorsHeaders(request, env) {
     .map((item) => item.trim())
     .filter(Boolean);
 
-  const allowOrigin = allowList.includes(origin) ? origin : (allowList[0] || "*");
+  let allowOrigin = "*";
+  if (origin && origin !== "null") {
+    if (allowList.length === 0 || allowList.includes("*") || allowList.includes(origin)) {
+      allowOrigin = origin;
+    }
+  }
+
   return {
     "Access-Control-Allow-Origin": allowOrigin,
     "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type,Authorization",
-    "Access-Control-Max-Age": "86400"
+    "Access-Control-Max-Age": "86400",
+    "Vary": "Origin"
   };
 }
 

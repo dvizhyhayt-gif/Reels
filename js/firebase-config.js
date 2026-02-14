@@ -19,10 +19,10 @@ const firebaseConfig = {
 // Пример uploadEndpoint: https://your-worker.your-subdomain.workers.dev/upload
 // Пример deleteEndpoint: https://your-worker.your-subdomain.workers.dev/delete
 window.CLOUDFLARE_MEDIA_CONFIG = {
-  enabled: false,
+  enabled: true,
   provider: "cloudflare",
-  uploadEndpoint: "",
-  deleteEndpoint: "",
+  uploadEndpoint: "https://kazreels.dvizhyhayt.workers.dev/upload",
+  deleteEndpoint: "https://kazreels.dvizhyhayt.workers.dev/delete",
   authToken: "",
   folderPrefix: "kazreels"
 };
