@@ -33,7 +33,7 @@
 В левой панели Console:
 - **Authentication** → включи "Email/Password"
 - **Firestore Database** → создай в режиме "Start in test mode"
-- **Storage** → нужен для видео
+- **Storage** → нужен для видео (или подключи Cloudflare, см. `docs/CLOUDFLARE_MEDIA_SETUP.md`)
 
 ### Шаг 5: Обнови firebase-config.js
 Скопируй свою конфигурацию в файл `js/firebase-config.js`

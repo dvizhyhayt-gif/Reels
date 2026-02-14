@@ -15,6 +15,18 @@ const firebaseConfig = {
   appId: "1:849520714213:web:54975013c201e75a110f0c"
 };
 
+// Cloudflare Media config (заполни под свой Worker/API endpoint)
+// Пример uploadEndpoint: https://your-worker.your-subdomain.workers.dev/upload
+// Пример deleteEndpoint: https://your-worker.your-subdomain.workers.dev/delete
+window.CLOUDFLARE_MEDIA_CONFIG = {
+  enabled: false,
+  provider: "cloudflare",
+  uploadEndpoint: "",
+  deleteEndpoint: "",
+  authToken: "",
+  folderPrefix: "kazreels"
+};
+
 console.log('🔥 [2] Config объект создан:', firebaseConfig.projectId);
 
 // Инициализация Firebase (не трогай это)
@@ -50,8 +62,13 @@ if (typeof firebase !== 'undefined') {
     const db = firebase.firestore();
     console.log('✅ [10] firebase.firestore() работает');
     
-    const storage = firebase.storage();
-    console.log('✅ [11] firebase.storage() работает');
+    try {
+      const storage = firebase.storage();
+      console.log('✅ [11] firebase.storage() работает');
+    } catch (storageError) {
+      console.warn('⚠️ [11] firebase.storage() недоступен:', storageError.message);
+      console.warn('ℹ️ Будет использован внешний media storage (например Cloudflare), если настроен.');
+    }
 
     // Настройки Firestore
     db.settings({ 

@@ -440,7 +440,7 @@ class AdvancedApp {
                 this.navigateTo('profile-view');
                 this.updateProfileUI();
             } catch (error) {
-                AdvancedViewRenderer.showToast('Ошибка при загрузке видео', 'error');
+                AdvancedViewRenderer.showToast(error.message || 'Ошибка при загрузке видео', 'error');
                 console.error(error);
             } finally {
                 btnText.textContent = 'Опубликовать';

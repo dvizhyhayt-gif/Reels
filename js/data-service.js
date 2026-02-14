@@ -198,6 +198,10 @@ class AdvancedDataService {
     }
 
     async uploadVideo(file, metadata) {
+        if (typeof firebaseService !== 'undefined' && firebaseService && firebaseService.isInitialized()) {
+            return firebaseService.uploadVideo(file, metadata);
+        }
+
         return new Promise((resolve) => {
             const reader = new FileReader();
             reader.onload = (e) => {

@@ -6,7 +6,15 @@ class FirebaseService {
     constructor() {
         this.auth = firebase.auth();
         this.db = firebase.firestore();
-        this.storage = firebase.storage();
+        this.storage = null;
+        try {
+            this.storage = firebase.storage();
+        } catch (error) {
+            console.warn('⚠️ Firebase Storage недоступен:', error.message);
+        }
+        this.mediaStorage = (typeof mediaStorageService !== 'undefined' && mediaStorageService)
+            ? mediaStorageService
+            : null;
         this.currentUser = null;
         this.setupAuthListener();
     }
@@ -293,20 +301,11 @@ class FirebaseService {
         if (!uid) throw new Error('Необходимо авторизироваться');
 
         try {
-            // Создаем уникальное имя файла
-            const fileName = `videos/${uid}/${Date.now()}_${file.name}`;
-            
-            // Загружаем видео в Storage
-            const uploadTask = this.storage.ref(fileName).put(file);
-            
-            // Ждем загрузки
-            const snapshot = await uploadTask;
-            
-            // Получаем URL видео
-            const videoUrl = await snapshot.ref.getDownloadURL();
-            
-            // Получаем данные пользователя
             const userProfile = await this.getUserProfile(uid);
+            const uploaded = await this.uploadMedia(file, `videos/${uid}`, {
+                uid,
+                purpose: 'video'
+            });
 
             // Создаем документ видео в Firestore
             const videoDoc = {
@@ -315,8 +314,9 @@ class FirebaseService {
                 author: userProfile.name,
                 avatar: userProfile.avatar,
                 authorVerified: !!userProfile.verified,
-                url: videoUrl,
-                storagePath: fileName,
+                url: uploaded.url,
+                storagePath: uploaded.storagePath,
+                storageProvider: uploaded.storageProvider,
                 desc: metadata.desc || '',
                 tags: metadata.tags || '',
                 hashtags: metadata.tags ? metadata.tags.split(' ').filter(t => t.startsWith('#')) : [],
@@ -388,12 +388,15 @@ class FirebaseService {
         }
     }
 
-    async deleteVideo(firestoreId, storagePath) {
-        const uid = this.getCurrentUid();
-        
+    async deleteVideo(firestoreId, storagePath, storageProvider = 'firebase') {
         try {
-            // Удаляем видео из Storage
-            await this.storage.ref(storagePath).delete();
+            if (storagePath) {
+                if (storageProvider === 'cloudflare' && this.isExternalMediaEnabled()) {
+                    await this.mediaStorage.deleteFile(storagePath);
+                } else if (this.storage) {
+                    await this.storage.ref(storagePath).delete();
+                }
+            }
             
             // Удаляем документ из Firestore
             await this.db.collection('videos').doc(firestoreId).delete();
@@ -537,24 +540,54 @@ class FirebaseService {
         return 0;
     }
 
+    isExternalMediaEnabled() {
+        return !!(this.mediaStorage && typeof this.mediaStorage.isEnabled === 'function' && this.mediaStorage.isEnabled());
+    }
+
+    async uploadMedia(file, folder, metadata = {}) {
+        if (this.isExternalMediaEnabled()) {
+            const result = await this.mediaStorage.uploadFile(file, { folder, metadata });
+            return {
+                url: result.url,
+                storagePath: result.key || result.url,
+                storageProvider: result.provider || 'cloudflare'
+            };
+        }
+
+        if (!this.storage) {
+            throw new Error('Media storage не настроен: Firebase Storage недоступен и Cloudflare не подключен');
+        }
+
+        const safeName = String(file.name || 'file').replace(/[^\w.\-]+/g, '_');
+        const filePath = `${folder}/${Date.now()}_${safeName}`;
+        const uploadTask = await this.storage.ref(filePath).put(file);
+        const url = await uploadTask.ref.getDownloadURL();
+        return {
+            url,
+            storagePath: filePath,
+            storageProvider: 'firebase'
+        };
+    }
+
     async uploadChatFile(chatId, file) {
         const currentUid = this.getCurrentUid();
         if (!currentUid) throw new Error('Необходимо авторизироваться');
         if (!file) throw new Error('Файл не выбран');
 
-        const safeName = String(file.name || 'file').replace(/[^\w.\-]+/g, '_');
         const targetChat = chatId || currentUid;
-        const filePath = `chat-files/${targetChat}/${Date.now()}_${safeName}`;
-
-        const uploadTask = await this.storage.ref(filePath).put(file);
-        const url = await uploadTask.ref.getDownloadURL();
+        const uploaded = await this.uploadMedia(file, `chat-files/${targetChat}`, {
+            uid: currentUid,
+            chatId: targetChat,
+            purpose: 'chat-file'
+        });
 
         return {
-            name: file.name || safeName,
+            name: file.name || 'file',
             size: file.size || 0,
             mime: file.type || 'application/octet-stream',
-            url,
-            storagePath: filePath
+            url: uploaded.url,
+            storagePath: uploaded.storagePath,
+            storageProvider: uploaded.storageProvider
         };
     }
 
