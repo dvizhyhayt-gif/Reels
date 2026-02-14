@@ -18,13 +18,41 @@ class FirebaseService {
             if (user) {
                 console.log('✅ Пользователь залогинен:', user.uid);
                 this.currentUser = await this.getUserProfile(user.uid);
+                await this.updatePresence(true);
+                await this.markIncomingAsDelivered();
                 if (window.app) {
                     window.app.updateProfileUI();
+                    if (typeof window.app.loadChats === 'function') {
+                        window.app.loadChats();
+                    }
+                    if (typeof window.app.loadNotifications === 'function') {
+                        window.app.loadNotifications('all');
+                    }
+                    if (typeof window.app.updateNotificationBadge === 'function') {
+                        window.app.updateNotificationBadge();
+                    }
                 }
             } else {
                 console.log('❌ Пользователь вышел');
                 this.currentUser = null;
             }
+        });
+
+        document.addEventListener('visibilitychange', () => {
+            const uid = this.getCurrentUid();
+            if (!uid) return;
+            if (document.visibilityState === 'visible') {
+                this.updatePresence(true);
+                this.markIncomingAsDelivered();
+            } else {
+                this.updatePresence(false);
+            }
+        });
+
+        window.addEventListener('beforeunload', () => {
+            const uid = this.getCurrentUid();
+            if (!uid) return;
+            this.updatePresence(false);
         });
     }
 
@@ -51,6 +79,10 @@ class FirebaseService {
                 canVerify: false,
                 subscriptions: [],
                 subscribers: [],
+                notifications: [],
+                online: false,
+                lastSeen: Date.now(),
+                lastActive: Date.now(),
                 createdAt: new Date(),
                 updatedAt: new Date()
             };
@@ -75,6 +107,7 @@ class FirebaseService {
                 throw new Error('Профиль пользователя не найден. Зарегистрируйтесь снова.');
             }
             this.currentUser = userProfile;
+            await this.updatePresence(true);
             console.log('Вход выполнен успешно:', user.uid);
             return { success: true, user: userProfile, uid: user.uid };
         } catch (error) {
@@ -88,6 +121,7 @@ class FirebaseService {
 
     async logout() {
         try {
+            await this.updatePresence(false);
             await this.auth.signOut();
             this.currentUser = null;
             console.log('✅ Вы вышли из аккаунта');
@@ -112,12 +146,50 @@ class FirebaseService {
         try {
             const doc = await this.db.collection('users').doc(uid).get();
             if (doc.exists) {
-                return { ...doc.data(), uid };
+                const data = doc.data();
+                return {
+                    ...data,
+                    uid,
+                    online: !!data.online,
+                    lastSeen: this.normalizeTimestamp(data.lastSeen),
+                    lastActive: this.normalizeTimestamp(data.lastActive)
+                };
             }
             return null;
         } catch (error) {
             console.error('❌ Ошибка получения профиля:', error);
             return null;
+        }
+    }
+
+    async updatePresence(isOnline) {
+        const uid = this.getCurrentUid();
+        if (!uid) return false;
+
+        const now = Date.now();
+        const payload = {
+            online: !!isOnline,
+            lastActive: now,
+            updatedAt: new Date()
+        };
+
+        if (!isOnline) {
+            payload.lastSeen = now;
+        }
+
+        try {
+            await this.db.collection('users').doc(uid).set(payload, { merge: true });
+            if (this.currentUser && this.currentUser.uid === uid) {
+                this.currentUser = {
+                    ...this.currentUser,
+                    ...payload,
+                    lastSeen: payload.lastSeen ?? this.currentUser.lastSeen
+                };
+            }
+            return true;
+        } catch (error) {
+            console.error('❌ Ошибка обновления presence:', error);
+            return false;
         }
     }
 
@@ -462,15 +534,37 @@ class FirebaseService {
         if (typeof value === 'number') return value;
         if (value && typeof value.toMillis === 'function') return value.toMillis();
         if (value instanceof Date) return value.getTime();
-        return Date.now();
+        return 0;
     }
 
-    async addMessage(chatId, fromUser, toUser, content, toUid = null) {
+    async uploadChatFile(chatId, file) {
+        const currentUid = this.getCurrentUid();
+        if (!currentUid) throw new Error('Необходимо авторизироваться');
+        if (!file) throw new Error('Файл не выбран');
+
+        const safeName = String(file.name || 'file').replace(/[^\w.\-]+/g, '_');
+        const targetChat = chatId || currentUid;
+        const filePath = `chat-files/${targetChat}/${Date.now()}_${safeName}`;
+
+        const uploadTask = await this.storage.ref(filePath).put(file);
+        const url = await uploadTask.ref.getDownloadURL();
+
+        return {
+            name: file.name || safeName,
+            size: file.size || 0,
+            mime: file.type || 'application/octet-stream',
+            url,
+            storagePath: filePath
+        };
+    }
+
+    async addMessage(chatId, fromUser, toUser, content, toUid = null, options = {}) {
         const currentUid = this.getCurrentUid();
         if (!currentUid) throw new Error('Необходимо авторизироваться');
 
         const text = (content || '').trim();
-        if (!text) throw new Error('Пустое сообщение');
+        const isFileMessage = options.type === 'file';
+        if (!isFileMessage && !text) throw new Error('Пустое сообщение');
 
         try {
             const senderProfile = await this.getUserProfile(currentUid);
@@ -499,6 +593,10 @@ class FirebaseService {
                 targetName = targetProfile?.name || 'user';
             }
 
+            const targetProfile = await this.getUserProfile(targetUid);
+            const delivered = !!targetProfile?.online;
+            const now = Date.now();
+
             const normalizedChatId = chatId || this.buildChatId(currentUid, targetUid);
             if (!normalizedChatId) {
                 throw new Error('Не удалось создать чат');
@@ -512,8 +610,13 @@ class FirebaseService {
                 toUid: targetUid,
                 toUser: targetName,
                 content: text,
-                timestamp: Date.now(),
-                read: false
+                type: isFileMessage ? 'file' : 'text',
+                file: options.file || null,
+                timestamp: now,
+                delivered,
+                deliveredAt: delivered ? now : null,
+                read: false,
+                readAt: null
             };
 
             const ref = await this.db.collection('messages').add(message);
@@ -539,7 +642,11 @@ class FirebaseService {
                     return {
                         id: doc.id,
                         ...data,
-                        timestamp: this.normalizeTimestamp(data.timestamp)
+                        timestamp: this.normalizeTimestamp(data.timestamp),
+                        delivered: !!data.delivered,
+                        read: !!data.read,
+                        type: data.type || 'text',
+                        file: data.file || null
                     };
                 })
                 .sort((a, b) => a.timestamp - b.timestamp);
@@ -554,6 +661,7 @@ class FirebaseService {
         if (!currentUid) return [];
 
         try {
+            await this.markIncomingAsDelivered();
             const snapshot = await this.db.collection('messages')
                 .where('participants', 'array-contains', currentUid)
                 .get();
@@ -566,35 +674,104 @@ class FirebaseService {
                 const chatId = msg.chatId || this.buildChatId(msg.fromUid, msg.toUid);
                 if (!chatId) return;
 
-                const otherUid = msg.fromUid === currentUid ? msg.toUid : msg.fromUid;
-                const otherUser = msg.fromUid === currentUid ? msg.toUser : msg.fromUser;
+                const isFromCurrent = msg.fromUid === currentUid;
+                const otherUid = isFromCurrent ? msg.toUid : msg.fromUid;
+                const otherUser = isFromCurrent ? msg.toUser : msg.fromUser;
+                const previewText = (msg.type === 'file')
+                    ? `📎 ${msg.file?.name || 'Файл'}`
+                    : (msg.content || '');
+                const unreadCurrent = msg.toUid === currentUid && !msg.read;
 
                 if (!chatsMap.has(chatId)) {
                     chatsMap.set(chatId, {
                         id: chatId,
                         otherUid: otherUid || null,
                         otherUser: otherUser || 'user',
-                        lastMessage: msg.content || '',
+                        otherAvatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(otherUser || 'user')}&background=random&size=64`,
+                        otherOnline: false,
+                        otherLastSeen: null,
+                        otherVerified: false,
+                        lastMessage: previewText,
                         lastMessageTime: timestamp,
-                        unread: msg.toUid === currentUid && !msg.read
+                        lastMessageType: msg.type || 'text',
+                        unread: unreadCurrent,
+                        unreadCount: unreadCurrent ? 1 : 0,
+                        lastMessageFromMe: isFromCurrent,
+                        lastMessageDelivered: !!msg.delivered,
+                        lastMessageRead: !!msg.read
                     });
                     return;
                 }
 
                 const chat = chatsMap.get(chatId);
                 if (timestamp > chat.lastMessageTime) {
-                    chat.lastMessage = msg.content || '';
+                    chat.lastMessage = previewText;
                     chat.lastMessageTime = timestamp;
+                    chat.lastMessageType = msg.type || 'text';
+                    chat.lastMessageFromMe = isFromCurrent;
+                    chat.lastMessageDelivered = !!msg.delivered;
+                    chat.lastMessageRead = !!msg.read;
                 }
-                if (msg.toUid === currentUid && !msg.read) {
+                if (unreadCurrent) {
                     chat.unread = true;
+                    chat.unreadCount += 1;
                 }
             });
 
-            return Array.from(chatsMap.values()).sort((a, b) => b.lastMessageTime - a.lastMessageTime);
+            const chats = Array.from(chatsMap.values()).sort((a, b) => b.lastMessageTime - a.lastMessageTime);
+            const uniqueUids = Array.from(new Set(chats.map(c => c.otherUid).filter(Boolean)));
+            const profiles = await Promise.all(uniqueUids.map(uid => this.getUserProfile(uid)));
+            const profileMap = new Map();
+            profiles.forEach(profile => {
+                if (profile && profile.uid) profileMap.set(profile.uid, profile);
+            });
+
+            chats.forEach(chat => {
+                const profile = profileMap.get(chat.otherUid);
+                if (!profile) return;
+                chat.otherUser = profile.name || chat.otherUser;
+                chat.otherAvatar = profile.avatar || chat.otherAvatar;
+                chat.otherOnline = !!profile.online;
+                chat.otherLastSeen = this.normalizeTimestamp(profile.lastSeen || profile.lastActive || profile.updatedAt);
+                chat.otherVerified = !!profile.verified;
+            });
+
+            return chats;
         } catch (error) {
             console.error('❌ Ошибка загрузки чатов:', error);
             return [];
+        }
+    }
+
+    async markIncomingAsDelivered(chatId = null) {
+        const currentUid = this.getCurrentUid();
+        if (!currentUid) return 0;
+
+        try {
+            const snapshot = await this.db.collection('messages')
+                .where('toUid', '==', currentUid)
+                .get();
+
+            let updatesCount = 0;
+            const batch = this.db.batch();
+            const now = Date.now();
+
+            snapshot.forEach(doc => {
+                const data = doc.data();
+                if (chatId && data.chatId !== chatId) return;
+                if (!data.read && !data.delivered) {
+                    batch.update(doc.ref, { delivered: true, deliveredAt: now });
+                    updatesCount += 1;
+                }
+            });
+
+            if (updatesCount > 0) {
+                await batch.commit();
+            }
+            return updatesCount;
+        } catch (error) {
+            console.error('❌ Ошибка отметки сообщений как доставленных:', error);
+            return 0;
         }
     }
 
@@ -613,7 +790,13 @@ class FirebaseService {
             snapshot.forEach(doc => {
                 const data = doc.data();
                 if (data.toUid === currentUid && !data.read) {
-                    batch.update(doc.ref, { read: true });
+                    const now = Date.now();
+                    batch.update(doc.ref, {
+                        delivered: true,
+                        deliveredAt: data.deliveredAt || now,
+                        read: true,
+                        readAt: now
+                    });
                     updatesCount += 1;
                 }
             });
@@ -627,6 +810,68 @@ class FirebaseService {
             console.error('❌ Ошибка отметки сообщений как прочитанных:', error);
             return 0;
         }
+    }
+
+    async setTypingStatus(chatId, isTyping) {
+        const currentUid = this.getCurrentUid();
+        if (!currentUid || !chatId) return false;
+
+        try {
+            const profile = await this.getUserProfile(currentUid);
+            const ref = this.db.collection('chatTyping').doc(chatId);
+            await ref.set({
+                [currentUid]: {
+                    typing: !!isTyping,
+                    uid: currentUid,
+                    name: profile?.name || 'user',
+                    updatedAt: Date.now()
+                }
+            }, { merge: true });
+            return true;
+        } catch (error) {
+            console.error('❌ Ошибка typing статуса:', error);
+            return false;
+        }
+    }
+
+    subscribeToChatMessages(chatId, callback) {
+        const currentUid = this.getCurrentUid();
+        if (!currentUid || !chatId || typeof callback !== 'function') return () => {};
+
+        return this.db.collection('messages')
+            .where('chatId', '==', chatId)
+            .onSnapshot((snapshot) => {
+                const messages = snapshot.docs
+                    .map(doc => {
+                        const data = doc.data();
+                        return {
+                            id: doc.id,
+                            ...data,
+                            timestamp: this.normalizeTimestamp(data.timestamp),
+                            delivered: !!data.delivered,
+                            read: !!data.read,
+                            type: data.type || 'text',
+                            file: data.file || null
+                        };
+                    })
+                    .sort((a, b) => a.timestamp - b.timestamp);
+                callback(messages);
+            }, (error) => {
+                console.error('❌ Ошибка подписки на сообщения:', error);
+            });
+    }
+
+    subscribeToTyping(chatId, callback) {
+        const currentUid = this.getCurrentUid();
+        if (!currentUid || !chatId || typeof callback !== 'function') return () => {};
+
+        return this.db.collection('chatTyping')
+            .doc(chatId)
+            .onSnapshot((doc) => {
+                callback(doc.exists ? doc.data() : {});
+            }, (error) => {
+                console.error('❌ Ошибка подписки на typing:', error);
+            });
     }
 
     // ===================== SUBSCRIPTIONS =====================
@@ -719,6 +964,59 @@ class FirebaseService {
             console.error('❌ Ошибка добавления уведомления:', error);
             throw error;
         }
+    }
+
+    async getUserNotifications(filter = 'all') {
+        const uid = this.getCurrentUid();
+        if (!uid) return [];
+
+        const profile = await this.getUserProfile(uid);
+        const list = Array.isArray(profile?.notifications) ? profile.notifications : [];
+        const normalized = list
+            .map(notif => ({
+                ...notif,
+                timestamp: this.normalizeTimestamp(notif.timestamp)
+            }))
+            .sort((a, b) => b.timestamp - a.timestamp);
+
+        if (this.currentUser && this.currentUser.uid === uid) {
+            this.currentUser.notifications = normalized;
+        }
+
+        if (filter === 'all') return normalized;
+        return normalized.filter(n => n.type === filter);
+    }
+
+    async markNotificationAsRead(notificationId) {
+        const uid = this.getCurrentUid();
+        if (!uid || !notificationId) return false;
+
+        const profile = await this.getUserProfile(uid);
+        const list = Array.isArray(profile?.notifications) ? profile.notifications : [];
+        let changed = false;
+        const updatedList = list.map(notif => {
+            if (notif.id === notificationId && !notif.read) {
+                changed = true;
+                return { ...notif, read: true };
+            }
+            return notif;
+        });
+
+        if (!changed) return false;
+
+        await this.db.collection('users').doc(uid).update({
+            notifications: updatedList,
+            updatedAt: new Date()
+        });
+
+        if (this.currentUser && this.currentUser.uid === uid) {
+            this.currentUser.notifications = updatedList.map(notif => ({
+                ...notif,
+                timestamp: this.normalizeTimestamp(notif.timestamp)
+            }));
+        }
+
+        return true;
     }
 
     // ===================== HELPERS =====================

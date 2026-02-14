@@ -1,33 +1,16 @@
+/* =================================================================
+   PROFILE PAGE - REDESIGNED
+   ================================================================= */
+
 /* Profile Header */
 .profile-header { 
-    padding: 25px 20px; 
+    padding: 24px;
     text-align: center; 
     border-bottom: 1px solid var(--border-color);
-    background: linear-gradient(135deg, var(--glass-bg-bright) 0%, transparent 100%);
-    position: relative;
-    overflow: hidden;
-    backdrop-filter: blur(10px);
-}
-
-.profile-header::before {
-    content: '';
-    position: absolute;
-    top: -50%;
-    left: -50%;
-    width: 200%;
-    height: 200%;
-    background: radial-gradient(ellipse at center, 
-        rgba(255, 0, 110, 0.15), 
-        rgba(0, 217, 255, 0.1),
-        transparent 70%);
-    filter: blur(40px);
-    z-index: -1;
-    animation: gradientMove 8s ease infinite;
-}
-
-@keyframes gradientMove {
-    0%, 100% { transform: translate(0, 0); }
-    50% { transform: translate(10px, 10px); }
+    background-color: var(--bg-color-secondary);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
 }
 
 /* Profile Avatar */
@@ -35,96 +18,122 @@
     width: 90px; 
     height: 90px; 
     border-radius: 50%; 
-    margin-bottom: 15px; 
+    margin-bottom: 16px; 
     object-fit: cover;
-    border: 3px solid var(--accent-color);
-    box-shadow: 0 0 20px rgba(255, 0, 110, 0.3), 0 8px 24px rgba(0, 0, 0, 0.3);
-    transition: var(--transition);
-    cursor: pointer;
+    border: 3px solid var(--accent-primary);
+    box-shadow: 0 0 25px rgba(254, 44, 85, 0.3);
+    transition: transform var(--transition-fast);
+}
+.profile-avatar:hover {
+    transform: scale(1.05);
 }
 
-.profile-avatar:hover {
-    transform: scale(1.08);
-    box-shadow: 0 0 30px rgba(255, 0, 110, 0.5), 0 12px 32px rgba(0, 0, 0, 0.4);
+#profile-name {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text-color-primary);
+    margin-bottom: 4px;
+}
+
+#profile-bio {
+    font-size: 14px;
+    color: var(--text-color-secondary);
+    max-width: 80%;
+    margin-bottom: 16px;
 }
 
 /* Stats Row */
 .stats-row { 
     display: flex; 
     justify-content: center; 
-    gap: 20px; 
-    margin: 20px 0; 
-}
-
-.stats-row {
-    display: flex;
-    justify-content: center;
-    gap: 30px;
-    margin: 20px 0;
+    gap: 30px; 
+    margin-bottom: 24px;
+    padding: 12px 24px;
+    background-color: var(--bg-color-dark);
+    border-radius: var(--border-radius-lg);
+    width: 100%;
 }
 
 .stat-item {
     text-align: center;
     cursor: pointer;
-    transition: var(--transition);
-    padding: 0; /* убираем паддинги */
-    background: transparent; /* убираем фон */
-    border: none; /* убираем рамку */
+    transition: transform var(--transition-fast);
+    flex: 1;
 }
-
 .stat-item:hover {
     transform: translateY(-2px);
 }
 
 .stat-num {
     font-weight: 600;
-    display: block;
     font-size: 18px;
-    color: var(--text-color);
-    margin-bottom: 2px;
+    color: var(--text-color-primary);
 }
 
 .stat-label {
-    font-size: 11px;
-    color: var(--secondary-text);
-    letter-spacing: 0.5px;
-    text-transform: uppercase;
+    font-size: 12px;
+    color: var(--text-color-secondary);
+    text-transform: none; /* Removing uppercase for a softer look */
 }
+
+/* Action Buttons in Header */
+.profile-header .primary-btn {
+    font-size: 14px;
+    font-weight: 600;
+    padding: 12px 24px;
+    border-radius: var(--border-radius-md);
+    transition: var(--transition-smooth);
+    min-width: 140px;
+}
+
+#edit-profile-btn {
+    background-color: var(--bg-color-tertiary);
+    color: var(--text-color-primary);
+}
+#edit-profile-btn:hover {
+    background-color: #3a3a3c;
+}
+
+#share-profile-btn {
+    background-color: var(--accent-primary);
+    color: white;
+    box-shadow: var(--shadow-sm);
+}
+#share-profile-btn:hover {
+    background-color: #e01a43;
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
 /* Video Grid */
 .video-grid { 
     display: grid; 
     grid-template-columns: repeat(3, 1fr); 
-    gap: 1px; 
-    background: var(--border-color);
+    gap: 2px;
+    padding: 2px;
+    background-color: var(--bg-color-dark);
 }
 
 .grid-item { 
-    aspect-ratio: 3/4; 
-    background: var(--bg-secondary);
+    aspect-ratio: 9 / 16; /* Correct aspect ratio for vertical videos */
+    background: var(--bg-color-secondary);
     position: relative;
     overflow: hidden;
     cursor: pointer;
-    transition: var(--transition);
-    border-radius: 8px;
-    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius-sm); /* Added for softer corners */
 }
 
-.grid-item:hover {
-    transform: scale(1.04);
-    z-index: 1;
-    border-color: var(--accent-color);
-    box-shadow: 0 8px 20px rgba(255, 0, 110, 0.25);
-}
-
-.grid-item video { 
+.grid-item video,
+.grid-item img { /* Also style for img in case video fails to load */
     width: 100%; 
     height: 100%; 
     object-fit: cover; 
-    transition: var(--transition);
+    transition: transform 0.4s ease;
 }
 
-.grid-item:hover video {
-    transform: scale(1.08);
+.grid-item:hover video,
+.grid-item:hover img {
+    transform: scale(1.1);
 }
 
 .grid-overlay {
@@ -132,41 +141,20 @@
     bottom: 0;
     left: 0;
     right: 0;
-    background: linear-gradient(to top, rgba(0,0,0,0.9), rgba(0,0,0,0.3) 50%, transparent);
-    padding: 12px;
-    opacity: 0;
-    transition: var(--transition);
+    background: linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 80%);
+    padding: 8px;
+    color: white;
+    font-size: 12px;
+    font-weight: 600;
     display: flex;
-    justify-content: flex-start;
+    align-items: center;
+    gap: 6px;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: var(--transition-smooth);
 }
 
 .grid-item:hover .grid-overlay {
     opacity: 1;
-}
-.profile-header .primary-btn {
-    background: transparent;
-    border: 1px solid var(--accent-color);
-    color: var(--accent-color);
-    box-shadow: none;
-    padding: 8px 16px;
-    font-size: 12px;
-    font-weight: 500;
-    letter-spacing: 0.5px;
-}
-
-.profile-header .primary-btn:hover {
-    background: var(--accent-color);
-    color: var(--bg-color);
-    transform: translateY(-2px);
-}
-
-.profile-header .primary-btn:last-child {
-    background: var(--accent-color);
-    color: var(--bg-color);
-    border: 1px solid var(--accent-color);
-}
-
-.profile-header .primary-btn:last-child:hover {
-    background: transparent;
-    color: var(--accent-color);
+    transform: translateY(0);
 }

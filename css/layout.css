@@ -1,41 +1,80 @@
-/* Main Layout and App Container */
+/* =================================================================
+   MAIN LAYOUT & APP CONTAINER - REDESIGNED
+   ================================================================= */
 #app {
     width: 100%;
-    max-width: 450px;
+    max-width: 450px; /* Common phone width */
     height: 100%;
-    max-height: 900px;
-    background-color: var(--bg-color);
+    max-height: 950px;
+    background-color: var(--bg-color-dark);
     position: relative;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 20px 80px rgba(0,0,0,0.5), 0 0 80px rgba(255,0,110,0.1);
-    border-radius: 24px;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4), 0 0 15px rgba(0,0,0,0.2);
+    border-radius: 2rem; /* Softer, larger radius */
     overflow: hidden;
-    animation: slideUp 0.5s ease-out;
-    border: 1px solid rgba(255,255,255,0.05);
+    animation: slideUp 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+    border: 1px solid var(--border-color);
 }
 
 @keyframes slideUp {
-    from { opacity: 0; transform: translateY(50px); }
-    to { opacity: 1; transform: translateY(0); }
+    from { opacity: 0.5; transform: translateY(30px) scale(0.98); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-/* Views Container */
+/* Top menu bar styling */
+.top-menu-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: calc(var(--top-bar-height) + var(--safe-top));
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--safe-top) 16px 0;
+    z-index: 100;
+    background: linear-gradient(180deg, rgba(0,0,0,0.4) 0%, rgba(0,0,0,0) 100%);
+    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(20px);
+}
+
+.top-logo {
+    font-size: 20px;
+    font-weight: 700;
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    background: linear-gradient(45deg, var(--text-color-primary), var(--text-color-secondary));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+
+/* Main content view container */
 .view {
     flex: 1;
-    height: calc(100% - var(--nav-height) - 56px);
-    overflow: hidden;
+    height: 100%; /* Views now take full height */
+    overflow-y: auto; /* Allow scrolling within views */
+    overflow-x: hidden;
     display: none;
     position: relative;
-    margin-top: 56px;
+    -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+    padding-top: calc(var(--top-bar-height) + var(--safe-top)); /* Space for top menu bar */
+    padding-bottom: calc(var(--nav-height) + var(--safe-bottom)); /* Space for bottom nav */
+}
+
+/* Make sure feed view scrolls properly */
+#feed-view {
+    padding-bottom: 0; /* Feed has its own internal scroll container */
 }
 
 .view.active { 
     display: block; 
-    animation: fadeIn 0.3s ease-out;
+    animation: fadeIn 0.4s ease-out;
 }
 
 @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
 }

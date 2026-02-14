@@ -24,6 +24,15 @@ class AdvancedApp {
         this.cameraInitialized = false;
         this.cameraInitPromise = null;
         this.recordBtnBound = false;
+        this.chatMessagesUnsubscribe = null;
+        this.chatTypingUnsubscribe = null;
+        this.chatRefreshInterval = null;
+        this.chatPresenceInterval = null;
+        this.stopTypingTimeout = null;
+        this.lastTypingState = false;
+        this.lastTypingAt = 0;
+        this.keyboardHandlersBound = false;
+        this.emojiList = ['😀', '😂', '😍', '😎', '🥳', '🔥', '❤️', '👍', '👏', '🤝', '🤔', '😢', '🙌', '✨', '😅', '🎉'];
         
         this.init();
     }
@@ -59,7 +68,6 @@ class AdvancedApp {
         this.toast = document.getElementById('toast');
         this.commentsSheet = document.getElementById('comments-sheet');
         this.shareModal = document.getElementById('share-modal');
-        this.quickFab = document.getElementById('quick-fab');
         this.hamburgerBtn = document.getElementById('hamburger-btn');
         this.menuDropdown = document.getElementById('menu-dropdown');
         this.themeToggleMenu = document.getElementById('theme-toggle-menu');
@@ -85,6 +93,17 @@ class AdvancedApp {
         this.newMessageBtn = document.getElementById('new-message-btn');
         this.messageSearchInput = document.getElementById('message-search-input');
         this.messagesEmpty = document.getElementById('messages-empty');
+        this.chatUserTrigger = document.getElementById('chat-user-trigger');
+        this.chatUserAvatar = document.getElementById('chat-user-avatar');
+        this.chatUserName = document.getElementById('chat-user-name');
+        this.chatUserStatus = document.getElementById('chat-user-status');
+        this.typingIndicator = document.getElementById('typing-indicator');
+        this.typingText = document.getElementById('typing-text');
+        this.emojiPicker = document.getElementById('emoji-picker');
+        this.emojiToggleBtn = document.getElementById('emoji-toggle-btn');
+        this.attachFileBtn = document.getElementById('attach-file-btn');
+        this.chatFileInput = document.getElementById('chat-file-input');
+        this.messageInputArea = document.getElementById('message-input-area');
 
         this.cameraPreview = document.getElementById('camera-preview');
         this.cameraVideo = document.getElementById('camera-video');
@@ -215,7 +234,6 @@ class AdvancedApp {
         this.setupSearchEvents();
         this.setupNotificationsEvents();
         this.setupMessagesEvents();
-        this.setupFABEvents();
         this.setupEditProfileEvents();
 
         this.feedContainer.addEventListener('scroll', () => {
@@ -474,12 +492,6 @@ class AdvancedApp {
             this.searchViewClear.style.display = 'none';
             this.searchEmpty.style.display = 'flex';
             this.searchResults.innerHTML = '';
-        });
-    }
-
-    setupFABEvents() {
-        this.quickFab.addEventListener('click', () => {
-            AdvancedViewRenderer.showToast('Быстрые действия доступны', 'info');
         });
     }
 
@@ -946,6 +958,12 @@ class AdvancedApp {
 
     navigateTo(viewId) {
         document.querySelectorAll('video').forEach(v => v.pause());
+        if (viewId !== 'messages-view') {
+            this.teardownChatRealtime();
+            this.hideEmojiPicker();
+            this.updateTypingStatus(false);
+            if (this.chatDialog) this.chatDialog.style.setProperty('--keyboard-offset', '0px');
+        }
         this.views.forEach(v => v.classList.remove('active'));
         
         const targetView = document.getElementById(viewId);
@@ -1271,17 +1289,29 @@ class AdvancedApp {
                 });
             });
             this.loadNotifications('all');
+            this.updateNotificationBadge();
         }
     }
 
-    loadNotifications(filter = 'all') {
+    async loadNotifications(filter = 'all') {
         if (!this.notificationsList || !this.notificationsEmpty) return;
-        
-        const notifications = this.dataService.getNotifications(filter);
+
+        let notifications = [];
+        try {
+            if (firebaseService && firebaseService.isInitialized() && typeof firebaseService.getUserNotifications === 'function') {
+                notifications = await firebaseService.getUserNotifications(filter);
+            } else {
+                notifications = this.dataService.getNotifications(filter);
+            }
+        } catch (error) {
+            console.error('Ошибка загрузки уведомлений:', error);
+            notifications = [];
+        }
         
         if (notifications.length === 0) {
             this.notificationsList.innerHTML = '';
             this.notificationsEmpty.style.display = 'flex';
+            this.updateNotificationBadge();
             return;
         }
 
@@ -1293,33 +1323,43 @@ class AdvancedApp {
             item.className = `notification-item ${notif.read ? '' : 'unread'}`;
 
             let icon = '', text = '', userName = '';
+            const notifData = notif.data || {};
 
             if (notif.type === 'like') {
                 icon = 'like';
-                userName = notif.data.fromUser;
+                userName = notifData.fromUser || 'user';
                 text = `поставил лайк вашему видео`;
             } else if (notif.type === 'comment') {
                 icon = 'comment';
-                userName = notif.data.fromUser;
-                text = `${notif.data.text}`;
+                userName = notifData.fromUser || 'user';
+                text = `${notifData.text || 'Новый комментарий'}`;
             }
 
             const time = this.formatTime(notif.timestamp);
 
+            const safeUser = this.escapeHtml(userName || 'user');
+            const thumb = notifData.videoThumbnail
+                ? notifData.videoThumbnail
+                : 'https://via.placeholder.com/48x48?text=Video';
             item.innerHTML = `
-                <img src="https://ui-avatars.com/api/?name=${userName}&background=random&size=48" class="notification-avatar">
+                <img src="https://ui-avatars.com/api/?name=${encodeURIComponent(userName || 'user')}&background=random&size=48" class="notification-avatar">
                 <div class="notification-content">
-                    <div class="notification-user">@${userName}</div>
-                    <div class="notification-text">${text}</div>
+                    <div class="notification-user">@${safeUser}</div>
+                    <div class="notification-text">${this.escapeHtml(text)}</div>
                     <div class="notification-time">${time}</div>
                 </div>
-                <img src="${notif.data.videoThumbnail}" class="notification-badge-item ${icon === 'comment' ? 'comment' : ''}" alt="видео">
+                <img src="${thumb}" class="notification-badge-item ${icon === 'comment' ? 'comment' : ''}" alt="видео">
             `;
 
-            item.addEventListener('click', () => {
-                this.dataService.markNotificationAsRead(notif.id);
+            item.addEventListener('click', async () => {
+                if (firebaseService && firebaseService.isInitialized() && typeof firebaseService.markNotificationAsRead === 'function') {
+                    await firebaseService.markNotificationAsRead(notif.id);
+                } else {
+                    this.dataService.markNotificationAsRead(notif.id);
+                }
                 item.classList.remove('unread');
                 AdvancedViewRenderer.showToast('Уведомление прочитано', 'info');
+                this.updateNotificationBadge();
             });
 
             this.notificationsList.appendChild(item);
@@ -1328,8 +1368,20 @@ class AdvancedApp {
         this.updateNotificationBadge();
     }
 
-    updateNotificationBadge() {
-        const unreadCount = this.dataService.getUnreadNotificationsCount();
+    async updateNotificationBadge() {
+        if (!this.notificationsBadge) return;
+        let unreadCount = 0;
+        try {
+            if (firebaseService && firebaseService.isInitialized() && typeof firebaseService.getUserNotifications === 'function') {
+                const all = await firebaseService.getUserNotifications('all');
+                unreadCount = all.filter(n => !n.read).length;
+            } else {
+                unreadCount = this.dataService.getUnreadNotificationsCount();
+            }
+        } catch (error) {
+            console.error('Ошибка обновления бейджа уведомлений:', error);
+            unreadCount = 0;
+        }
         if (unreadCount > 0) {
             this.notificationsBadge.textContent = unreadCount;
             this.notificationsBadge.style.display = 'flex';
@@ -1339,8 +1391,10 @@ class AdvancedApp {
     }
 
     formatTime(timestamp) {
+        const normalizedTs = this.normalizeTimestampValue(timestamp);
+        if (!normalizedTs) return '';
         const now = Date.now();
-        const diff = now - timestamp;
+        const diff = now - normalizedTs;
         const seconds = Math.floor(diff / 1000);
         const minutes = Math.floor(seconds / 60);
         const hours = Math.floor(minutes / 60);
@@ -1353,11 +1407,47 @@ class AdvancedApp {
         return `${days}д назад`;
     }
 
+    normalizeTimestampValue(value) {
+        if (typeof value === 'number') return value;
+        if (value && typeof value.toMillis === 'function') return value.toMillis();
+        if (value instanceof Date) return value.getTime();
+        return 0;
+    }
+
+    formatClockTime(timestamp) {
+        const normalizedTs = this.normalizeTimestampValue(timestamp);
+        if (!normalizedTs) return '';
+        return new Date(normalizedTs).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    formatLastSeen(online, timestamp) {
+        if (online) return 'в сети';
+        const normalizedTs = this.normalizeTimestampValue(timestamp);
+        if (!normalizedTs) return 'был(а) недавно';
+        const diff = Date.now() - normalizedTs;
+        const min = Math.floor(diff / 60000);
+        if (min < 1) return 'был(а) только что';
+        if (min < 60) return `был(а) ${min}м назад`;
+        const hours = Math.floor(min / 60);
+        if (hours < 24) return `был(а) ${hours}ч назад`;
+        return `был(а) ${new Date(normalizedTs).toLocaleDateString('ru-RU')}`;
+    }
+
     setupMessagesEvents() {
         if (this.backToListBtn) {
-            this.backToListBtn.addEventListener('click', () => {
+            this.backToListBtn.addEventListener('click', async () => {
+                await this.updateTypingStatus(false);
+                this.teardownChatRealtime();
+                this.hideEmojiPicker();
                 this.chatDialog.style.display = 'none';
+                this.chatDialog.style.setProperty('--keyboard-offset', '0px');
                 this.messagesListSection.style.display = 'flex';
+                this.state.currentChatId = null;
+                this.state.currentChatUser = null;
+                this.state.currentChatUid = null;
+                this.state.currentChatOnline = false;
+                this.state.currentChatLastSeen = null;
+                await this.loadChats();
             });
         }
 
@@ -1366,8 +1456,14 @@ class AdvancedApp {
         }
 
         if (this.messageInput) {
-            this.messageInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') this.sendMessage();
+            this.messageInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    this.sendMessage();
+                }
+            });
+            this.messageInput.addEventListener('input', () => {
+                this.onMessageInputChanged();
             });
         }
 
@@ -1380,6 +1476,44 @@ class AdvancedApp {
             });
         }
 
+        if (this.messageSearchInput) {
+            this.messageSearchInput.addEventListener('input', () => {
+                this.filterChatsBySearch(this.messageSearchInput.value);
+            });
+        }
+
+        if (this.chatUserTrigger) {
+            this.chatUserTrigger.addEventListener('click', () => this.openCurrentChatProfile());
+        }
+
+        if (this.emojiToggleBtn) {
+            this.emojiToggleBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggleEmojiPicker();
+            });
+        }
+
+        if (this.attachFileBtn && this.chatFileInput) {
+            this.attachFileBtn.addEventListener('click', () => this.chatFileInput.click());
+            this.chatFileInput.addEventListener('change', async (e) => {
+                const file = e.target.files && e.target.files[0];
+                if (file) {
+                    await this.sendFileMessage(file);
+                }
+                this.chatFileInput.value = '';
+            });
+        }
+
+        document.addEventListener('click', (e) => {
+            if (!this.emojiPicker || !this.emojiToggleBtn) return;
+            if (!this.emojiPicker.contains(e.target) && !this.emojiToggleBtn.contains(e.target)) {
+                this.hideEmojiPicker();
+            }
+        });
+
+        this.renderEmojiPicker();
+        this.setupKeyboardViewportSync();
+        if (this.sendMessageBtn) this.sendMessageBtn.disabled = true;
         this.loadChats();
     }
 
@@ -1410,24 +1544,64 @@ class AdvancedApp {
         chats.forEach(chat => {
             const chatItem = document.createElement('div');
             chatItem.className = `chat-item ${chat.unread ? 'unread' : ''}`;
+            chatItem.dataset.search = `${(chat.otherUser || '').toLowerCase()} ${(chat.lastMessage || '').toLowerCase()}`;
 
-            const lastMsg = chat.lastMessage.substring(0, 30) + (chat.lastMessage.length > 30 ? '...' : '');
-
+            const statusClass = chat.lastMessageRead
+                ? 'read'
+                : (chat.lastMessageDelivered ? 'delivered' : 'sent');
+            const statusIcon = chat.lastMessageRead
+                ? '✓✓'
+                : (chat.lastMessageDelivered ? '✓✓' : '✓');
+            const preview = this.escapeHtml(chat.lastMessage || 'Сообщений пока нет');
+            const statusPart = chat.lastMessageFromMe
+                ? `<span class="chat-last-status ${statusClass}">${statusIcon}</span>`
+                : '';
+            const unreadBadge = chat.unreadCount > 0
+                ? `<span class="chat-unread-count">${chat.unreadCount > 99 ? '99+' : chat.unreadCount}</span>`
+                : '';
+            const avatar = chat.otherAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(chat.otherUser || 'user')}&background=random&size=64`;
+            const presence = this.formatLastSeen(!!chat.otherOnline, chat.otherLastSeen);
+            const onlineDot = chat.otherOnline ? '<span class="chat-online-dot"></span>' : '';
+            const safeUser = this.escapeHtml(chat.otherUser || 'user');
+            const verifiedBadge = chat.otherVerified ? '<span style="color:#46a4ff; font-size:12px;">✓</span>' : '';
             chatItem.innerHTML = `
-                <img src="https://ui-avatars.com/api/?name=${chat.otherUser}&background=random&size=48" class="chat-avatar">
-                <div class="chat-info">
-                    <div class="chat-user">@${chat.otherUser}</div>
-                    <div class="chat-last-message">${lastMsg}</div>
+                <div class="chat-avatar-wrap">
+                    <img src="${avatar}" class="chat-avatar" alt="@${safeUser}">
+                    ${onlineDot}
                 </div>
-                <div class="chat-time">${this.formatTime(chat.lastMessageTime)}</div>
+                <div class="chat-info">
+                    <div class="chat-main-row">
+                        <div class="chat-user">@${safeUser} ${verifiedBadge}</div>
+                        <div class="chat-presence">${presence}</div>
+                    </div>
+                    <div class="chat-preview-row">
+                        <div class="chat-last-message">${statusPart}${preview}</div>
+                        <div class="chat-time">${this.formatTime(chat.lastMessageTime)}</div>
+                        ${unreadBadge}
+                    </div>
+                </div>
             `;
 
             chatItem.addEventListener('click', () => {
                 this.openChat(chat.otherUser, chat.id, chat.otherUid || null);
             });
 
+            const avatarEl = chatItem.querySelector('.chat-avatar-wrap');
+            if (avatarEl) {
+                avatarEl.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (chat.otherUid) {
+                        this.openUserProfileByUid(chat.otherUid);
+                    } else {
+                        this.openChat(chat.otherUser, chat.id, chat.otherUid || null);
+                    }
+                });
+            }
+
             this.chatList.appendChild(chatItem);
         });
+
+        this.filterChatsBySearch(this.messageSearchInput ? this.messageSearchInput.value : '');
     }
 
     async openChat(username, chatId = null, targetUid = null) {
@@ -1439,13 +1613,27 @@ class AdvancedApp {
             return;
         }
 
+        await this.updateTypingStatus(false);
+        this.teardownChatRealtime();
+        this.hideEmojiPicker();
+
         let resolvedTargetUid = targetUid;
+        let targetProfile = null;
         if (!resolvedTargetUid && firebaseService && firebaseService.isInitialized()) {
             try {
-                const targetProfile = await firebaseService.getUserByName(username);
+                targetProfile = await firebaseService.getUserByName(username);
                 if (targetProfile && targetProfile.uid) {
                     resolvedTargetUid = targetProfile.uid;
                     username = targetProfile.name || username;
+                }
+            } catch (error) {
+                console.error('Ошибка определения получателя:', error);
+            }
+        } else if (resolvedTargetUid && firebaseService && firebaseService.isInitialized()) {
+            try {
+                targetProfile = await firebaseService.getUserProfile(resolvedTargetUid);
+                if (targetProfile && targetProfile.name) {
+                    username = targetProfile.name;
                 }
             } catch (error) {
                 console.error('Ошибка определения получателя:', error);
@@ -1460,26 +1648,23 @@ class AdvancedApp {
             }
         }
 
-        const userNameEl = document.getElementById('chat-user-name');
-        const userAvatarEl = document.getElementById('chat-user-avatar');
-        if (userNameEl) userNameEl.textContent = `@${username}`;
-        if (userAvatarEl) userAvatarEl.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=random&size=40`;
-
-        let messages = [];
-        try {
-            if (firebaseService && firebaseService.isInitialized() && typeof firebaseService.getChatMessages === 'function') {
-                messages = await firebaseService.getChatMessages(chatId);
-            } else {
-                messages = this.dataService.getChatMessages(chatId);
+        if (!targetProfile && resolvedTargetUid && firebaseService && firebaseService.isInitialized()) {
+            try {
+                targetProfile = await firebaseService.getUserProfile(resolvedTargetUid);
+            } catch (error) {
+                console.error('Ошибка загрузки профиля собеседника:', error);
             }
-        } catch (error) {
-            console.error('Ошибка загрузки сообщений:', error);
-            AdvancedViewRenderer.showToast('Не удалось загрузить сообщения', 'error');
-            messages = [];
         }
 
-        messages.sort((a, b) => a.timestamp - b.timestamp);
-        this.messagesContainer.innerHTML = '';
+        if (!targetProfile && typeof this.dataService.getAllUsers === 'function') {
+            const localProfile = this.dataService.getAllUsers().find(u => u.name === username);
+            if (localProfile) {
+                targetProfile = localProfile;
+                if (!resolvedTargetUid && localProfile.uid) {
+                    resolvedTargetUid = localProfile.uid;
+                }
+            }
+        }
 
         if (!resolvedTargetUid && chatId && currentUser.uid && chatId.includes('_')) {
             const parts = chatId.split('_');
@@ -1488,23 +1673,21 @@ class AdvancedApp {
             }
         }
 
-        messages.forEach(msg => {
-            const msgEl = document.createElement('div');
-            const isOwn = (msg.fromUid && currentUser.uid)
-                ? msg.fromUid === currentUser.uid
-                : msg.fromUser === currentUser.name;
-            msgEl.className = `message ${isOwn ? 'own' : ''}`;
-            const time = new Date(msg.timestamp).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+        const avatar = targetProfile?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=random&size=64`;
+        const online = !!targetProfile?.online;
+        const lastSeen = targetProfile?.lastSeen || targetProfile?.lastActive || targetProfile?.updatedAt || null;
 
-            msgEl.innerHTML = `
-                <span class="message-time">${time}</span>
-                <div class="message-content">${msg.content}</div>
-            `;
-
-            this.messagesContainer.appendChild(msgEl);
-        });
+        if (this.chatUserName) this.chatUserName.textContent = `@${username}`;
+        if (this.chatUserAvatar) this.chatUserAvatar.src = avatar;
+        if (this.chatUserStatus) this.chatUserStatus.textContent = this.formatLastSeen(online, lastSeen);
+        if (this.typingText) this.typingText.textContent = `@${username} печатает...`;
 
         try {
+            if (firebaseService && firebaseService.isInitialized() && typeof firebaseService.markIncomingAsDelivered === 'function') {
+                await firebaseService.markIncomingAsDelivered(chatId);
+            } else if (typeof this.dataService.markChatAsDelivered === 'function') {
+                this.dataService.markChatAsDelivered(chatId);
+            }
             if (firebaseService && firebaseService.isInitialized() && typeof firebaseService.markChatAsRead === 'function') {
                 await firebaseService.markChatAsRead(chatId);
             } else {
@@ -1516,24 +1699,357 @@ class AdvancedApp {
 
         this.messagesListSection.style.display = 'none';
         this.chatDialog.style.display = 'flex';
-        this.messageInput.focus();
+        if (this.messageInput) {
+            this.messageInput.focus();
+            this.onMessageInputChanged();
+        }
 
         this.state.currentChatId = chatId;
         this.state.currentChatUser = username;
         this.state.currentChatUid = resolvedTargetUid;
+        this.state.currentChatAvatar = avatar;
+        this.state.currentChatOnline = online;
+        this.state.currentChatLastSeen = this.normalizeTimestampValue(lastSeen);
 
+        await this.refreshCurrentChatMessages();
+        this.subscribeToActiveChat();
+        await this.loadChats();
+    }
+
+    async refreshCurrentChatMessages() {
+        if (!this.state.currentChatId) return;
+        let messages = [];
+        try {
+            if (firebaseService && firebaseService.isInitialized() && typeof firebaseService.getChatMessages === 'function') {
+                messages = await firebaseService.getChatMessages(this.state.currentChatId);
+            } else {
+                messages = this.dataService.getChatMessages(this.state.currentChatId);
+            }
+        } catch (error) {
+            console.error('Ошибка загрузки сообщений:', error);
+            messages = [];
+        }
+        this.renderChatMessages(messages);
         setTimeout(() => {
+            if (this.messagesContainer) {
+                this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+            }
+        }, 40);
+    }
+
+    renderChatMessages(messages = []) {
+        if (!this.messagesContainer) return;
+        const currentUser = this.dataService.getCurrentUser();
+        const currentUid = currentUser ? currentUser.uid : null;
+        const currentName = currentUser ? currentUser.name : null;
+
+        const sorted = [...messages].sort((a, b) => this.normalizeTimestampValue(a.timestamp) - this.normalizeTimestampValue(b.timestamp));
+        this.messagesContainer.innerHTML = '';
+
+        sorted.forEach(msg => {
+            const isOwn = (msg.fromUid && currentUid)
+                ? msg.fromUid === currentUid
+                : msg.fromUser === currentName;
+
+            const msgEl = document.createElement('div');
+            msgEl.className = `message ${isOwn ? 'own' : ''}`;
+
+            const formattedTime = this.formatClockTime(msg.timestamp);
+            const statusClass = msg.read ? 'read' : (msg.delivered ? 'delivered' : 'sent');
+            const statusIcon = msg.read ? '✓✓' : (msg.delivered ? '✓✓' : '✓');
+            const statusHtml = isOwn ? `<span class="message-status ${statusClass}">${statusIcon}</span>` : '';
+            const safeText = this.escapeHtml(msg.content || '').replace(/\n/g, '<br>');
+            const bodyHtml = msg.type === 'file'
+                ? this.renderFileMessageBody(msg)
+                : `<div class="message-content">${safeText}</div>`;
+
+            msgEl.innerHTML = `
+                ${bodyHtml}
+                <div class="message-meta">
+                    <span>${formattedTime}</span>
+                    ${statusHtml}
+                </div>
+            `;
+            this.messagesContainer.appendChild(msgEl);
+        });
+    }
+
+    renderFileMessageBody(message) {
+        const file = message.file || {};
+        const safeName = this.escapeHtml(file.name || 'Файл');
+        const size = this.formatFileSize(file.size || 0);
+        const isImage = typeof file.mime === 'string' && file.mime.startsWith('image/');
+        const safeUrl = file.url ? this.escapeHtml(file.url) : '';
+
+        const thumb = (isImage && safeUrl)
+            ? `<img class="message-file-thumb" src="${safeUrl}" alt="${safeName}">`
+            : `<div class="message-file-icon">📎</div>`;
+
+        const link = safeUrl
+            ? `<a class="message-file-link" href="${safeUrl}" target="_blank" rel="noopener noreferrer">Открыть файл</a>`
+            : '';
+
+        return `
+            <div class="message-content">
+                <div class="message-file">
+                    ${thumb}
+                    <div class="message-file-info">
+                        <div class="message-file-name">${safeName}</div>
+                        <div class="message-file-size">${size}</div>
+                        ${link}
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    formatFileSize(size) {
+        const bytes = Number(size) || 0;
+        if (bytes < 1024) return `${bytes} Б`;
+        const kb = bytes / 1024;
+        if (kb < 1024) return `${kb.toFixed(1)} КБ`;
+        const mb = kb / 1024;
+        return `${mb.toFixed(1)} МБ`;
+    }
+
+    filterChatsBySearch(query = '') {
+        if (!this.chatList) return;
+        const q = String(query).trim().toLowerCase();
+        this.chatList.querySelectorAll('.chat-item').forEach(item => {
+            const hay = item.dataset.search || '';
+            item.style.display = !q || hay.includes(q) ? '' : 'none';
+        });
+    }
+
+    renderEmojiPicker() {
+        if (!this.emojiPicker) return;
+        this.emojiPicker.innerHTML = this.emojiList
+            .map(emoji => `<button class="emoji-btn" type="button" data-emoji="${emoji}">${emoji}</button>`)
+            .join('');
+        this.emojiPicker.querySelectorAll('.emoji-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (!this.messageInput) return;
+                const emoji = btn.dataset.emoji || '';
+                this.messageInput.value += emoji;
+                this.messageInput.focus();
+                this.onMessageInputChanged();
+                this.updateTypingStatus(true);
+            });
+        });
+    }
+
+    toggleEmojiPicker() {
+        if (!this.emojiPicker) return;
+        const open = this.emojiPicker.style.display !== 'none';
+        this.emojiPicker.style.display = open ? 'none' : 'flex';
+    }
+
+    hideEmojiPicker() {
+        if (this.emojiPicker) this.emojiPicker.style.display = 'none';
+    }
+
+    setupKeyboardViewportSync() {
+        if (this.keyboardHandlersBound || !window.visualViewport) return;
+        this.keyboardHandlersBound = true;
+
+        const syncOffset = () => {
+            if (!this.chatDialog) return;
+            if (this.chatDialog.style.display === 'none') {
+                this.chatDialog.style.setProperty('--keyboard-offset', '0px');
+                return;
+            }
+            const viewport = window.visualViewport;
+            const keyboardOffset = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
+            this.chatDialog.style.setProperty('--keyboard-offset', `${keyboardOffset}px`);
+        };
+
+        window.visualViewport.addEventListener('resize', syncOffset);
+        window.visualViewport.addEventListener('scroll', syncOffset);
+    }
+
+    onMessageInputChanged() {
+        if (!this.messageInput || !this.sendMessageBtn) return;
+        const hasText = this.messageInput.value.trim().length > 0;
+        this.sendMessageBtn.disabled = !hasText;
+
+        if (hasText) {
+            this.updateTypingStatus(true);
+            clearTimeout(this.stopTypingTimeout);
+            this.stopTypingTimeout = setTimeout(() => this.updateTypingStatus(false), 1500);
+        } else {
+            this.updateTypingStatus(false);
+        }
+    }
+
+    async updateTypingStatus(isTyping) {
+        if (!this.state.currentChatId) return;
+        const currentUser = this.dataService.getCurrentUser();
+        if (!currentUser) return;
+
+        const now = Date.now();
+        const shouldSkip = (this.lastTypingState === isTyping) && (isTyping ? (now - (this.lastTypingAt || 0) < 1000) : true);
+        if (shouldSkip) return;
+
+        this.lastTypingState = isTyping;
+        this.lastTypingAt = now;
+
+        try {
+            if (firebaseService && firebaseService.isInitialized() && typeof firebaseService.setTypingStatus === 'function') {
+                await firebaseService.setTypingStatus(this.state.currentChatId, isTyping);
+            } else if (typeof this.dataService.setTypingStatus === 'function') {
+                this.dataService.setTypingStatus(this.state.currentChatId, currentUser.name, isTyping);
+            }
+        } catch (error) {
+            console.error('Ошибка обновления typing статуса:', error);
+        }
+    }
+
+    handleTypingState(typingData) {
+        if (!this.typingIndicator || !this.chatUserStatus) return;
+        const currentUid = firebaseService && firebaseService.getCurrentUid ? firebaseService.getCurrentUid() : null;
+        const targetUid = this.state.currentChatUid;
+        let isTyping = false;
+
+        if (targetUid && typingData && typingData[targetUid]) {
+            const state = typingData[targetUid];
+            const updatedAt = this.normalizeTimestampValue(state.updatedAt);
+            isTyping = !!state.typing && (Date.now() - updatedAt < 5000);
+        } else if (!targetUid && typingData) {
+            const targetName = this.state.currentChatUser;
+            Object.keys(typingData).forEach(uid => {
+                if (uid === currentUid) return;
+                const state = typingData[uid];
+                const updatedAt = this.normalizeTimestampValue(state.updatedAt);
+                if (state.name === targetName && state.typing && (Date.now() - updatedAt < 5000)) {
+                    isTyping = true;
+                }
+            });
+        }
+
+        if (isTyping) {
+            this.typingIndicator.style.display = 'flex';
+            this.chatUserStatus.textContent = 'печатает...';
+        } else {
+            this.typingIndicator.style.display = 'none';
+            this.chatUserStatus.textContent = this.formatLastSeen(
+                !!this.state.currentChatOnline,
+                this.state.currentChatLastSeen
+            );
+        }
+    }
+
+    subscribeToActiveChat() {
+        if (!this.state.currentChatId) return;
+        this.teardownChatRealtime();
+
+        if (firebaseService && firebaseService.isInitialized()) {
+            if (typeof firebaseService.subscribeToChatMessages === 'function') {
+                this.chatMessagesUnsubscribe = firebaseService.subscribeToChatMessages(
+                    this.state.currentChatId,
+                    async (messages) => {
+                        try {
+                            this.renderChatMessages(messages);
+                            this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+                            await firebaseService.markIncomingAsDelivered(this.state.currentChatId);
+                            await firebaseService.markChatAsRead(this.state.currentChatId);
+                            await this.loadChats();
+                        } catch (error) {
+                            console.error('Ошибка live-обновления чата:', error);
+                        }
+                    }
+                );
+            }
+
+            if (typeof firebaseService.subscribeToTyping === 'function') {
+                this.chatTypingUnsubscribe = firebaseService.subscribeToTyping(
+                    this.state.currentChatId,
+                    (typingData) => this.handleTypingState(typingData)
+                );
+            }
+
+            if (this.state.currentChatUid && typeof firebaseService.getUserProfile === 'function') {
+                this.chatPresenceInterval = setInterval(async () => {
+                    try {
+                        const profile = await firebaseService.getUserProfile(this.state.currentChatUid);
+                        if (!profile) return;
+                        this.state.currentChatOnline = !!profile.online;
+                        this.state.currentChatLastSeen = this.normalizeTimestampValue(profile.lastSeen || profile.lastActive || profile.updatedAt);
+                        if (this.typingIndicator && this.typingIndicator.style.display === 'none' && this.chatUserStatus) {
+                            this.chatUserStatus.textContent = this.formatLastSeen(
+                                this.state.currentChatOnline,
+                                this.state.currentChatLastSeen
+                            );
+                        }
+                    } catch (error) {
+                        console.error('Ошибка обновления статуса собеседника:', error);
+                    }
+                }, 10000);
+            }
+            return;
+        }
+
+        this.chatRefreshInterval = setInterval(async () => {
+            if (!this.state.currentChatId) return;
+            const messages = this.dataService.getChatMessages(this.state.currentChatId);
+            this.renderChatMessages(messages);
             this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
-        }, 100);
+            this.dataService.markChatAsDelivered(this.state.currentChatId);
+            this.dataService.markChatAsRead(this.state.currentChatId);
+            this.handleTypingState(this.dataService.typingState[this.state.currentChatId] || {});
+            await this.loadChats();
+        }, 1500);
+    }
+
+    teardownChatRealtime() {
+        if (this.chatMessagesUnsubscribe) {
+            this.chatMessagesUnsubscribe();
+            this.chatMessagesUnsubscribe = null;
+        }
+        if (this.chatTypingUnsubscribe) {
+            this.chatTypingUnsubscribe();
+            this.chatTypingUnsubscribe = null;
+        }
+        if (this.chatRefreshInterval) {
+            clearInterval(this.chatRefreshInterval);
+            this.chatRefreshInterval = null;
+        }
+        if (this.chatPresenceInterval) {
+            clearInterval(this.chatPresenceInterval);
+            this.chatPresenceInterval = null;
+        }
+        clearTimeout(this.stopTypingTimeout);
+        this.stopTypingTimeout = null;
+        this.lastTypingState = false;
+        this.lastTypingAt = 0;
+        if (this.typingIndicator) this.typingIndicator.style.display = 'none';
+    }
+
+    async openCurrentChatProfile() {
+        if (this.state.currentChatUid) {
+            await this.openUserProfileByUid(this.state.currentChatUid);
+            return;
+        }
+
+        if (!this.state.currentChatUser) return;
+        if (firebaseService && firebaseService.isInitialized() && typeof firebaseService.getUserByName === 'function') {
+            try {
+                const profile = await firebaseService.getUserByName(this.state.currentChatUser);
+                if (profile && profile.uid) {
+                    await this.openUserProfileByUid(profile.uid);
+                }
+            } catch (error) {
+                console.error('Ошибка перехода в профиль собеседника:', error);
+            }
+        }
     }
 
     async sendMessage() {
         if (!this.messageInput || !this.messagesContainer) return;
-        
+
         const content = this.messageInput.value.trim();
         if (!content) return;
 
-        const currentUser = firebaseService.getCurrentUser();
+        const currentUser = this.dataService.getCurrentUser();
         if (!currentUser) {
             this.navigateTo('auth-view');
             return;
@@ -1544,6 +2060,17 @@ class AdvancedApp {
             return;
         }
 
+        const payload = {
+            fromUid: currentUser.uid || null,
+            toUid: this.state.currentChatUid || null,
+            delivered: !!this.state.currentChatOnline
+        };
+
+        this.messageInput.value = '';
+        this.onMessageInputChanged();
+        this.hideEmojiPicker();
+        await this.updateTypingStatus(false);
+
         try {
             if (firebaseService && firebaseService.isInitialized() && typeof firebaseService.addMessage === 'function') {
                 await firebaseService.addMessage(
@@ -1551,15 +2078,18 @@ class AdvancedApp {
                     currentUser.name,
                     this.state.currentChatUser,
                     content,
-                    this.state.currentChatUid
+                    this.state.currentChatUid,
+                    { type: 'text' }
                 );
             } else {
                 this.dataService.addMessage(
                     this.state.currentChatId,
                     currentUser.name,
                     this.state.currentChatUser,
-                    content
+                    content,
+                    payload
                 );
+                await this.refreshCurrentChatMessages();
             }
         } catch (error) {
             console.error('Ошибка отправки сообщения:', error);
@@ -1567,19 +2097,79 @@ class AdvancedApp {
             return;
         }
 
-        const msgEl = document.createElement('div');
-        msgEl.className = 'message own';
-        const time = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-
-        msgEl.innerHTML = `
-            <span class="message-time">${time}</span>
-            <div class="message-content">${content}</div>
-        `;
-
-        this.messagesContainer.appendChild(msgEl);
-        this.messageInput.value = '';
         this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
         await this.loadChats();
+    }
+
+    async sendFileMessage(file) {
+        if (!file) return;
+        if (!this.state.currentChatId || !this.state.currentChatUser) {
+            AdvancedViewRenderer.showToast('Сначала выберите чат', 'warning');
+            return;
+        }
+        if (file.size > 25 * 1024 * 1024) {
+            AdvancedViewRenderer.showToast('Файл слишком большой (макс. 25MB)', 'warning');
+            return;
+        }
+
+        const currentUser = this.dataService.getCurrentUser();
+        if (!currentUser) {
+            this.navigateTo('auth-view');
+            return;
+        }
+
+        this.hideEmojiPicker();
+        await this.updateTypingStatus(false);
+
+        try {
+            let filePayload = null;
+            if (firebaseService && firebaseService.isInitialized() && typeof firebaseService.uploadChatFile === 'function') {
+                filePayload = await firebaseService.uploadChatFile(this.state.currentChatId, file);
+                await firebaseService.addMessage(
+                    this.state.currentChatId,
+                    currentUser.name,
+                    this.state.currentChatUser,
+                    '',
+                    this.state.currentChatUid,
+                    { type: 'file', file: filePayload }
+                );
+            } else {
+                let localUrl = '';
+                if ((file.type || '').startsWith('image/')) {
+                    localUrl = await new Promise((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onload = (e) => resolve(e.target.result);
+                        reader.onerror = reject;
+                        reader.readAsDataURL(file);
+                    });
+                }
+                filePayload = {
+                    name: file.name,
+                    size: file.size,
+                    mime: file.type || 'application/octet-stream',
+                    url: localUrl
+                };
+                this.dataService.addMessage(
+                    this.state.currentChatId,
+                    currentUser.name,
+                    this.state.currentChatUser,
+                    '',
+                    {
+                        fromUid: currentUser.uid || null,
+                        toUid: this.state.currentChatUid || null,
+                        delivered: !!this.state.currentChatOnline,
+                        type: 'file',
+                        file: filePayload
+                    }
+                );
+                await this.refreshCurrentChatMessages();
+            }
+            await this.loadChats();
+            this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+        } catch (error) {
+            console.error('Ошибка отправки файла:', error);
+            AdvancedViewRenderer.showToast('Не удалось отправить файл', 'error');
+        }
     }
 
     // ==================== Deep links: external profiles ====================

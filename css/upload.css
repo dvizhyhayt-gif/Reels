@@ -1,38 +1,36 @@
-/* Upload Container */
+/* =================================================================
+   UPLOAD VIEW - REDESIGNED
+   ================================================================= */
+
 .upload-container { 
     padding: 20px; 
-    background: #000; 
+    background: var(--bg-color-dark); 
     height: 100%; 
     overflow-y: auto; 
 }
 
 /* Upload Area */
 .upload-area {
-    height: 200px;
-    border: 2px dashed #444;
-    border-radius: 16px;
+    height: 220px;
+    border: 2px dashed var(--border-color);
+    border-radius: var(--border-radius-lg);
     display: flex;
     align-items: center;
     justify-content: center;
     flex-direction: column;
-    color: #888;
+    color: var(--text-color-secondary);
     margin-bottom: 20px;
     cursor: pointer;
-    transition: var(--transition);
-    background: rgba(255, 255, 255, 0.03);
-    position: relative;
-    overflow: hidden;
+    transition: var(--transition-fast);
+    background: var(--bg-color-secondary);
 }
-
 .upload-area:hover {
-    border-color: var(--accent-color);
-    background: rgba(254, 44, 85, 0.05);
-    transform: translateY(-2px);
+    border-color: var(--accent-primary);
+    background-color: var(--bg-color-tertiary);
 }
-
 .upload-area.dragover {
     border-color: var(--accent-secondary);
-    background: rgba(37, 244, 238, 0.1);
+    background-color: var(--bg-color-tertiary);
     transform: scale(1.02);
 }
 
@@ -40,25 +38,28 @@
     width: 48px;
     height: 48px;
     margin-bottom: 15px;
-    fill: var(--accent-color);
+    fill: var(--accent-primary);
+    opacity: 0.8;
 }
 
 /* Camera Preview */
 .camera-preview {
     width: 100%;
-    height: 300px;
+    aspect-ratio: 9/16;
+    max-height: 400px;
     background: #000;
-    border-radius: 16px;
+    border-radius: var(--border-radius-lg);
     overflow: hidden;
     margin-bottom: 20px;
     position: relative;
+    border: 1px solid var(--border-color);
 }
 
 #camera-video {
     width: 100%;
     height: 100%;
     object-fit: cover;
-    transform: scaleX(-1);
+    transform: scaleX(-1); /* Mirror mode */
 }
 
 .camera-controls {
@@ -68,87 +69,100 @@
     width: 100%;
     display: flex;
     justify-content: center;
-    gap: 20px;
     z-index: 10;
 }
 
 /* Record Button */
 .record-btn {
-    width: 70px;
-    height: 70px;
+    width: 64px;
+    height: 64px;
     border-radius: 50%;
-    background: var(--accent-color);
-    border: 5px solid white;
+    background: transparent;
+    border: 4px solid white;
     cursor: pointer;
-    transition: var(--transition);
+    transition: var(--transition-fast);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.record-btn::before {
+    content: '';
+    width: 100%;
+    height: 100%;
+    background-color: var(--accent-primary);
+    border-radius: 50%;
+    transform: scale(0.8);
+    transition: var(--transition-fast);
 }
 
-.record-btn.recording {
-    animation: pulse 1.5s infinite;
-    transform: scale(1.1);
+.record-btn:hover::before {
+    transform: scale(0.9);
 }
 
-@keyframes pulse {
+.record-btn.recording::before {
+    transform: scale(0.5);
+    border-radius: var(--border-radius-sm);
+    animation: pulse-record 1.5s infinite;
+}
+
+@keyframes pulse-record {
     0% { box-shadow: 0 0 0 0 rgba(254, 44, 85, 0.7); }
-    70% { box-shadow: 0 0 0 20px rgba(254, 44, 85, 0); }
+    70% { box-shadow: 0 0 0 15px rgba(254, 44, 85, 0); }
     100% { box-shadow: 0 0 0 0 rgba(254, 44, 85, 0); }
 }
 
-/* Video Preview */
-#upload-preview {
-    margin-bottom: 20px;
-    border-radius: 16px;
-    overflow: hidden;
-    background: #000;
-}
-
-#preview-video {
-    width: 100%;
-    max-height: 300px;
-}
 
 /* Filter Selector */
 .filter-selector {
     display: flex;
-    gap: 10px;
+    gap: 12px;
     overflow-x: auto;
-    padding: 10px 0;
-    margin-bottom: 20px;
+    padding-bottom: 15px;
+}
+.filter-selector::-webkit-scrollbar {
+    display: none;
 }
 
 .filter-option {
-    min-width: 60px;
-    height: 80px;
-    border-radius: 8px;
+    min-width: 70px;
+    height: 90px;
+    border-radius: var(--border-radius-sm);
     overflow: hidden;
     cursor: pointer;
     position: relative;
-    transition: var(--transition);
+    transition: var(--transition-fast);
     border: 2px solid transparent;
 }
-
 .filter-option:hover {
-    transform: translateY(-2px);
+    transform: translateY(-3px);
 }
-
 .filter-option.active {
-    border-color: var(--accent-color);
+    border-color: var(--accent-primary);
     transform: scale(1.05);
 }
 
-.filter-preview {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
+.filter-option > div:first-child {
+    background-image: url('https://images.unsplash.com/photo-1579546929518-9e396f3cc809?q=80&w=100');
+    background-size: cover;
 }
 
 .filter-name {
     position: absolute;
-    bottom: 5px;
+    bottom: 0;
     left: 0;
     width: 100%;
     text-align: center;
-    font-size: 10px;
-    background: rgba(0, 0, 0, 0.7);
-    padding: 2px;
+    font-size: 11px;
+    font-weight: 500;
+    background: rgba(0, 0, 0, 0.6);
+    padding: 3px 0;
+    color: var(--text-color-primary);
+}
+
+/* Ensure inputs and buttons match global styles */
+.upload-container .form-input {
+    margin-bottom: 16px;
+}
+.upload-container .primary-btn {
+    margin-top: 20px;
 }

@@ -39,79 +39,16 @@ class AdvancedDataService {
         };
         this.notifications = this.getDefaultNotifications();
         this.messages = this.getDefaultMessages();
+        this.userPresence = {};
+        this.typingState = {};
     }
 
     getDefaultNotifications() {
-        const now = Date.now();
-        return [
-            {
-                id: 1,
-                type: 'like',
-                data: {
-                    fromUser: 'alex_creator',
-                    videoThumbnail: 'https://via.placeholder.com/48x48?text=Video'
-                },
-                timestamp: now - 300000,
-                read: false
-            },
-            {
-                id: 2,
-                type: 'like',
-                data: {
-                    fromUser: 'sophia_films',
-                    videoThumbnail: 'https://via.placeholder.com/48x48?text=Video'
-                },
-                timestamp: now - 600000,
-                read: false
-            },
-            {
-                id: 3,
-                type: 'comment',
-                data: {
-                    fromUser: 'mike_vibes',
-                    text: 'Классное видео! 🔥',
-                    videoThumbnail: 'https://via.placeholder.com/48x48?text=Video'
-                },
-                timestamp: now - 1200000,
-                read: false
-            }
-        ];
+        return [];
     }
 
     getDefaultMessages() {
-        const now = Date.now();
-        const currentUser = this.getCurrentUser();
-        const userName = currentUser ? currentUser.name : 'user';
-        
-        return [
-            {
-                id: 1,
-                chatId: ['alex_creator', userName].sort().join('_'),
-                fromUser: 'alex_creator',
-                toUser: userName,
-                content: 'Привет! Твои видео очень крутые!',
-                timestamp: now - 1800000,
-                read: true
-            },
-            {
-                id: 2,
-                chatId: ['alex_creator', userName].sort().join('_'),
-                fromUser: userName,
-                toUser: 'alex_creator',
-                content: 'Спасибо! Твои тоже класс 😊',
-                timestamp: now - 1700000,
-                read: true
-            },
-            {
-                id: 3,
-                chatId: ['sophia_films', userName].sort().join('_'),
-                fromUser: 'sophia_films',
-                toUser: userName,
-                content: 'Давай сделаем колабор?',
-                timestamp: now - 600000,
-                read: false
-            }
-        ];
+        return [];
     }
 
     saveSettings() {
@@ -384,7 +321,6 @@ class AdvancedDataService {
             read: false
         };
         this.notifications.unshift(notification);
-        localStorage.setItem(this.NOTIFICATIONS_KEY, JSON.stringify(this.notifications));
         return notification;
     }
 
@@ -397,7 +333,6 @@ class AdvancedDataService {
         const notification = this.notifications.find(n => n.id === id);
         if (notification) {
             notification.read = true;
-            localStorage.setItem(this.NOTIFICATIONS_KEY, JSON.stringify(this.notifications));
         }
     }
 
@@ -406,18 +341,36 @@ class AdvancedDataService {
     }
 
     // Messages methods
-    addMessage(chatId, fromUser, toUser, content) {
+    normalizeTimestamp(value) {
+        if (typeof value === 'number') return value;
+        if (value && typeof value.toMillis === 'function') return value.toMillis();
+        if (value instanceof Date) return value.getTime();
+        return Date.now();
+    }
+
+    addMessage(chatId, fromUser, toUser, content, options = {}) {
+        const text = (content || '').trim();
+        const isFile = options.type === 'file';
+        if (!isFile && !text) throw new Error('Пустое сообщение');
+
+        const timestamp = Date.now();
         const message = {
             id: Date.now(),
             chatId,
-            fromUser,
-            toUser,
-            content,
-            timestamp: Date.now(),
-            read: false
+            fromUser: fromUser || 'user',
+            toUser: toUser || 'user',
+            fromUid: options.fromUid || null,
+            toUid: options.toUid || null,
+            content: text,
+            type: isFile ? 'file' : 'text',
+            file: options.file || null,
+            timestamp,
+            delivered: !!options.delivered,
+            deliveredAt: options.delivered ? timestamp : null,
+            read: !!options.read,
+            readAt: options.read ? timestamp : null
         };
         this.messages.push(message);
-        localStorage.setItem(this.MESSAGES_KEY, JSON.stringify(this.messages));
         return message;
     }
 
@@ -429,25 +382,49 @@ class AdvancedDataService {
         const chatsMap = new Map();
         
         this.messages.forEach(msg => {
-            const otherUser = msg.fromUser === currentUser.name ? msg.toUser : msg.fromUser;
-            const chatId = [msg.fromUser, msg.toUser].sort().join('_');
+            const isFromCurrent = msg.fromUid && currentUser.uid
+                ? msg.fromUid === currentUser.uid
+                : msg.fromUser === currentUser.name;
+            const otherUser = isFromCurrent ? msg.toUser : msg.fromUser;
+            const otherUid = isFromCurrent ? (msg.toUid || null) : (msg.fromUid || null);
+            const chatId = msg.chatId || [msg.fromUser, msg.toUser].sort().join('_');
+            const timestamp = this.normalizeTimestamp(msg.timestamp);
+            const previewText = (msg.type === 'file')
+                ? `📎 ${msg.file?.name || 'Файл'}`
+                : (msg.content || '');
             
             if (!chatsMap.has(chatId)) {
+                const presence = this.getUserPresence(otherUid, otherUser);
                 chatsMap.set(chatId, {
                     id: chatId,
                     otherUser,
-                    lastMessage: msg.content,
-                    lastMessageTime: msg.timestamp,
-                    unread: msg.toUser === currentUser.name && !msg.read
+                    otherUid,
+                    otherAvatar: this.getAvatarForUser(otherUser),
+                    otherOnline: presence.online,
+                    otherLastSeen: presence.lastSeen,
+                    otherVerified: false,
+                    lastMessage: previewText,
+                    lastMessageTime: timestamp,
+                    lastMessageType: msg.type || 'text',
+                    unread: msg.toUser === currentUser.name && !msg.read,
+                    unreadCount: msg.toUser === currentUser.name && !msg.read ? 1 : 0,
+                    lastMessageFromMe: isFromCurrent,
+                    lastMessageDelivered: !!msg.delivered,
+                    lastMessageRead: !!msg.read
                 });
             } else {
                 const chat = chatsMap.get(chatId);
-                if (msg.timestamp > chat.lastMessageTime) {
-                    chat.lastMessage = msg.content;
-                    chat.lastMessageTime = msg.timestamp;
+                if (timestamp > chat.lastMessageTime) {
+                    chat.lastMessage = previewText;
+                    chat.lastMessageTime = timestamp;
+                    chat.lastMessageType = msg.type || 'text';
+                    chat.lastMessageFromMe = isFromCurrent;
+                    chat.lastMessageDelivered = !!msg.delivered;
+                    chat.lastMessageRead = !!msg.read;
                 }
                 if (msg.toUser === currentUser.name && !msg.read) {
                     chat.unread = true;
+                    chat.unreadCount += 1;
                 }
             }
         });
@@ -457,21 +434,92 @@ class AdvancedDataService {
     }
 
     getChatMessages(chatId) {
-        return this.messages.filter(m => m.chatId === chatId);
+        return this.messages
+            .filter(m => m.chatId === chatId)
+            .map(m => ({
+                ...m,
+                timestamp: this.normalizeTimestamp(m.timestamp),
+                delivered: !!m.delivered,
+                read: !!m.read
+            }))
+            .sort((a, b) => a.timestamp - b.timestamp);
     }
 
     markChatAsRead(chatId) {
         const currentUser = this.getCurrentUser();
+        if (!currentUser) return 0;
+        let updated = 0;
         this.messages.forEach(msg => {
             if (msg.chatId === chatId && msg.toUser === currentUser.name) {
+                msg.delivered = true;
+                msg.deliveredAt = msg.deliveredAt || Date.now();
                 msg.read = true;
+                msg.readAt = Date.now();
+                updated += 1;
             }
         });
-        localStorage.setItem(this.MESSAGES_KEY, JSON.stringify(this.messages));
+        return updated;
+    }
+
+    markChatAsDelivered(chatId) {
+        const currentUser = this.getCurrentUser();
+        if (!currentUser) return 0;
+        let updated = 0;
+        this.messages.forEach(msg => {
+            if (msg.chatId === chatId && msg.toUser === currentUser.name && !msg.read && !msg.delivered) {
+                msg.delivered = true;
+                msg.deliveredAt = Date.now();
+                updated += 1;
+            }
+        });
+        return updated;
     }
 
     getUnreadMessagesCount() {
         const currentUser = this.getCurrentUser();
+        if (!currentUser) return 0;
         return this.messages.filter(m => m.toUser === currentUser.name && !m.read).length;
+    }
+
+    getAvatarForUser(userName) {
+        const user = this.getAllUsers().find(u => u.name === userName);
+        if (user && user.avatar) return user.avatar;
+        return `https://ui-avatars.com/api/?name=${encodeURIComponent(userName || 'user')}&background=random&size=64`;
+    }
+
+    setTypingStatus(chatId, userName, isTyping) {
+        if (!chatId || !userName) return;
+        if (!this.typingState[chatId]) this.typingState[chatId] = {};
+        this.typingState[chatId][userName] = {
+            typing: !!isTyping,
+            updatedAt: Date.now()
+        };
+    }
+
+    getTypingStatus(chatId, userName) {
+        if (!chatId || !userName) return false;
+        const state = this.typingState[chatId]?.[userName];
+        if (!state || !state.typing) return false;
+        return Date.now() - (state.updatedAt || 0) < 5000;
+    }
+
+    setUserPresence(userName, online = false) {
+        if (!userName) return;
+        const prev = this.userPresence[userName] || {};
+        this.userPresence[userName] = {
+            ...prev,
+            online: !!online,
+            lastSeen: online ? (prev.lastSeen || Date.now()) : Date.now()
+        };
+    }
+
+    getUserPresence(uid = null, userName = null) {
+        const key = userName || uid;
+        if (!key) return { online: false, lastSeen: null };
+        const presence = this.userPresence[key];
+        return {
+            online: !!presence?.online,
+            lastSeen: presence?.lastSeen || null
+        };
     }
 }

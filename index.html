@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>KazReels-Твори,снимай,впечатляй!</title>
+    <title>TikClone Pro - Advanced TikTok Clone</title>
     <meta name="theme-color" content="#000000">
     <link rel="manifest" href="/manifest.json">
     
@@ -45,6 +45,26 @@
                 </svg>
                 <span id="theme-text">Светлая тема</span>
             </div>
+                <script>
+                    document.addEventListener('DOMContentLoaded', function() {
+                        var loginForm = document.getElementById('login-form');
+                        var registerForm = document.getElementById('register-form');
+                        var switchToReg = document.getElementById('switch-to-reg');
+                        var switchToLogin = document.getElementById('switch-to-login');
+                        if (switchToReg) {
+                            switchToReg.addEventListener('click', function() {
+                                loginForm.style.display = 'none';
+                                registerForm.style.display = 'block';
+                            });
+                        }
+                        if (switchToLogin) {
+                            switchToLogin.addEventListener('click', function() {
+                                registerForm.style.display = 'none';
+                                loginForm.style.display = 'block';
+                            });
+                        }
+                    });
+                </script>
             <div class="menu-divider"></div>
             <div class="menu-item" id="logout-menu">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
@@ -54,7 +74,7 @@
             </div>
         </div>
         
-        <h1 class="top-logo">KazReels</h1>
+        <h1 class="top-logo">TikClone</h1>
     </div>
 
     <!-- View: Feed -->
@@ -110,7 +130,7 @@
     <div id="auth-view" class="view">
         <!-- Login Form -->
         <div class="auth-container" id="login-form">
-            <h2 class="auth-title">KazReels</h2>
+            <h2 class="auth-title">TikClone Pro</h2>
             <div style="text-align: center; margin-bottom: 30px; font-size: 14px; color: var(--secondary-text);">
                 Войдите, чтобы создавать и делиться видео
             </div>
@@ -272,21 +292,43 @@
                             <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
                         </svg>
                     </button>
-                    <div class="chat-user-info">
+                    <button class="chat-user-info" id="chat-user-trigger" type="button">
                         <img id="chat-user-avatar" src="https://ui-avatars.com/api/?name=User&background=random&size=40" class="chat-avatar">
-                        <div>
+                        <div class="chat-user-meta">
                             <h4 id="chat-user-name">@username</h4>
-                            <span id="chat-user-status" class="chat-status">Online</span>
+                            <span id="chat-user-status" class="chat-status">был(а) недавно</span>
                         </div>
-                    </div>
+                    </button>
+                </div>
+
+                <div class="typing-indicator" id="typing-indicator" style="display: none;">
+                    <span class="typing-dots">
+                        <span></span><span></span><span></span>
+                    </span>
+                    <span id="typing-text">Печатает...</span>
                 </div>
                 
                 <div class="messages" id="messages-container">
                     <!-- Messages will be rendered here -->
                 </div>
+
+                <div class="emoji-picker" id="emoji-picker" style="display: none;"></div>
                 
-                <div class="message-input-area">
-                    <input type="text" id="message-input" placeholder="Напишите сообщение...">
+                <div class="message-input-area" id="message-input-area">
+                    <button class="message-tool-btn" id="emoji-toggle-btn" type="button" title="Смайлы">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 22C6.48 22 2 17.52 2 12S6.48 2 12 2s10 4.48 10 10-4.48 10-10 10zm-4-8c.83 1.66 2.46 2.5 4 2.5s3.17-.84 4-2.5h-8zm1.5-3.5A1.5 1.5 0 1 0 9.5 7a1.5 1.5 0 0 0 0 3.5zm5 0A1.5 1.5 0 1 0 14.5 7a1.5 1.5 0 0 0 0 3.5z"/>
+                        </svg>
+                    </button>
+                    <button class="message-tool-btn" id="attach-file-btn" type="button" title="Файл">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M16.5 6.5v9.75a4.25 4.25 0 0 1-8.5 0V5.75a2.75 2.75 0 0 1 5.5 0v9.5a1.25 1.25 0 0 1-2.5 0V7h-1.5v8.25a2.75 2.75 0 0 0 5.5 0v-9.5a4.25 4.25 0 0 0-8.5 0v10.5a5.75 5.75 0 0 0 11.5 0V6.5h-1.5z"/>
+                        </svg>
+                    </button>
+                    <input type="file" id="chat-file-input" style="display: none;" accept="image/*,video/*,.pdf,.doc,.docx,.txt,.zip,.rar,.xls,.xlsx,.ppt,.pptx">
+                    <div class="message-input-wrap">
+                        <input type="text" id="message-input" placeholder="Напишите сообщение..." maxlength="2000">
+                    </div>
                     <button class="send-message-btn" id="send-message-btn">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M16.6915026,12.4744748 L3.50612381,13.2599618 C3.19218622,13.2599618 3.03521743,13.4170592 3.03521743,13.5741566 L1.15159189,20.0151496 C0.8376543,20.8006365 0.99,21.89 1.77946707,22.52 C2.41,22.99 3.50612381,23.1 4.13399899,22.8429026 L21.714504,14.0454487 C22.6563168,13.5741566 23.1272231,12.6315722 22.9702544,11.6889879 L4.13399899,1.16151496 C3.34915502,0.9 2.40734225,1.00636533 1.77946707,1.4776575 C0.994623095,2.10604706 0.837654326,3.0486314 1.15159189,3.99 L3.03521743,10.4310068 C3.03521743,10.5881042 3.19218622,10.7452015 3.50612381,10.7452015 L16.6915026,11.5306884 C16.6915026,11.5306884 17.1624089,11.5306884 17.1624089,12.0019805 C17.1624089,12.4732727 16.6915026,12.4744748 16.6915026,12.4744748 Z"/>
@@ -306,8 +348,8 @@
                 🎬 Создаю крутые видео
             </div>
             <div id="profile-additional-info" style="font-size: 12px; color: var(--secondary-text); display: flex; flex-direction: column; gap: 3px; margin-bottom: 10px;">
-                <div id="profile-location" style="display: none;"><strong>рџ“Ќ</strong> <span id="location-text"></span></div>
-                <div id="profile-website" style="display: none;"><strong>рџ”—</strong> <a id="website-link" href="#" target="_blank" style="color: #fe2c55; text-decoration: none;"></a></div>
+                <div id="profile-location" style="display: none;"><strong>📍</strong> <span id="location-text"></span></div>
+                <div id="profile-website" style="display: none;"><strong>🔗</strong> <a id="website-link" href="#" target="_blank" style="color: #fe2c55; text-decoration: none;"></a></div>
                 <div id="profile-interests" style="display: none;"><strong>✨</strong> <span id="interests-text"></span></div>
                 <div id="profile-gender" style="display: none;"><strong>👤</strong> <span id="gender-text"></span></div>
             </div>
@@ -369,13 +411,6 @@
         </div>
     </div>
 
-    <!-- FAB for Quick Actions -->
-    <div class="fab" id="quick-fab" title="Быстрые действия">
-        <svg viewBox="0 0 24 24">
-            <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
-        </svg>
-    </div>
-
     <!-- Components: Comments Sheet -->
     <div class="bottom-sheet" id="comments-sheet">
         <div class="sheet-header">
@@ -385,7 +420,7 @@
         <div class="comments-list" id="comments-list"></div>
         <div class="comment-input-area">
             <input type="text" id="comment-input" placeholder="Оставьте комментарий...">
-            <button style="background:none; border:none; color:var(--accent-color); font-weight:bold; cursor:pointer; padding: 5px 15px; border-radius: 15px; background: rgba(254, 44, 85, 0.1);" id="send-comment">
+            <button id="send-comment">
                 Отправить
             </button>
         </div>
@@ -508,6 +543,19 @@
         <span id="toast-text">Message</span>
     </div>
 </div>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-storage.js"></script>
+
+<!-- JavaScript Files -->
+<script src="js/firebase-config.js"></script>
+<script src="js/firebase-service.js"></script>
+<script src="js/data-service.js"></script>
+<script src="js/view-renderer.js"></script>
+<script src="js/app.js"></script>
 <!-- Splash Screen -->
 <div id="splash-screen">
     <div class="splash-animation">
@@ -546,16 +594,5 @@
         }, 600);
     }, 4000);
 </script>
-</body>
-    <!-- Подключение скриптов строго по порядку -->
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-auth.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-storage.js"></script>
-    <script src="js/firebase-config.js"></script>
-    <script src="js/firebase-service.js"></script>
-    <script src="js/data-service.js"></script>
-    <script src="js/view-renderer.js"></script>
-    <script src="js/app.js"></script>
 </body>
 </html>

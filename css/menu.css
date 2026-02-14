@@ -4,14 +4,14 @@
     top: 0;
     left: 0;
     right: 0;
-    height: 56px;
+    height: calc(var(--top-bar-height) + var(--safe-top));
     background: var(--glass-bg-bright);
     backdrop-filter: blur(30px);
     border-bottom: 1px solid var(--border-color);
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 0 15px;
+    padding: var(--safe-top) 15px 0;
     z-index: 200;
     animation: slideDown 0.3s ease-out;
 }
@@ -79,7 +79,7 @@
 /* Menu Dropdown */
 .menu-dropdown {
     position: absolute;
-    top: 56px;
+    top: calc(var(--top-bar-height) + var(--safe-top));
     left: 0;
     background: var(--glass-bg-bright);
     backdrop-filter: blur(30px);

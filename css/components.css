@@ -119,35 +119,6 @@
     margin: 20px auto;
 }
 
-/* Floating Action Button */
-.fab {
-    position: fixed;
-    bottom: 80px;
-    right: 20px;
-    width: 56px;
-    height: 56px;
-    background: linear-gradient(45deg, var(--accent-color), var(--accent-secondary));
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    transition: var(--transition);
-    box-shadow: 0 10px 30px rgba(254, 44, 85, 0.4);
-    z-index: 100;
-}
-
-.fab:hover {
-    transform: scale(1.1) rotate(90deg);
-    box-shadow: 0 15px 40px rgba(254, 44, 85, 0.6);
-}
-
-.fab svg {
-    width: 24px;
-    height: 24px;
-    fill: white;
-}
-
 /* Utility Classes */
 .hidden { 
     display: none !important; 

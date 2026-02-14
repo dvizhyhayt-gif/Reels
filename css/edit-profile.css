@@ -1,204 +1,129 @@
-/* Edit Profile Modal */
+/* =================================================================
+   EDIT PROFILE MODAL - REDESIGNED
+   ================================================================= */
+
 .edit-profile-modal {
     position: fixed;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(20px);
-    display: none;
+    background: rgba(0, 0, 0, 0.8);
+    -webkit-backdrop-filter: blur(10px);
+    backdrop-filter: blur(10px);
+    display: none; /* Changed by JS to 'flex' */
     align-items: center;
     justify-content: center;
     z-index: 3000;
+}
+.edit-profile-modal.open {
+    display: flex;
     animation: fadeIn 0.3s ease-out;
 }
 
-.edit-profile-modal.open {
-    display: flex;
-}
-
 .edit-profile-content {
-    background: var(--glass-bg-bright);
-    backdrop-filter: blur(30px);
-    border-radius: 20px;
-    width: 90%;
+    background: var(--bg-color-secondary);
+    border-radius: var(--border-radius-lg);
+    width: 95%;
     max-width: 450px;
     max-height: 90vh;
-    overflow-y: auto;
     display: flex;
     flex-direction: column;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+    box-shadow: var(--shadow-md);
     border: 1px solid var(--border-color);
 }
 
-.edit-profile-content::-webkit-scrollbar {
-    width: 6px;
-}
-
-.edit-profile-content::-webkit-scrollbar-track {
-    background: var(--glass-bg);
-    border-radius: 10px;
-}
-
-.edit-profile-content::-webkit-scrollbar-thumb {
-    background: var(--accent-color);
-    border-radius: 10px;
-    opacity: 0.4;
-}
-
-.edit-profile-content::-webkit-scrollbar-thumb:hover {
-    opacity: 0.6;
-}
-
-/* Header */
 .edit-profile-header {
-    padding: 20px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 16px;
+    border-bottom: 1px solid var(--border-color);
     display: flex;
     align-items: center;
     justify-content: space-between;
-    position: sticky;
-    top: 0;
-    background: rgba(18, 18, 18, 0.95);
+    flex-shrink: 0;
 }
-
 .edit-profile-header h2 {
     font-size: 18px;
-    font-weight: bold;
+    font-weight: 600;
     margin: 0;
 }
-
 .close-modal {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.1);
-    display: flex;
-    align-items: center;
-    justify-content: center;
     cursor: pointer;
-    transition: var(--transition);
-    font-size: 20px;
 }
 
-.close-modal:hover {
-    background: rgba(255, 255, 255, 0.2);
-    transform: rotate(90deg);
-}
-
-/* Body */
+/* Body & Footer */
 .edit-profile-body {
-    padding: 20px;
-    flex: 1;
+    padding: 24px;
+    overflow-y: auto;
 }
-
 .edit-profile-footer {
-    padding: 15px 20px;
-    border-top: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 16px;
+    border-top: 1px solid var(--border-color);
     display: flex;
-    gap: 10px;
-    background: rgba(0, 0, 0, 0.3);
-}
-
-.edit-profile-footer .primary-btn {
-    flex: 1;
-    margin: 0;
-    padding: 12px 16px;
-    font-size: 14px;
+    gap: 12px;
+    background-color: var(--bg-color-dark);
+    flex-shrink: 0;
 }
 
 /* Avatar Upload */
 .avatar-upload-section {
-    text-align: center;
-    margin-bottom: 25px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-bottom: 30px;
 }
-
 .avatar-preview-large {
-    width: 120px;
-    height: 120px;
+    width: 100px;
+    height: 100px;
     border-radius: 50%;
-    margin: 0 auto 15px;
     position: relative;
     cursor: pointer;
-    overflow: hidden;
-    border: 3px solid var(--accent-color);
-    transition: var(--transition);
-    box-shadow: 0 0 20px rgba(255, 0, 110, 0.3), 0 8px 24px rgba(0, 0, 0, 0.2);
+    border: 3px solid var(--accent-primary);
+    box-shadow: 0 0 20px rgba(254, 44, 85, 0.3);
 }
-
-.avatar-preview-large:hover {
-    transform: scale(1.08);
-    box-shadow: 0 0 30px rgba(255, 0, 110, 0.5), 0 12px 32px rgba(0, 0, 0, 0.3);
-}
-
 .avatar-preview-large img {
     width: 100%;
     height: 100%;
     object-fit: cover;
+    border-radius: 50%;
 }
-
 .avatar-upload-overlay {
     position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    top: 0; left: 0; right: 0; bottom: 0;
     background: rgba(0, 0, 0, 0.5);
+    border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
     opacity: 0;
-    transition: opacity 0.3s;
+    transition: opacity var(--transition-fast);
 }
-
 .avatar-preview-large:hover .avatar-upload-overlay {
     opacity: 1;
 }
 
-.avatar-upload-overlay svg {
-    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
-}
-
-/* Edit Fields */
+/* Form Fields */
 .edit-field {
-    margin-bottom: 20px;
+    margin-bottom: 24px;
 }
-
 .edit-field label {
     display: block;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--secondary-text);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-color-secondary);
     margin-bottom: 8px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
 }
-
 .edit-field .form-input {
-    width: 100%;
+    background-color: var(--bg-color-tertiary);
+    border-color: var(--border-color);
 }
-
-.edit-field textarea.form-input {
-    font-family: inherit;
-    line-height: 1.4;
-}
-
-/* Character Count */
 .char-count {
-    font-size: 11px;
-    color: var(--secondary-text);
+    font-size: 12px;
+    color: var(--text-color-secondary);
     margin-top: 6px;
     text-align: right;
-    transition: var(--transition);
 }
-
 .char-count.warning {
-    color: #ff9100;
-}
-
-.char-count.danger {
-    color: var(--accent-color);
+    color: var(--color-warning);
 }
 
 /* Gender Selector */
@@ -207,92 +132,54 @@
     grid-template-columns: 1fr 1fr 1fr;
     gap: 10px;
 }
-
 .gender-btn {
-    background: var(--glass-bg);
-    border: 2px solid var(--border-color);
-    color: var(--secondary-text);
-    padding: 12px;
-    border-radius: 12px;
-    cursor: pointer;
-    transition: var(--transition);
     display: flex;
-    flex-direction: column;
     align-items: center;
-    gap: 5px;
-    font-size: 12px;
+    justify-content: center;
+    gap: 8px;
+    background: var(--bg-color-tertiary);
+    border: 1px solid var(--border-color);
+    color: var(--text-color-secondary);
+    padding: 12px;
+    border-radius: var(--border-radius-md);
+    cursor: pointer;
+    transition: var(--transition-fast);
+    font-size: 14px;
     font-weight: 500;
 }
-
 .gender-btn:hover {
-    background: var(--glass-bg-bright);
-    border-color: var(--accent-color);
-    color: var(--text-color);
+    background: #3a3a3c;
+    color: var(--text-color-primary);
 }
-
 .gender-btn.active {
-    background: rgba(255, 0, 110, 0.2);
-    border-color: var(--accent-color);
-    color: var(--accent-color);
-    box-shadow: 0 0 12px rgba(255, 0, 110, 0.2);
+    background: var(--accent-primary);
+    border-color: var(--accent-primary);
+    color: white;
 }
-
 .gender-btn svg {
-    fill: currentColor;
+    display: block;
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
 }
 
-/* Animations */
+/* Footer Buttons */
+.edit-profile-footer .primary-btn {
+    flex: 1;
+    margin: 0;
+    padding: 14px;
+    font-size: 16px;
+}
+#cancel-edit {
+    background: var(--bg-color-tertiary);
+    color: var(--text-color-primary);
+}
+#save-profile {
+    background: var(--accent-primary);
+    color: white;
+}
+
 @keyframes fadeIn {
-    from { 
-        opacity: 0;
-        transform: scale(0.95);
-    }
-    to { 
-        opacity: 1;
-        transform: scale(1);
-    }
-}
-
-@media (max-height: 600px) {
-    .edit-profile-content {
-        border-radius: 0;
-        max-height: 100vh;
-    }
-}
-
-/* Dark theme specific */
-[data-theme="light"] .edit-profile-content {
-    background: rgba(255, 255, 255, 0.95);
-    border-color: rgba(0, 0, 0, 0.1);
-}
-
-[data-theme="light"] .edit-profile-header {
-    border-bottom-color: rgba(0, 0, 0, 0.1);
-    background: rgba(255, 255, 255, 0.95);
-}
-
-[data-theme="light"] .edit-profile-footer {
-    border-top-color: rgba(0, 0, 0, 0.1);
-    background: rgba(0, 0, 0, 0.05);
-}
-
-[data-theme="light"] .close-modal {
-    background: rgba(0, 0, 0, 0.1);
-}
-
-[data-theme="light"] .close-modal:hover {
-    background: rgba(0, 0, 0, 0.2);
-}
-
-[data-theme="light"] .gender-btn {
-    background: rgba(0, 0, 0, 0.05);
-    border-color: rgba(0, 0, 0, 0.1);
-}
-
-[data-theme="light"] .gender-btn:hover {
-    background: rgba(0, 0, 0, 0.08);
-}
-
-[data-theme="light"] .gender-btn.active {
-    background: rgba(254, 44, 85, 0.1);
+    from { opacity: 0; }
+    to { opacity: 1; }
 }
