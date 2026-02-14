@@ -5,7 +5,7 @@
   "r2_buckets": [
     {
       "binding": "MEDIA_BUCKET",
-      "bucket_name": "REPLACE_WITH_BUCKET_NAME"
+      "bucket_name": "kazreels"
     }
   ],
   "vars": {
