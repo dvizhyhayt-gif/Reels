@@ -47,6 +47,7 @@ class AdvancedApp {
         this.boundFeedItems = new WeakSet();
         this.observedFeedItems = new WeakSet();
         this.profileGridObserver = null;
+        this.viewedFeedFirestoreIds = new Set();
         this.feedPaging = {
             touchStartScrollTop: 0,
             touchStartIndex: 0,
@@ -55,7 +56,11 @@ class AdvancedApp {
             programmaticScroll: false,
             programmaticTimer: null
         };
-        
+
+        // Realtime incoming message UI (badge + toast)
+        this.incomingMessagesUnsubscribe = null;
+        this.incomingMessagesUid = null;
+
         this.init();
     }
 
@@ -78,6 +83,8 @@ class AdvancedApp {
 
         await this.loadFeed(true);
         this.updateProfileUI();
+        this.setupIncomingMessagesWatcher();
+        this.updateHamburgerVisibility();
         
         this.setupDeepLinks();
         const urlParams = new URLSearchParams(window.location.search);
@@ -107,10 +114,15 @@ class AdvancedApp {
         this.searchResults = document.getElementById('search-results');
         this.searchEmpty = document.getElementById('search-empty');
         
-        this.notificationsBadge = document.getElementById('notification-badge');
+        this.messagesBadge = document.getElementById('notification-badge');
         this.notificationsList = document.getElementById('notifications-list');
         this.notificationTabs = document.querySelectorAll('.notification-tab');
         this.notificationsEmpty = document.getElementById('notifications-empty');
+
+        this.userListSheet = document.getElementById('user-list-sheet');
+        this.userListTitle = document.getElementById('user-list-title');
+        this.userList = document.getElementById('user-list');
+        this.closeUserListBtn = document.getElementById('close-user-list');
         
         this.messagesListSection = document.getElementById('messages-list-section');
         this.chatDialog = document.getElementById('chat-dialog');
@@ -176,6 +188,60 @@ class AdvancedApp {
         const safeName = this.escapeHtml(name || 'user');
         const badge = AdvancedViewRenderer.getVerifiedBadge(verified);
         return `<span style="display:inline-flex;align-items:center;gap:6px;">@${safeName}${badge}</span>`;
+    }
+
+    syncUserMetaInUi(profile) {
+        const user = profile || {};
+        const uid = user && user.uid ? String(user.uid) : null;
+        if (!uid) return;
+
+        const name = typeof user.name === 'string' ? user.name : null;
+        const avatar = typeof user.avatar === 'string' ? user.avatar : null;
+        const verified = !!user.verified;
+
+        // Update in-memory cache used by feed/comments/search UI.
+        if (this.dataService && Array.isArray(this.dataService.userVideos)) {
+            this.dataService.userVideos.forEach(v => {
+                if (!v || !v.uid) return;
+                if (String(v.uid) !== uid) return;
+                if (name) v.author = name;
+                if (avatar) v.avatar = avatar;
+                v.authorVerified = verified;
+            });
+        }
+
+        // Update currently rendered feed items so name/avatar change is visible instantly.
+        if (!this.feedContainer) return;
+        const items = this.feedContainer.querySelectorAll(`.video-item[data-uid="${uid}"]`);
+        items.forEach(item => {
+            if (name) item.dataset.author = name;
+
+            const avatarContainer = item.querySelector('.avatar-container');
+            if (avatarContainer) {
+                avatarContainer.dataset.uid = uid;
+                if (name) avatarContainer.dataset.author = name;
+            }
+
+            const avatarImg = item.querySelector('.avatar-container img');
+            if (avatarImg) {
+                avatarImg.dataset.uid = uid;
+                if (avatar) avatarImg.src = avatar;
+                if (name) {
+                    avatarImg.alt = name;
+                    avatarImg.dataset.author = name;
+                }
+            }
+
+            const usernameEl = item.querySelector('.video-info .username');
+            if (usernameEl && name) {
+                usernameEl.innerHTML = this.renderUserLabel(name, verified);
+            }
+
+            const musicSpan = item.querySelector('.music-row span');
+            if (musicSpan && name) {
+                musicSpan.textContent = `Оригинальный звук - ${name}`;
+            }
+        });
     }
 
     // ==================== НАДЁЖНЫЙ ПЕРЕКЛЮЧАТЕЛЬ ФОРМ ====================
@@ -293,6 +359,8 @@ class AdvancedApp {
         this.setupNotificationsEvents();
         this.setupMessagesEvents();
         this.setupEditProfileEvents();
+        this.setupProfileStatsEvents();
+        this.setupUserListSheetEvents();
 
         this.feedContainer.addEventListener('scroll', () => {
             if (this.state.feedMode !== 'global') return;
@@ -667,6 +735,11 @@ class AdvancedApp {
                 throw new Error('Нужно войти в аккаунт.');
             }
             await firebaseService.updateUserProfile(currentUser.uid, profileData);
+
+            const updatedUser = firebaseService.getCurrentUser && firebaseService.getCurrentUser();
+            if (updatedUser && updatedUser.uid) {
+                this.syncUserMetaInUi(updatedUser);
+            }
             
             this.updateProfileUI();
             AdvancedViewRenderer.closeEditProfileModal();
@@ -948,14 +1021,24 @@ class AdvancedApp {
         this.feedContainer.innerHTML = '';
 
         const list = Array.isArray(videos) ? videos : [];
+        const current = firebaseService && firebaseService.getCurrentUser ? firebaseService.getCurrentUser() : null;
+        const currentUid = current && current.uid ? String(current.uid) : null;
+        const subscriptions = current && Array.isArray(current.subscriptions) ? current.subscriptions.map(String) : [];
+
+        const frag = document.createDocumentFragment();
         list.forEach(video => {
-            const isSubscribed = this.dataService.isSubscribed(video.author);
+            const authorUid = video && video.uid ? String(video.uid) : null;
+            const isOwn = !!(currentUid && authorUid && currentUid === authorUid);
+            const isSubscribed = !!(authorUid && !isOwn && subscriptions.includes(authorUid));
+
             const card = AdvancedViewRenderer.createVideoCard(video, {
                 autoplay: this.dataService.settings.autoplay,
-                isSubscribed
+                isSubscribed,
+                showFollow: !isOwn
             });
-            this.feedContainer.appendChild(card);
+            frag.appendChild(card);
         });
+        this.feedContainer.appendChild(frag);
 
         this.attachVideoEvents();
         this.setupVideoProgress();
@@ -1015,20 +1098,27 @@ class AdvancedApp {
 
     setupSwipe() {
         let startX = 0, startY = 0, isSwiping = false;
-        document.addEventListener('touchstart', (e) => {
+        const target = this.feedContainer || document;
+
+        target.addEventListener('touchstart', (e) => {
+            if (!e.touches || !e.touches[0]) return;
             startX = e.touches[0].clientX;
             startY = e.touches[0].clientY;
             isSwiping = true;
-        });
-        document.addEventListener('touchmove', (e) => {
-            if (!isSwiping) return;
+        }, { passive: true });
+
+        target.addEventListener('touchmove', (e) => {
+            if (!isSwiping || !e.touches || !e.touches[0]) return;
             const currentX = e.touches[0].clientX;
             const currentY = e.touches[0].clientY;
             const diffX = currentX - startX;
             const diffY = currentY - startY;
-            if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 50) e.preventDefault();
-        });
-        document.addEventListener('touchend', () => isSwiping = false);
+            if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 50) {
+                e.preventDefault();
+            }
+        }, { passive: false });
+
+        target.addEventListener('touchend', () => { isSwiping = false; }, { passive: true });
     }
 
     async loadFeed(clear = false) {
@@ -1056,15 +1146,24 @@ class AdvancedApp {
             
             if (clear) this.feedContainer.innerHTML = '';
             
+            const current = firebaseService && firebaseService.getCurrentUser ? firebaseService.getCurrentUser() : null;
+            const currentUid = current && current.uid ? String(current.uid) : null;
+            const subscriptions = current && Array.isArray(current.subscriptions) ? current.subscriptions.map(String) : [];
+
+            const frag = document.createDocumentFragment();
             videos.forEach(video => {
-                const isSubscribed = this.dataService.isSubscribed(video.author);
+                const authorUid = video && video.uid ? String(video.uid) : null;
+                const isOwn = !!(currentUid && authorUid && currentUid === authorUid);
+                const isSubscribed = !!(authorUid && !isOwn && subscriptions.includes(authorUid));
+
                 const card = AdvancedViewRenderer.createVideoCard(video, {
                     autoplay: this.dataService.settings.autoplay,
-                    isSubscribed: isSubscribed
+                    isSubscribed,
+                    showFollow: !isOwn
                 });
-                this.feedContainer.appendChild(card);
-                this.dataService.incrementViews(video.id);
+                frag.appendChild(card);
             });
+            this.feedContainer.appendChild(frag);
             
             this.attachVideoEvents();
             this.setupVideoProgress();
@@ -1150,6 +1249,27 @@ class AdvancedApp {
         try { videoEl.currentTime = 0; } catch (_) {}
     }
 
+    maybeIncrementActiveVideoView(item) {
+        if (!item) return;
+
+        const firestoreId = item.dataset ? item.dataset.firestoreId : null;
+        if (!firestoreId) return;
+        if (this.viewedFeedFirestoreIds.has(firestoreId)) return;
+        this.viewedFeedFirestoreIds.add(firestoreId);
+
+        // Optimistically update local cache (avoid localStorage writes).
+        if (this.dataService && Array.isArray(this.dataService.userVideos)) {
+            const local = this.dataService.userVideos.find(v => String(v.firestoreId || '') === String(firestoreId));
+            if (local) {
+                local.views = (parseInt(local.views, 10) || 0) + 1;
+            }
+        }
+
+        if (firebaseService && firebaseService.isInitialized && firebaseService.isInitialized() && typeof firebaseService.incrementViews === 'function') {
+            firebaseService.incrementViews(firestoreId);
+        }
+    }
+
     bindGridPreviewVideo(videoEl) {
         if (!videoEl) return;
         if (videoEl.dataset.previewBound === '1') return;
@@ -1206,11 +1326,14 @@ class AdvancedApp {
         if (!items.length) return;
 
         const clamped = Math.max(0, Math.min(parseInt(index, 10) || 0, items.length - 1));
+        const prevIndex = this.state.activeFeedIndex;
         this.state.activeFeedIndex = clamped;
 
         if (scroll) {
             this.scrollFeedToIndex(clamped, behavior);
         }
+
+        this.maybeIncrementActiveVideoView(items[clamped]);
 
         // Only one video should ever be allowed to play with sound.
         items.forEach((item, i) => {
@@ -1300,13 +1423,48 @@ class AdvancedApp {
                     AdvancedViewRenderer.showToast('Войдите, чтобы ставить лайки', 'warning');
                     return;
                 }
-                const isLiked = firebaseService.toggleLike(parseInt(videoId));
-                likeBtn.classList.toggle('liked', isLiked);
-                const countSpan = likeBtn.querySelector('.like-count');
-                let count = parseInt(countSpan.textContent.replace(/[KM]/g, '')) || 0;
-                count = isLiked ? count + 1 : Math.max(0, count - 1);
-                countSpan.textContent = AdvancedViewRenderer.formatNumber(count);
-                AdvancedViewRenderer.showToast(isLiked ? '❤️ Вам понравилось' : '💔 Лайк удален', isLiked ? 'success' : 'info');
+
+                // Prevent double-taps spamming Firestore.
+                if (likeBtn.dataset.busy === '1') return;
+                likeBtn.dataset.busy = '1';
+
+                (async () => {
+                    const firestoreId = item.dataset.firestoreId || null;
+                    const localVideo = (this.dataService && Array.isArray(this.dataService.userVideos))
+                        ? this.dataService.userVideos.find(v => firestoreId
+                            ? String(v.firestoreId || '') === String(firestoreId)
+                            : String(v.id) === String(videoId))
+                        : null;
+
+                    try {
+                        let isLiked = false;
+
+                        if (firebaseService && firebaseService.isInitialized && firebaseService.isInitialized() && firestoreId) {
+                            isLiked = await firebaseService.toggleLike(firestoreId);
+                            if (localVideo) {
+                                const baseLikes = parseInt(localVideo.likes, 10) || 0;
+                                localVideo.likes = baseLikes + (isLiked ? 1 : -1);
+                                localVideo.isLiked = !!isLiked;
+                            }
+                        } else {
+                            isLiked = this.dataService.toggleLike(parseInt(videoId, 10));
+                        }
+
+                        likeBtn.classList.toggle('liked', !!isLiked);
+
+                        const countSpan = likeBtn.querySelector('.like-count');
+                        if (countSpan && localVideo) {
+                            countSpan.textContent = AdvancedViewRenderer.formatNumber(parseInt(localVideo.likes, 10) || 0);
+                        }
+
+                        AdvancedViewRenderer.showToast(isLiked ? 'Вам понравилось' : 'Лайк удален', isLiked ? 'success' : 'info');
+                    } catch (err) {
+                        console.error('Ошибка лайка:', err);
+                        AdvancedViewRenderer.showToast(err?.message || 'Не удалось поставить лайк', 'error');
+                    } finally {
+                        likeBtn.dataset.busy = '0';
+                    }
+                })();
             });
             
             commentBtn?.addEventListener('click', (e) => {
@@ -1321,32 +1479,76 @@ class AdvancedApp {
             
             avatar?.addEventListener('click', (e) => {
                 e.stopPropagation();
-                const currentUser = firebaseService.getCurrentUser();
-                const videosAuthor = video.author;
-                
-                if (currentUser && currentUser.name === videosAuthor) {
-                    this.navigateTo('profile-view');
+
+                const now = Date.now();
+                const lastTap = avatar.__lastTapAt || 0;
+                avatar.__lastTapAt = now;
+
+                if (avatar.__singleTapTimer) {
+                    clearTimeout(avatar.__singleTapTimer);
+                    avatar.__singleTapTimer = null;
+                }
+
+                const targetUid = avatar.dataset.uid || item.dataset.uid || null;
+                const targetName = avatar.dataset.author || item.dataset.author || null;
+
+                // Double tap: open profile
+                if (now - lastTap < 350) {
+                    if (targetUid) {
+                        this.openUserProfileByUid(targetUid);
+                    } else if (targetName) {
+                        AdvancedViewRenderer.showToast('Не удалось открыть профиль', 'warning');
+                    }
                     return;
                 }
-                
-                if (!currentUser) {
-                    this.navigateTo('auth-view');
-                    AdvancedViewRenderer.showToast('Войдите, чтобы подписаться', 'warning');
-                    return;
-                }
-                
-                const followPlus = avatar.querySelector('.follow-plus');
-                if (followPlus.textContent === '+') {
-                    firebaseService.subscribe(videosAuthor);
-                    followPlus.textContent = '✓';
-                    followPlus.style.background = 'var(--accent-secondary)';
-                    AdvancedViewRenderer.showToast('Подписка оформлена', 'success');
-                } else {
-                    firebaseService.unsubscribe(videosAuthor);
-                    followPlus.textContent = '+';
-                    followPlus.style.background = 'var(--accent-color)';
-                    AdvancedViewRenderer.showToast('Подписка отменена', 'info');
-                }
+
+                // Single tap (delayed): subscribe/unsubscribe (no self-subscribe)
+                avatar.__singleTapTimer = setTimeout(async () => {
+                    const currentUser = firebaseService && firebaseService.getCurrentUser ? firebaseService.getCurrentUser() : null;
+                    const currentUid = currentUser && currentUser.uid ? String(currentUser.uid) : null;
+                    const authorUid = targetUid ? String(targetUid) : null;
+
+                    if (!currentUser) {
+                        this.navigateTo('auth-view');
+                        AdvancedViewRenderer.showToast('Войдите, чтобы подписаться', 'warning');
+                        return;
+                    }
+                    if (!authorUid) {
+                        AdvancedViewRenderer.showToast('Не удалось определить автора', 'warning');
+                        return;
+                    }
+                    if (currentUid && currentUid === authorUid) {
+                        // Self: no subscribe action (use double-tap to open profile)
+                        return;
+                    }
+
+                    const followPlus = avatar.querySelector('.follow-plus');
+                    if (!followPlus) return;
+
+                    const subs = Array.isArray(currentUser.subscriptions) ? currentUser.subscriptions.map(String) : [];
+                    const isSubscribed = subs.includes(authorUid);
+
+                    try {
+                        if (firebaseService && firebaseService.isInitialized && firebaseService.isInitialized()) {
+                            if (isSubscribed) {
+                                await firebaseService.unsubscribe(authorUid);
+                                followPlus.textContent = '+';
+                                followPlus.style.background = 'var(--accent-color)';
+                                AdvancedViewRenderer.showToast('Подписка отменена', 'info');
+                            } else {
+                                await firebaseService.subscribe(authorUid);
+                                followPlus.textContent = '✓';
+                                followPlus.style.background = 'var(--accent-secondary)';
+                                AdvancedViewRenderer.showToast('Подписка оформлена', 'success');
+                            }
+                        } else {
+                            AdvancedViewRenderer.showToast('Подписки доступны после подключения базы', 'warning');
+                        }
+                    } catch (err) {
+                        console.error(err);
+                        AdvancedViewRenderer.showToast(err?.message || 'Не удалось изменить подписку', 'error');
+                    }
+                }, 360);
             });
             
             hashtags.forEach(hashtag => {
@@ -1455,6 +1657,7 @@ class AdvancedApp {
 
     navigateTo(viewId) {
         document.querySelectorAll('video').forEach(v => v.pause());
+        this.state.activeViewId = viewId;
         if (viewId !== 'messages-view') {
             this.teardownChatRealtime();
             this.hideEmojiPicker();
@@ -1504,6 +1707,123 @@ class AdvancedApp {
                 this.loadChats();
             }
         }
+
+        this.updateHamburgerVisibility();
+    }
+
+    updateHamburgerVisibility() {
+        const body = document.body;
+        if (!body) return;
+
+        const currentUid = firebaseService && typeof firebaseService.getCurrentUid === 'function'
+            ? firebaseService.getCurrentUid()
+            : null;
+
+        const isOwnProfileView = this.state.activeViewId === 'profile-view'
+            && !this.state.viewingProfileUid
+            && !!currentUid;
+
+        body.classList.toggle('show-profile-menu', !!isOwnProfileView);
+
+        if (!isOwnProfileView) {
+            // Ensure menu is closed when hidden
+            if (this.hamburgerBtn) this.hamburgerBtn.classList.remove('active');
+            if (this.menuDropdown) this.menuDropdown.classList.remove('active');
+        }
+    }
+
+    setupIncomingMessagesWatcher() {
+        const uid = firebaseService && typeof firebaseService.getCurrentUid === 'function'
+            ? firebaseService.getCurrentUid()
+            : null;
+
+        if (!(firebaseService && firebaseService.isInitialized && firebaseService.isInitialized() && uid)) {
+            if (this.incomingMessagesUnsubscribe) {
+                try { this.incomingMessagesUnsubscribe(); } catch (_) {}
+            }
+            this.incomingMessagesUnsubscribe = null;
+            this.incomingMessagesUid = null;
+            this.updateMessagesBadge(0);
+            return;
+        }
+
+        const uidStr = String(uid);
+        if (this.incomingMessagesUid === uidStr && this.incomingMessagesUnsubscribe) {
+            return;
+        }
+
+        if (this.incomingMessagesUnsubscribe) {
+            try { this.incomingMessagesUnsubscribe(); } catch (_) {}
+        }
+
+        this.incomingMessagesUid = uidStr;
+
+        if (typeof firebaseService.subscribeToIncomingMessages !== 'function') {
+            return;
+        }
+
+        this.incomingMessagesUnsubscribe = firebaseService.subscribeToIncomingMessages(({ unreadCount = 0, newMessages = [] } = {}) => {
+            this.updateMessagesBadge(unreadCount);
+
+            if (!Array.isArray(newMessages) || newMessages.length === 0) return;
+            newMessages.forEach((msg) => this.maybeShowIncomingMessageToast(msg));
+        });
+    }
+
+    updateMessagesBadge(count) {
+        if (!this.messagesBadge) return;
+
+        const n = Math.max(0, parseInt(count, 10) || 0);
+        if (n > 0) {
+            this.messagesBadge.textContent = n > 99 ? '99+' : String(n);
+            this.messagesBadge.style.display = 'flex';
+        } else {
+            this.messagesBadge.style.display = 'none';
+        }
+    }
+
+    maybeShowIncomingMessageToast(message) {
+        const msg = message || {};
+        const chatId = msg.chatId || null;
+
+        // If user is already inside this chat, don't spam a toast.
+        if (this.state.activeViewId === 'messages-view'
+            && this.chatDialog
+            && this.chatDialog.style.display !== 'none'
+            && this.state.currentChatId
+            && chatId
+            && String(this.state.currentChatId) === String(chatId)) {
+            return;
+        }
+
+        const fromUser = msg.fromUser || 'user';
+        const preview = (msg.type === 'file')
+            ? `📎 ${msg.file?.name || 'Файл'}`
+            : String(msg.content || '').trim();
+
+        const trimmed = preview.length > 80 ? (preview.slice(0, 77) + '...') : preview;
+        const text = `💬 @${fromUser}: ${trimmed || 'сообщение'}`;
+
+        const toast = document.getElementById('toast');
+        if (toast) {
+            toast.dataset.chatId = chatId ? String(chatId) : '';
+            toast.dataset.chatUid = msg.fromUid ? String(msg.fromUid) : '';
+            toast.dataset.chatUser = String(fromUser);
+
+            if (toast.dataset.chatClickBound !== '1') {
+                toast.dataset.chatClickBound = '1';
+                toast.addEventListener('click', () => {
+                    const id = toast.dataset.chatId;
+                    const otherUid = toast.dataset.chatUid;
+                    const otherUser = toast.dataset.chatUser;
+                    if (!id || !otherUser) return;
+                    this.navigateTo('messages-view');
+                    this.openChat(otherUser, id, otherUid || null);
+                });
+            }
+        }
+
+        AdvancedViewRenderer.showToast(text, 'info');
     }
 
     openComments(videoId) {
@@ -1564,6 +1884,9 @@ class AdvancedApp {
     canCurrentUserDeleteVideo(video) {
         const currentUser = firebaseService && firebaseService.getCurrentUser ? firebaseService.getCurrentUser() : null;
         if (!currentUser || !video) return false;
+        if (currentUser.uid && video.uid) {
+            return String(currentUser.uid) === String(video.uid);
+        }
         return !!(currentUser.name && video.author && currentUser.name === video.author);
     }
 
@@ -1620,9 +1943,9 @@ class AdvancedApp {
 
             // Best-effort: update likes total on own profile
             const currentUser = firebaseService && firebaseService.getCurrentUser ? firebaseService.getCurrentUser() : null;
-            if (currentUser && currentUser.name) {
+            if (currentUser && (currentUser.uid || currentUser.name)) {
                 const likesTotal = (this.dataService.userVideos || [])
-                    .filter(v => v.author === currentUser.name)
+                    .filter(v => (currentUser.uid && v.uid) ? (String(v.uid) === String(currentUser.uid)) : (v.author === currentUser.name))
                     .reduce((sum, v) => sum + (parseInt(v.likes, 10) || 0), 0);
                 const likesEl = document.getElementById('likes-stat')?.querySelector('.stat-num');
                 if (likesEl) likesEl.textContent = AdvancedViewRenderer.formatNumber(likesTotal);
@@ -1889,25 +2212,25 @@ class AdvancedApp {
             this.setupProfileGridPreviews(grid);
         };
 
-        // If Firebase is available, load videos from Firestore so they persist after reload (and include private).
+        // If Firebase is available, load videos from Firestore so they persist after reload.
         if (typeof firebaseService !== 'undefined'
             && firebaseService
             && typeof firebaseService.isInitialized === 'function'
             && firebaseService.isInitialized()
-            && typeof firebaseService.getVideosByAuthor === 'function'
-            && userProfile.name) {
+            && typeof firebaseService.getVideosByUid === 'function'
+            && userProfile.uid) {
             grid.innerHTML = `
                 <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--secondary-text);">
                     <p>Загрузка видео...</p>
                 </div>
             `;
-            firebaseService.getVideosByAuthor(userProfile.name)
+            firebaseService.getVideosByUid(userProfile.uid, { includePrivate: true })
                 .then((videos) => {
                     const list = Array.isArray(videos) ? videos : [];
 
                     // Sync local cache used by comments/share UI.
                     if (this.dataService && Array.isArray(this.dataService.userVideos)) {
-                        this.dataService.userVideos = this.dataService.userVideos.filter(v => v.author !== userProfile.name);
+                        this.dataService.userVideos = this.dataService.userVideos.filter(v => String(v.uid || '') !== String(userProfile.uid));
                         this.dataService.userVideos.push(...list);
                     }
 
@@ -2183,6 +2506,7 @@ class AdvancedApp {
         if (chats.length === 0) {
             this.chatList.innerHTML = '';
             this.messagesEmpty.style.display = 'flex';
+            this.updateMessagesBadge(0);
             return;
         }
 
@@ -2248,6 +2572,9 @@ class AdvancedApp {
 
             this.chatList.appendChild(chatItem);
         });
+
+        const unreadTotal = chats.reduce((sum, chat) => sum + (parseInt(chat.unreadCount, 10) || 0), 0);
+        this.updateMessagesBadge(unreadTotal);
 
         this.filterChatsBySearch(this.messageSearchInput ? this.messageSearchInput.value : '');
     }
@@ -2896,13 +3223,21 @@ class AdvancedApp {
             const currentUid = current && current.uid;
             const isOwn = !!(currentUid && currentUid === uid);
 
-            // Videos: используем имя автора (в базе видео лежат по author)
+            // Videos: привязываем по uid (имя может меняться)
             let videos = [];
-            if (firebaseService.getVideosByAuthor) {
+            if (firebaseService.getVideosByUid) {
+                videos = await firebaseService.getVideosByUid(uid, { includePrivate: isOwn });
+            } else if (firebaseService.getVideosByAuthor) {
                 videos = await firebaseService.getVideosByAuthor(profile.name);
+                if (!isOwn) {
+                    videos = (videos || []).filter(v => v.private !== true);
+                }
             } else {
                 // fallback: локальный поиск
-                videos = this.dataService.userVideos.filter(v => v.author === profile.name);
+                videos = this.dataService.userVideos.filter(v => (v.uid && uid) ? String(v.uid) === String(uid) : v.author === profile.name);
+                if (!isOwn) {
+                    videos = (videos || []).filter(v => v.private !== true);
+                }
             }
 
             const likesTotal = (videos || []).reduce((sum, v) => sum + (parseInt(v.likes, 10) || 0), 0);

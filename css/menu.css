@@ -17,6 +17,20 @@
     pointer-events: auto;
 }
 
+/* Burger/menu are visible only on own profile (JS toggles this class on <body>). */
+.hamburger-btn,
+.menu-dropdown {
+    display: none;
+}
+
+body.show-profile-menu .hamburger-btn {
+    display: flex;
+}
+
+body.show-profile-menu .menu-dropdown {
+    display: block;
+}
+
 @keyframes slideDown {
     from {
         opacity: 0;

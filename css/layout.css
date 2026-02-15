@@ -73,6 +73,11 @@
     overflow: hidden; /* Prevent nested scroll issues on mobile */
 }
 
+/* Let the profile header draw into the safe-area to avoid a "black notch" gap */
+#profile-view {
+    padding-top: 0;
+}
+
 .view.active { 
     display: block; 
     animation: fadeIn 0.4s ease-out;

@@ -8,6 +8,7 @@ class AdvancedViewRenderer {
         div.className = `video-item ${video.filter || ''}`;
         div.dataset.id = video.id;
         if (video.firestoreId) div.dataset.firestoreId = video.firestoreId;
+        if (video.uid) div.dataset.uid = video.uid;
         div.dataset.views = video.views || 0;
         div.dataset.author = video.author;
         
@@ -20,8 +21,12 @@ class AdvancedViewRenderer {
         
         // Определяем текст кнопки подписки
         const isSubscribed = options.isSubscribed ? true : false;
+        const showFollow = options.showFollow !== false;
         const followButtonText = isSubscribed ? '✓' : '+';
         const followButtonStyle = isSubscribed ? 'var(--accent-secondary)' : 'var(--accent-color)';
+        const followPlusHtml = showFollow
+            ? `<div class="follow-plus" style="background: ${followButtonStyle}">${followButtonText}</div>`
+            : '';
         const verifiedBadge = this.getVerifiedBadge(video.authorVerified || video.verified);
         
         const posterAttr = video.thumbnail ? ` poster="${video.thumbnail}"` : '';
@@ -37,12 +42,12 @@ class AdvancedViewRenderer {
                 </svg>
                 ${this.formatNumber(video.views || 0)}
             </div>
-            <div class="video-overlay">
-                <div class="side-bar">
-                    <div class="avatar-container" data-action="subscribe">
-                        <img src="${video.avatar}" alt="${video.author}" data-author="${video.author}">
-                        <div class="follow-plus" style="background: ${followButtonStyle}">${followButtonText}</div>
-                    </div>
+             <div class="video-overlay">
+                 <div class="side-bar">
+                     <div class="avatar-container" data-action="subscribe">
+                         <img src="${video.avatar}" alt="${video.author}" data-author="${video.author}">
+                        ${followPlusHtml}
+                     </div>
                     <div class="action-btn like-btn ${video.isLiked ? 'liked' : ''}" data-id="${video.id}" title="Лайк">
                         <svg viewBox="0 0 24 24">
                             <path d="${video.isLiked ? 'M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z' : 'M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z'}"/>
@@ -79,6 +84,19 @@ class AdvancedViewRenderer {
                 </div>
             </div>
         `;
+
+        // Extra metadata for event handlers (avoid relying on fragile closures).
+        const avatarContainer = div.querySelector('.avatar-container');
+        if (avatarContainer) {
+            if (video.uid) avatarContainer.dataset.uid = video.uid;
+            if (video.author) avatarContainer.dataset.author = video.author;
+        }
+
+        const avatarImg = div.querySelector('.avatar-container img');
+        if (avatarImg && video.uid) {
+            avatarImg.dataset.uid = video.uid;
+        }
+
         return div;
     }
 

@@ -34,7 +34,7 @@
     /* Sizing & Spacing */
     --nav-height: 60px;
     --top-bar-height: 0px; /* Header bar removed (burger-only floating control) */
-    --top-controls-offset: 64px; /* Space for floating burger button on non-feed views */
+    --top-controls-offset: 0px; /* Extra top padding for floating controls (enabled by JS when needed) */
     --safe-top: env(safe-area-inset-top, 0px);
     --safe-bottom: env(safe-area-inset-bottom, 0px);
     --border-radius-sm: 8px;

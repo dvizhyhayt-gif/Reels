@@ -92,7 +92,7 @@
 /* Toast Notification */
 .toast {
     position: fixed;
-    top: 20px;
+    top: calc(var(--safe-top) + 12px);
     left: 50%;
     transform: translateX(-50%);
     background: var(--glass-bg-bright);
@@ -118,7 +118,7 @@
 
 .toast.show { 
     opacity: 1; 
-    top: 30px;
+    top: calc(var(--safe-top) + 18px);
 }
 
 /* Loader */

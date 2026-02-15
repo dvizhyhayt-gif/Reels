@@ -33,16 +33,24 @@ class FirebaseService {
                     if (typeof window.app.loadChats === 'function') {
                         window.app.loadChats();
                     }
-                    if (typeof window.app.loadNotifications === 'function') {
-                        window.app.loadNotifications('all');
+                    if (typeof window.app.setupIncomingMessagesWatcher === 'function') {
+                        window.app.setupIncomingMessagesWatcher();
                     }
-                    if (typeof window.app.updateNotificationBadge === 'function') {
-                        window.app.updateNotificationBadge();
+                    if (typeof window.app.updateHamburgerVisibility === 'function') {
+                        window.app.updateHamburgerVisibility();
                     }
                 }
             } else {
                 console.log('❌ Пользователь вышел');
                 this.currentUser = null;
+                if (window.app) {
+                    if (typeof window.app.setupIncomingMessagesWatcher === 'function') {
+                        window.app.setupIncomingMessagesWatcher();
+                    }
+                    if (typeof window.app.updateHamburgerVisibility === 'function') {
+                        window.app.updateHamburgerVisibility();
+                    }
+                }
             }
         });
 
@@ -203,6 +211,8 @@ class FirebaseService {
 
     async updateUserProfile(uid, updates) {
         try {
+            const before = await this.getUserProfile(uid);
+
             if (updates && typeof updates.name === 'string' && updates.name.trim()) {
                 const normalizedName = updates.name.trim();
                 const existing = await this.getUserByName(normalizedName);
@@ -217,10 +227,77 @@ class FirebaseService {
                 updatedAt: new Date()
             });
             this.currentUser = await this.getUserProfile(uid);
+
+            // Keep authored videos consistent across the app (feed/profile/search).
+            // We store author name/avatar in each video doc for fast rendering, so sync it when profile changes.
+            const after = this.currentUser;
+            const shouldSyncVideos = !!(
+                before
+                && after
+                && (before.name !== after.name
+                    || before.avatar !== after.avatar
+                    || !!before.verified !== !!after.verified)
+            );
+
+            if (shouldSyncVideos) {
+                try {
+                    await this.syncUserVideosAuthorMeta(uid, {
+                        author: after.name,
+                        avatar: after.avatar,
+                        authorVerified: !!after.verified
+                    });
+                } catch (syncError) {
+                    console.warn('⚠️ Не удалось синхронизировать видео после обновления профиля:', syncError?.message || syncError);
+                }
+            }
+
             console.log('Профиль обновлен');
             return true;
         } catch (error) {
             console.error('Ошибка обновления профиля:', error);
+            throw error;
+        }
+    }
+
+    async syncUserVideosAuthorMeta(uid, { author = null, avatar = null, authorVerified = null } = {}) {
+        if (!uid) return 0;
+
+        const payload = { updatedAt: new Date() };
+        if (typeof author === 'string' && author.trim()) payload.author = author.trim();
+        if (typeof avatar === 'string' && avatar.trim()) payload.avatar = avatar.trim();
+        if (typeof authorVerified === 'boolean') payload.authorVerified = authorVerified;
+
+        try {
+            const snapshot = await this.db.collection('videos')
+                .where('uid', '==', uid)
+                .get();
+
+            if (snapshot.empty) return 0;
+
+            let updated = 0;
+            let batch = this.db.batch();
+            let ops = 0;
+
+            for (const doc of snapshot.docs) {
+                batch.update(doc.ref, payload);
+                updated += 1;
+                ops += 1;
+
+                // Firestore batch hard limit is 500; keep a safety margin.
+                if (ops >= 450) {
+                    await batch.commit();
+                    batch = this.db.batch();
+                    ops = 0;
+                }
+            }
+
+            if (ops > 0) {
+                await batch.commit();
+            }
+
+            return updated;
+        } catch (error) {
+            console.error('❌ Ошибка синхронизации видео автора:', error);
             throw error;
         }
     }
@@ -423,6 +500,43 @@ class FirebaseService {
             return videos;
         } catch (error) {
             console.error('❌ Ошибка получения видео автора:', error);
+            return [];
+        }
+    }
+
+    async getVideosByUid(uid, { includePrivate = false } = {}) {
+        if (!uid) return [];
+        try {
+            const mapVideoDoc = (doc) => {
+                const data = doc.data() || {};
+                return {
+                    ...data,
+                    timestamp: this.normalizeTimestamp(data.timestamp),
+                    firestoreId: doc.id
+                };
+            };
+
+            let snapshot;
+            try {
+                snapshot = await this.db.collection('videos')
+                    .where('uid', '==', uid)
+                    .orderBy('timestamp', 'desc')
+                    .get();
+            } catch (indexError) {
+                console.warn('⚠️ getVideosByUid(): query with where+orderBy failed, using fallback query:', indexError?.message || indexError);
+                snapshot = await this.db.collection('videos')
+                    .where('uid', '==', uid)
+                    .get();
+            }
+
+            let videos = snapshot.docs.map(mapVideoDoc);
+            videos.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+            if (!includePrivate) {
+                videos = videos.filter(v => v.private !== true);
+            }
+            return videos;
+        } catch (error) {
+            console.error('❌ Ошибка получения видео по uid:', error);
             return [];
         }
     }
@@ -967,6 +1081,13 @@ class FirebaseService {
                 subscribers: firebase.firestore.FieldValue.arrayUnion(currentUid)
             });
 
+            if (this.currentUser && this.currentUser.uid === currentUid) {
+                this.currentUser.subscriptions = Array.isArray(this.currentUser.subscriptions) ? this.currentUser.subscriptions : [];
+                if (!this.currentUser.subscriptions.includes(targetUid)) {
+                    this.currentUser.subscriptions.push(targetUid);
+                }
+            }
+
             console.log('✅ Подписка добавлена');
             return true;
         } catch (error) {
@@ -992,6 +1113,11 @@ class FirebaseService {
             await targetUserRef.update({
                 subscribers: firebase.firestore.FieldValue.arrayRemove(currentUid)
             });
+
+            if (this.currentUser && this.currentUser.uid === currentUid) {
+                this.currentUser.subscriptions = Array.isArray(this.currentUser.subscriptions) ? this.currentUser.subscriptions : [];
+                this.currentUser.subscriptions = this.currentUser.subscriptions.filter(x => x !== targetUid);
+            }
 
             console.log('✅ Подписка удалена');
             return true;
