@@ -18,7 +18,7 @@ class MediaStorageService {
             uploadEndpoint: '',
             deleteEndpoint: '',
             authToken: '',
-            folderPrefix: 'tikclone',
+            folderPrefix: 'reelgram',
             ...runtimeConfig,
             ...config
         };

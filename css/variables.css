@@ -3,15 +3,20 @@
    ================================================================= */
 :root {
     /* Main Palette */
-    --bg-color-dark: #0d0d0f; /* Deep, almost black for main background */
-    --bg-color-secondary: #1a1a1c; /* A slightly lighter dark for cards, modals */
-    --bg-color-tertiary: #2c2c2e; /* For inputs and other interactive elements */
+    --bg-color-dark: #0b0d12; /* Deep, cool black for main background */
+    --bg-color-secondary: #111522; /* Slightly lighter dark for cards, modals */
+    --bg-color-tertiary: #1a2032; /* For inputs and interactive elements */
     
     --text-color-primary: #f8f8f8; /* Bright white for primary text */
     --text-color-secondary: #8a8a8e; /* Grey for subtitles and secondary info */
     
-    --accent-primary: #fe2c55; /* Vibrant pink/red, the main star */
-    --accent-secondary: #25f4ee; /* Electric cyan for secondary accents, notifications */
+    /* Reelgram brand accents (avoid TikTok-like pink/cyan) */
+    --accent-primary: #ff6b35; /* Sunset orange */
+    --accent-secondary: #3a86ff; /* Electric blue */
+    --accent-primary-rgb: 255 107 53;
+    --accent-secondary-rgb: 58 134 255;
+    --like-color: #ff3b30;
+    --like-color-rgb: 255 59 48;
     
     /* UI Element Colors */
     --border-color: rgba(255, 255, 255, 0.1); /* Subtle borders */
@@ -28,7 +33,8 @@
     
     /* Sizing & Spacing */
     --nav-height: 60px;
-    --top-bar-height: 56px;
+    --top-bar-height: 0px; /* Header bar removed (burger-only floating control) */
+    --top-controls-offset: 64px; /* Space for floating burger button on non-feed views */
     --safe-top: env(safe-area-inset-top, 0px);
     --safe-bottom: env(safe-area-inset-bottom, 0px);
     --border-radius-sm: 8px;
@@ -47,6 +53,11 @@
     --accent-color: var(--accent-primary);
     --transition: var(--transition-smooth);
     --glass-bg-bright: rgba(30, 30, 32, 0.9);
+    --app-height: 100vh; /* JS may override for mobile browser UI quirks */
+}
+
+@supports (height: 100dvh) {
+    :root { --app-height: 100dvh; }
 }
 
 /* Light Theme - A clean, professional look */
@@ -68,6 +79,10 @@
    CSS RESET & GLOBAL STYLES
    ================================================================= */
 
+html, body {
+  height: 100%;
+}
+
 * { 
     box-sizing: border-box; 
     margin: 0; 
@@ -81,7 +96,8 @@ body {
   background-color: var(--bg-color-dark);
   font-family: var(--font-main);
   color: var(--text-color-primary);
-  height: 100vh;
+  min-height: var(--app-height);
+  height: var(--app-height);
   display: flex;
   justify-content: center;
   align-items: center;

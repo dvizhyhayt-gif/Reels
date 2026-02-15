@@ -5,7 +5,7 @@
 ### Шаг 1: Создай Firebase проект
 1. Перейди на [firebase.google.com](https://firebase.google.com)
 2. Нажми "Add Project"
-3. Назови его "TikClone" (или как хочешь)
+3. Назови его "Reelgram" (или как хочешь)
 4. Включи Google Analytics (опционально)
 5. Создай проект
 
@@ -21,9 +21,9 @@
 ```javascript
 {
   apiKey: "AIza...",
-  authDomain: "tikclone-xxxxx.firebaseapp.com",
-  projectId: "tikclone-xxxxx",
-  storageBucket: "tikclone-xxxxx.appspot.com",
+  authDomain: "reelgram-xxxxx.firebaseapp.com",
+  projectId: "reelgram-xxxxx",
+  storageBucket: "reelgram-xxxxx.appspot.com",
   messagingSenderId: "123456789",
   appId: "1:123456789:web:abc123..."
 }

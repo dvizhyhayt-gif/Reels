@@ -62,6 +62,7 @@ class AdvancedApp {
     async init() {
         console.log('🚀 Initializing app...');
         this.cacheElements();
+        this.setupAppViewportHeight();
         this.setupTheme();
         this.setupEventListeners();
         this.setupNotifications();
@@ -138,6 +139,28 @@ class AdvancedApp {
         this.cameraVideo = document.getElementById('camera-video');
         this.cameraCanvas = document.getElementById('camera-canvas');
         this.recordBtn = document.getElementById('record-btn');
+    }
+
+    setupAppViewportHeight() {
+        // Fix "cropped UI" on some mobile browsers where 100vh includes the URL bar.
+        let raf = 0;
+        const update = () => {
+            if (raf) return;
+            raf = window.requestAnimationFrame(() => {
+                raf = 0;
+                const height = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+                if (!height || !Number.isFinite(height)) return;
+                document.documentElement.style.setProperty('--app-height', `${Math.round(height)}px`);
+            });
+        };
+
+        update();
+        window.addEventListener('resize', update);
+        window.addEventListener('orientationchange', update);
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', update);
+            window.visualViewport.addEventListener('scroll', update);
+        }
     }
 
     escapeHtml(value) {

@@ -46,7 +46,7 @@
     outline: none;
     border-color: var(--accent-primary);
     background-color: var(--bg-color-secondary);
-    box-shadow: 0 0 0 3px rgba(254, 44, 85, 0.2);
+    box-shadow: 0 0 0 3px rgb(var(--accent-primary-rgb) / 0.22);
 }
 
 .form-input::placeholder {
@@ -71,7 +71,7 @@
 
 .primary-btn:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 12px rgba(254, 44, 85, 0.3);
+    box-shadow: 0 6px 12px rgb(var(--accent-primary-rgb) / 0.28);
     filter: brightness(1.1);
 }
 

@@ -21,7 +21,7 @@
     margin-bottom: 16px; 
     object-fit: cover;
     border: 3px solid var(--accent-primary);
-    box-shadow: 0 0 25px rgba(254, 44, 85, 0.3);
+    box-shadow: 0 0 25px rgb(var(--accent-primary-rgb) / 0.3);
     transition: transform var(--transition-fast);
 }
 .profile-avatar:hover {
@@ -154,8 +154,8 @@
 }
 
 .grid-delete-btn:hover {
-    background: rgba(254, 44, 85, 0.25);
-    border-color: rgba(254, 44, 85, 0.45);
+    background: rgb(var(--accent-primary-rgb) / 0.25);
+    border-color: rgb(var(--accent-primary-rgb) / 0.45);
 }
 
 .grid-item video,

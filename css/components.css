@@ -8,7 +8,7 @@
     backdrop-filter: blur(30px);
     border-radius: 25px 25px 0 0;
     border-top: 1px solid var(--border-color);
-    padding: 30px 20px;
+    padding: 30px 20px calc(30px + var(--safe-bottom));
     transform: translateY(100%);
     transition: transform 0.4s cubic-bezier(0.32, 0.72, 0, 1);
     z-index: 2000;
@@ -52,16 +52,16 @@
 }
 
 .share-option.danger {
-    border-color: rgba(254, 44, 85, 0.35);
+    border-color: rgb(var(--like-color-rgb) / 0.35);
 }
 
 .share-option.danger svg {
-    fill: var(--accent-primary);
+    fill: var(--like-color);
 }
 
 .share-option.danger:hover {
-    background: rgba(254, 44, 85, 0.18);
-    border-color: rgba(254, 44, 85, 0.55);
+    background: rgb(var(--like-color-rgb) / 0.18);
+    border-color: rgb(var(--like-color-rgb) / 0.55);
 }
 
 /* Theme Switcher */
@@ -85,7 +85,7 @@
 
 .theme-switcher:hover {
     transform: rotate(30deg);
-    background: rgba(254, 44, 85, 0.5);
+    background: rgb(var(--accent-primary-rgb) / 0.5);
     border-color: var(--accent-color);
 }
 

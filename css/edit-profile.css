@@ -78,7 +78,7 @@
     position: relative;
     cursor: pointer;
     border: 3px solid var(--accent-primary);
-    box-shadow: 0 0 20px rgba(254, 44, 85, 0.3);
+    box-shadow: 0 0 20px rgb(var(--accent-primary-rgb) / 0.3);
 }
 .avatar-preview-large img {
     width: 100%;

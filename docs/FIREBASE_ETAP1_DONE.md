@@ -42,7 +42,7 @@
 ### 1️⃣ Firebase Setup (5 минут)
 ```bash
 1. Открой firebase.google.com
-2. Создай новый проект "TikClone"
+2. Создай новый проект "Reelgram"
 3. Добавь веб-приложение
 4. Копируй конфиг
 5. Вставь в js/firebase-config.js

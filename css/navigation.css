@@ -4,7 +4,7 @@
 
 /* Bottom Navigation Bar */
 .bottom-nav {
-    height: var(--nav-height);
+    height: calc(var(--nav-height) + var(--safe-bottom));
     background: var(--glass-bg);
     -webkit-backdrop-filter: blur(24px);
     backdrop-filter: blur(24px);
@@ -16,7 +16,7 @@
     bottom: 0;
     width: 100%;
     z-index: 1000;
-    padding: 0 10px;
+    padding: 0 10px var(--safe-bottom);
 }
 
 .nav-item {
@@ -69,13 +69,13 @@
     justify-content: center;
     cursor: pointer;
     transition: var(--transition-smooth);
-    box-shadow: 0 5px 15px rgba(254, 44, 85, 0.3);
+    box-shadow: 0 5px 15px rgb(var(--accent-primary-rgb) / 0.3);
     margin-top: -4px; /* Pull it up slightly */
 }
 
 .nav-item:hover .upload-btn-ui {
     transform: scale(1.05) translateY(-2px);
-    box-shadow: 0 8px 20px rgba(254, 44, 85, 0.4);
+    box-shadow: 0 8px 20px rgb(var(--accent-primary-rgb) / 0.4);
 }
 
 .upload-btn-ui::before,

@@ -1,19 +1,20 @@
 /* Top Menu Bar */
 .top-menu-bar {
-    position: absolute;
+    position: fixed;
     top: 0;
     left: 0;
     right: 0;
-    height: calc(var(--top-bar-height) + var(--safe-top));
-    background: var(--glass-bg-bright);
-    backdrop-filter: blur(30px);
-    border-bottom: 1px solid var(--border-color);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: var(--safe-top) 15px 0;
+    height: 0;
+    padding: 0;
+    background: transparent;
+    backdrop-filter: none;
+    border: none;
     z-index: 200;
-    animation: slideDown 0.3s ease-out;
+    pointer-events: none;
+}
+
+.top-menu-bar > * {
+    pointer-events: auto;
 }
 
 @keyframes slideDown {
@@ -29,35 +30,41 @@
 
 /* Hamburger Button */
 .hamburger-btn {
-    background: none;
-    border: none;
+    position: fixed;
+    top: calc(var(--safe-top) + 12px);
+    left: 12px;
+    background: var(--glass-bg);
+    -webkit-backdrop-filter: blur(18px);
+    backdrop-filter: blur(18px);
+    border: 1px solid var(--glass-border);
     cursor: pointer;
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
     gap: 5px;
-    position: relative;
     z-index: 250;
     transition: var(--transition);
-    border-radius: 8px;
+    border-radius: 14px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
 }
 
 .hamburger-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--glass-bg-bright);
+    border-color: rgb(var(--accent-primary-rgb) / 0.35);
 }
 
 .hamburger-btn:active {
-    background: rgba(255, 255, 255, 0.15);
+    transform: scale(0.96);
 }
 
 .hamburger-btn span {
     display: block;
     width: 22px;
     height: 2.5px;
-    background: var(--text-color);
+    background: var(--text-color-primary);
     border-radius: 2px;
     transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
     transform-origin: center;
@@ -78,15 +85,13 @@
 
 /* Menu Dropdown */
 .menu-dropdown {
-    position: absolute;
-    top: calc(var(--top-bar-height) + var(--safe-top));
-    left: 0;
+    position: fixed;
+    top: calc(var(--safe-top) + 12px + 44px + 10px);
+    left: 12px;
     background: var(--glass-bg-bright);
     backdrop-filter: blur(30px);
     border: 1px solid var(--border-color);
     border-radius: 12px;
-    border-top-left-radius: 0;
-    border-top-right-radius: 0;
     min-width: 200px;
     padding: 8px 0;
     z-index: 240;
@@ -160,28 +165,4 @@
 }
 
 /* Top Logo */
-.top-logo {
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-    margin: 0;
-    font-size: 16px;
-    font-weight: 700;
-    background: linear-gradient(135deg, var(--accent-color), var(--accent-secondary));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    letter-spacing: 0.5px;
-    animation: fadeInLeft 0.4s ease-out 0.1s both;
-}
-
-@keyframes fadeInLeft {
-    from {
-        opacity: 0;
-        transform: translateX(-20px);
-    }
-    to {
-        opacity: 1;
-        transform: translateX(-50%);
-    }
-}
+/* (Top title removed) */

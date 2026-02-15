@@ -1,4 +1,4 @@
-# 📋 СТРУКТУРА ПРОЕКТА TIKCLONE PRO
+# 📋 СТРУКТУРА ПРОЕКТА REELGRAM
 
 ## ✅ ЧТО БЫЛО СДЕЛАНО
 
@@ -174,9 +174,9 @@ searchVideos(query)            // Поиск по описанию и хэште
 - `settings` - настройки пользователя
 
 **Где хранится:**
-- LocalStorage ключ: `tikclone_advanced_data` (видео)
-- LocalStorage ключ: `tikclone_advanced_auth` (пользователь)
-- LocalStorage ключ: `tikclone_settings` (настройки)
+- LocalStorage ключ: `reelgram_advanced_data` (видео)
+- LocalStorage ключ: `reelgram_advanced_auth` (пользователь)
+- LocalStorage ключ: `reelgram_settings` (настройки)
 
 #### view-renderer.js (AdvancedViewRenderer)
 

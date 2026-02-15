@@ -47,7 +47,7 @@
     cursor: pointer;
     color: #fff;
     transition: var(--transition-fast);
-    box-shadow: 0 8px 20px rgba(254, 44, 85, 0.35);
+    box-shadow: 0 8px 20px rgb(var(--accent-primary-rgb) / 0.35);
 }
 
 .new-message-btn:hover {
@@ -74,7 +74,7 @@
 
 .message-search input:focus {
     border-color: var(--accent-primary);
-    box-shadow: 0 0 0 3px rgba(254, 44, 85, 0.2);
+    box-shadow: 0 0 0 3px rgb(var(--accent-primary-rgb) / 0.22);
 }
 
 .chat-list {
@@ -100,7 +100,7 @@
 }
 
 .chat-item.unread {
-    background: rgba(254, 44, 85, 0.08);
+    background: rgb(var(--accent-primary-rgb) / 0.08);
 }
 
 .chat-avatar-wrap {
@@ -539,7 +539,7 @@
 
 #message-input:focus {
     border-color: var(--accent-primary);
-    box-shadow: 0 0 0 3px rgba(254, 44, 85, 0.18);
+    box-shadow: 0 0 0 3px rgb(var(--accent-primary-rgb) / 0.18);
 }
 
 .send-message-btn {
@@ -555,7 +555,7 @@
     color: #fff;
     flex-shrink: 0;
     transition: var(--transition-fast);
-    box-shadow: 0 6px 16px rgba(254, 44, 85, 0.35);
+    box-shadow: 0 6px 16px rgb(var(--accent-primary-rgb) / 0.35);
 }
 
 .send-message-btn:hover {

@@ -4,8 +4,8 @@
  */
 class AdvancedDataService {
     constructor() {
-        this.STORAGE_KEY = 'tikclone_advanced_data';
-        this.SETTINGS_KEY = 'tikclone_settings';
+        this.STORAGE_KEY = 'reelgram_advanced_data';
+        this.SETTINGS_KEY = 'reelgram_settings';
         
         this.filters = [
             { id: 'none', name: 'Оригинал', css: '' },
@@ -29,7 +29,7 @@ class AdvancedDataService {
 
     init() {
         // Удалено всё, что связано с localStorage
-        localStorage.removeItem('tikclone_advanced_auth');
+        localStorage.removeItem('reelgram_advanced_auth');
         this.userVideos = [];
         this.settings = {
             theme: 'dark',

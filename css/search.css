@@ -24,7 +24,7 @@
 }
 .search-input-wrapper:focus-within {
     border-color: var(--accent-primary);
-    box-shadow: 0 0 0 3px rgba(254, 44, 85, 0.2);
+    box-shadow: 0 0 0 3px rgb(var(--accent-primary-rgb) / 0.22);
 }
 
 .search-input-wrapper svg {
