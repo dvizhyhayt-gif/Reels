@@ -495,12 +495,14 @@ class FirebaseService {
 
     async getVideosByAuthor(authorName) {
         try {
+            const uid = this.getCurrentUid();
             const mapVideoDoc = (doc) => {
                 const data = doc.data() || {};
                 return {
                     ...data,
                     timestamp: this.normalizeTimestamp(data.timestamp),
-                    firestoreId: doc.id
+                    firestoreId: doc.id,
+                    isLiked: uid ? Array.isArray(data.likedBy) && data.likedBy.includes(uid) : false
                 };
             };
 
@@ -529,12 +531,14 @@ class FirebaseService {
     async getVideosByUid(uid, { includePrivate = false } = {}) {
         if (!uid) return [];
         try {
+            const currentUid = this.getCurrentUid();
             const mapVideoDoc = (doc) => {
                 const data = doc.data() || {};
                 return {
                     ...data,
                     timestamp: this.normalizeTimestamp(data.timestamp),
-                    firestoreId: doc.id
+                    firestoreId: doc.id,
+                    isLiked: currentUid ? Array.isArray(data.likedBy) && data.likedBy.includes(currentUid) : false
                 };
             };
 
@@ -634,7 +638,7 @@ class FirebaseService {
                             videoThumbnail: video?.thumbnail || ''
                         });
                     } catch (notifError) {
-                        console.warn('?? �� ������� ������� ����������� � �����:', notifError?.message || notifError);
+                        console.warn('⚠️ Не удалось отправить уведомление о лайке:', notifError?.message || notifError);
                     }
                 }
 
@@ -693,7 +697,7 @@ class FirebaseService {
                     });
                 }
             } catch (notifError) {
-                console.warn('?? �� ������� ������� ����������� � �����������:', notifError?.message || notifError);
+                console.warn('⚠️ Не удалось отправить уведомление о комментарии:', notifError?.message || notifError);
             }
 
             console.log('✅ Комментарий добавлен');

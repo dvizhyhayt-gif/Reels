@@ -54,7 +54,7 @@ body.show-profile-menu .menu-dropdown {
     cursor: pointer;
     width: 44px;
     height: 44px;
-    display: flex;
+    display: none;
     flex-direction: column;
     justify-content: center;
     align-items: center;

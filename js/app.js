@@ -239,6 +239,9 @@ class AdvancedApp {
                 if (avatar) v.avatar = avatar;
                 v.authorVerified = verified;
             });
+            if (typeof this.dataService.syncFeedCacheWithLocal === 'function') {
+                this.dataService.syncFeedCacheWithLocal();
+            }
         }
 
         // Update currently rendered feed items so name/avatar change is visible instantly.
@@ -413,14 +416,42 @@ class AdvancedApp {
     setupFeedFilterEvents() {
         if (!this.feedFilterButtons || !this.feedFilterButtons.length) return;
 
-        this.feedFilterButtons.forEach((btn) => {
-            if (!btn || btn.dataset.bound === '1') return;
-            btn.dataset.bound = '1';
-            btn.addEventListener('click', async () => {
-                const source = btn.dataset.feedSource === 'following' ? 'following' : 'for-you';
-                if (source === this.state.feedSource) return;
-                await this.setFeedSource(source, { reload: true });
+        const switchSource = async (btn) => {
+            if (!btn) return;
+            const source = btn.dataset.feedSource === 'following' ? 'following' : 'for-you';
+            if (source === this.state.feedSource) return;
+            await this.setFeedSource(source, { reload: true });
+        };
+
+        if (this.feedFilterTabs && this.feedFilterTabs.dataset.bound !== '1') {
+            this.feedFilterTabs.dataset.bound = '1';
+            this.feedFilterTabs.__lastPointerTs = 0;
+
+            this.feedFilterTabs.addEventListener('pointerup', async (e) => {
+                const btn = e.target && e.target.closest ? e.target.closest('.feed-filter-tab') : null;
+                if (!btn) return;
+                this.feedFilterTabs.__lastPointerTs = Date.now();
+                e.preventDefault();
+                e.stopPropagation();
+                await switchSource(btn);
             });
+
+            this.feedFilterTabs.addEventListener('click', async (e) => {
+                const btn = e.target && e.target.closest ? e.target.closest('.feed-filter-tab') : null;
+                if (!btn) return;
+                if (Date.now() - (this.feedFilterTabs.__lastPointerTs || 0) < 450) {
+                    e.preventDefault();
+                    return;
+                }
+                e.preventDefault();
+                e.stopPropagation();
+                await switchSource(btn);
+            });
+        }
+
+        this.feedFilterButtons.forEach((btn) => {
+            if (!btn) return;
+            btn.style.touchAction = 'manipulation';
         });
 
         this.applyFeedSourceUi();
@@ -893,28 +924,33 @@ class AdvancedApp {
 
         if (firebaseService && firebaseService.isInitialized && firebaseService.isInitialized() && typeof firebaseService.getUserProfile === 'function') {
             const chunkSize = 12;
+            const chunks = [];
             for (let i = 0; i < ids.length; i += chunkSize) {
-                const chunk = ids.slice(i, i + chunkSize);
-                const chunkProfiles = await Promise.all(
-                    chunk.map(async (identity) => {
-                        try {
-                            let profile = await firebaseService.getUserProfile(identity);
-                            if (!profile && typeof firebaseService.getUserByName === 'function') {
-                                profile = await firebaseService.getUserByName(identity);
-                            }
-                            return { key: String(identity), profile };
-                        } catch (_) {
-                            return { key: String(identity), profile: null };
-                        }
-                    })
-                );
+                chunks.push(ids.slice(i, i + chunkSize));
+            }
 
-                chunkProfiles.forEach((result) => {
+            const chunkRequests = chunks.map((chunk) => Promise.all(
+                chunk.map(async (identity) => {
+                    try {
+                        let profile = await firebaseService.getUserProfile(identity);
+                        if (!profile && typeof firebaseService.getUserByName === 'function') {
+                            profile = await firebaseService.getUserByName(identity);
+                        }
+                        return { key: String(identity), profile };
+                    } catch (_) {
+                        return { key: String(identity), profile: null };
+                    }
+                })
+            ));
+
+            const chunkResults = await Promise.all(chunkRequests);
+            chunkResults.forEach((group) => {
+                (group || []).forEach((result) => {
                     if (result && result.profile) {
                         profileMap.set(String(result.key), result.profile);
                     }
                 });
-            }
+            });
         }
 
         if (this.dataService && typeof this.dataService.getAllUsers === 'function') {
@@ -2193,6 +2229,25 @@ class AdvancedApp {
         try { videoEl.currentTime = 0; } catch (_) {}
     }
 
+    prefetchFeedNeighbors(centerIndex, radius = 1) {
+        const items = this.getFeedVideoItems();
+        if (!items.length) return;
+
+        const idx = Math.max(0, Math.min(parseInt(centerIndex, 10) || 0, items.length - 1));
+        const safeRadius = Math.max(0, parseInt(radius, 10) || 0);
+
+        for (let i = idx - safeRadius; i <= idx + safeRadius; i += 1) {
+            if (i < 0 || i >= items.length) continue;
+            const item = items[i];
+            const video = item.querySelector('video');
+            if (!video) continue;
+
+            // Keep immediate neighbors warm so next swipe starts instantly.
+            video.preload = i === idx ? 'auto' : 'metadata';
+            this.ensureVideoSource(video);
+        }
+    }
+
     maybeIncrementActiveVideoView(item) {
         if (!item) return;
 
@@ -2285,6 +2340,7 @@ class AdvancedApp {
         }
 
         this.maybeIncrementActiveVideoView(items[clamped]);
+        this.prefetchFeedNeighbors(clamped, 1);
 
         // Only one video should ever be allowed to play with sound.
         items.forEach((item, i) => {
@@ -2400,16 +2456,30 @@ class AdvancedApp {
                                 const baseLikes = parseInt(localVideo.likes, 10) || 0;
                                 localVideo.likes = baseLikes + (isLiked ? 1 : -1);
                                 localVideo.isLiked = !!isLiked;
+                                if (typeof this.dataService.syncFeedCacheWithLocal === 'function') {
+                                    this.dataService.syncFeedCacheWithLocal();
+                                }
                             }
                         } else {
                             isLiked = this.dataService.toggleLike(videoId);
+                            if (typeof this.dataService.syncFeedCacheWithLocal === 'function') {
+                                this.dataService.syncFeedCacheWithLocal();
+                            }
                         }
 
                         likeBtn.classList.toggle('liked', !!isLiked);
 
                         const countSpan = likeBtn.querySelector('.like-count');
-                        if (countSpan && localVideo) {
-                            countSpan.textContent = AdvancedViewRenderer.formatNumber(parseInt(localVideo.likes, 10) || 0);
+                        if (countSpan) {
+                            let nextLikes = 0;
+                            if (localVideo) {
+                                nextLikes = Math.max(0, parseInt(localVideo.likes, 10) || 0);
+                            } else {
+                                const currentLikes = parseInt(countSpan.dataset.count || '0', 10) || 0;
+                                nextLikes = Math.max(0, currentLikes + (isLiked ? 1 : -1));
+                            }
+                            countSpan.dataset.count = String(nextLikes);
+                            countSpan.textContent = AdvancedViewRenderer.formatNumber(nextLikes);
                         }
 
                         AdvancedViewRenderer.showToast(isLiked ? 'Вам понравилось' : 'Лайк удален', isLiked ? 'success' : 'info');
@@ -2807,6 +2877,23 @@ class AdvancedApp {
         AdvancedViewRenderer.showToast(text, 'info');
     }
 
+    updateFeedCommentCount(videoId, count = 0) {
+        if (!this.feedContainer) return;
+        const id = String(videoId || '');
+        if (!id) return;
+
+        const card = this.feedContainer.querySelector(`.video-item[data-id="${id}"]`);
+        if (!card) return;
+
+        const span = card.querySelector('.comment-btn .comment-count')
+            || card.querySelector('.comment-btn span');
+        if (!span) return;
+
+        const safeCount = Math.max(0, parseInt(count, 10) || 0);
+        span.dataset.count = String(safeCount);
+        span.textContent = AdvancedViewRenderer.formatNumber(safeCount);
+    }
+
     async openComments(videoId) {
         const id = String(videoId);
         let video = this.dataService.userVideos.find(v => String(v.id) === id);
@@ -2833,6 +2920,7 @@ class AdvancedApp {
         
         commentCount.textContent = comments.length;
         commentsList.innerHTML = AdvancedViewRenderer.renderComments(comments);
+        this.updateFeedCommentCount(id, comments.length);
         
         this.commentsSheet.classList.add('open');
         document.getElementById('comment-input').focus();
@@ -2849,6 +2937,7 @@ class AdvancedApp {
                     video.comments = remoteComments;
                     commentCount.textContent = remoteComments.length;
                     commentsList.innerHTML = AdvancedViewRenderer.renderComments(remoteComments);
+                    this.updateFeedCommentCount(id, remoteComments.length);
                 }
             } catch (error) {
                 console.error('Ошибка загрузки комментариев:', error);
@@ -2896,6 +2985,9 @@ class AdvancedApp {
                 comment = await firebaseService.addComment(video.firestoreId, text);
                 video.comments = Array.isArray(video.comments) ? video.comments : [];
                 video.comments.push(comment);
+                if (typeof this.dataService.syncFeedCacheWithLocal === 'function') {
+                    this.dataService.syncFeedCacheWithLocal();
+                }
             } catch (error) {
                 console.error('Ошибка добавления комментария:', error);
                 AdvancedViewRenderer.showToast('Не удалось отправить комментарий', 'error');
@@ -2903,6 +2995,9 @@ class AdvancedApp {
             }
         } else {
             comment = this.dataService.addComment(targetId, text);
+            if (typeof this.dataService.syncFeedCacheWithLocal === 'function') {
+                this.dataService.syncFeedCacheWithLocal();
+            }
         }
 
         if (comment) {
@@ -2930,7 +3025,9 @@ class AdvancedApp {
             commentsList.insertAdjacentHTML('afterbegin', newCommentHTML);
             
             const commentCount = document.getElementById('comment-count');
-            commentCount.textContent = parseInt(commentCount.textContent) + 1;
+            const nextCount = (parseInt(commentCount.textContent, 10) || 0) + 1;
+            commentCount.textContent = String(nextCount);
+            this.updateFeedCommentCount(targetId, nextCount);
             
             input.value = '';
             AdvancedViewRenderer.showToast('Комментарий добавлен', 'success');
@@ -2977,6 +3074,9 @@ class AdvancedApp {
 
             if (this.dataService && Array.isArray(this.dataService.userVideos)) {
                 this.dataService.userVideos = this.dataService.userVideos.filter(v => String(v.id) !== String(video.id));
+                if (typeof this.dataService.syncFeedCacheWithLocal === 'function') {
+                    this.dataService.syncFeedCacheWithLocal();
+                }
             }
 
             // Remove from profile grid(s)
@@ -3324,6 +3424,9 @@ class AdvancedApp {
                     if (this.dataService && Array.isArray(this.dataService.userVideos)) {
                         this.dataService.userVideos = this.dataService.userVideos.filter(v => String(v.uid || '') !== String(userProfile.uid));
                         this.dataService.userVideos.push(...list);
+                        if (typeof this.dataService.syncFeedCacheWithLocal === 'function') {
+                            this.dataService.syncFeedCacheWithLocal();
+                        }
                     }
 
                     const likesTotal = list.reduce((sum, v) => sum + (parseInt(v.likes, 10) || 0), 0);

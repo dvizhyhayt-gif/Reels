@@ -52,13 +52,13 @@ class AdvancedViewRenderer {
                         <svg viewBox="0 0 24 24">
                             <path d="${video.isLiked ? 'M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z' : 'M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z'}"/>
                         </svg>
-                        <span class="like-count">${this.formatNumber(video.likes)}</span>
+                        <span class="like-count" data-count="${parseInt(video.likes, 10) || 0}">${this.formatNumber(parseInt(video.likes, 10) || 0)}</span>
                     </div>
                     <div class="action-btn comment-btn" data-id="${video.id}" title="Комментарии">
                         <svg viewBox="0 0 24 24">
                             <path d="M21.99 4c0-1.1-.89-2-1.99-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14l4 4-.01-18zM18 14H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"/>
                         </svg>
-                        <span>${commentsCount}</span>
+                        <span class="comment-count" data-count="${commentsCount}">${this.formatNumber(commentsCount)}</span>
                     </div>
                     <div class="action-btn share-btn" data-id="${video.id}" title="Поделиться">
                         <svg viewBox="0 0 24 24">

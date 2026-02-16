@@ -58,7 +58,9 @@
     border: 1px solid var(--glass-border);
     -webkit-backdrop-filter: blur(16px);
     backdrop-filter: blur(16px);
-    z-index: 25;
+    z-index: 1201;
+    pointer-events: auto;
+    touch-action: manipulation;
 }
 
 .feed-filter-tab {
@@ -71,6 +73,8 @@
     padding: 8px 14px;
     cursor: pointer;
     transition: var(--transition-fast);
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
 }
 
 .feed-filter-tab.active {

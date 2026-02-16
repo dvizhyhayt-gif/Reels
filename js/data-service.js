@@ -6,6 +6,7 @@ class AdvancedDataService {
     constructor() {
         this.STORAGE_KEY = 'reelgram_advanced_data';
         this.SETTINGS_KEY = 'reelgram_settings';
+        this.feedCacheTtlMs = 15000;
         
         this.filters = [
             { id: 'none', name: 'Оригинал', css: '' },
@@ -13,7 +14,7 @@ class AdvancedDataService {
             { id: 'warm', name: 'Теплый', css: 'sepia(0.5) hue-rotate(-30deg)' },
             { id: 'cool', name: 'Холодный', css: 'sepia(0.3) hue-rotate(180deg) brightness(1.1)' },
             { id: 'vintage', name: 'Винтаж', css: 'sepia(0.7) contrast(1.1)' },
-            { id: 'bw', name: 'Р§/Р‘', css: 'grayscale(1) contrast(1.2)' }
+            { id: 'bw', name: 'Ч/Б', css: 'grayscale(1) contrast(1.2)' }
         ];
 
         this.videoFilters = [
@@ -41,6 +42,11 @@ class AdvancedDataService {
         this.messages = this.getDefaultMessages();
         this.userPresence = {};
         this.typingState = {};
+        this.feedCache = {
+            fetchedAt: 0,
+            fetchedCount: 0,
+            hasMore: true
+        };
     }
 
     getDefaultNotifications() {
@@ -55,6 +61,33 @@ class AdvancedDataService {
         // Удалено сохранение настроек в localStorage
     }
 
+    invalidateFeedCache() {
+        this.feedCache = {
+            fetchedAt: 0,
+            fetchedCount: 0,
+            hasMore: true
+        };
+    }
+
+    syncFeedCacheWithLocal({ hasMore = null } = {}) {
+        this.feedCache.fetchedAt = Date.now();
+        this.feedCache.fetchedCount = Array.isArray(this.userVideos) ? this.userVideos.length : 0;
+        if (typeof hasMore === 'boolean') {
+            this.feedCache.hasMore = hasMore;
+        }
+    }
+
+    rememberFetchedFeed(videos, requestedLimit) {
+        const list = Array.isArray(videos) ? videos : [];
+        this.userVideos = list;
+        this.feedCache = {
+            fetchedAt: Date.now(),
+            fetchedCount: list.length,
+            // If we got fewer items than requested, we're likely at the end.
+            hasMore: list.length >= Math.max(1, parseInt(requestedLimit, 10) || 0)
+        };
+    }
+
     async getFeed(page = 0, limit = 5) {
         const start = page * limit;
         const end = start + limit;
@@ -66,13 +99,24 @@ class AdvancedDataService {
                 && typeof firebaseService.isInitialized === 'function'
                 && firebaseService.isInitialized()
                 && typeof firebaseService.getFeed === 'function') {
-                // Fetch "end + 1" items so we can detect hasMore without proper cursor pagination.
-                const fetchLimit = end + 1;
-                const feedVideos = await firebaseService.getFeed(fetchLimit);
-                this.userVideos = Array.isArray(feedVideos) ? feedVideos : [];
+                // Without cursor pagination we still need top-N requests.
+                // Cache recent fetches so infinite scroll doesn't refetch from zero on every page.
+                const requiredCount = end + 1;
+                const cachedCount = this.feedCache?.fetchedCount || 0;
+                const cacheAge = Date.now() - (this.feedCache?.fetchedAt || 0);
+                const cacheFresh = cacheAge >= 0 && cacheAge < this.feedCacheTtlMs;
+                const hasEnoughCached = this.userVideos.length >= requiredCount;
+
+                if (!(cacheFresh && hasEnoughCached)) {
+                    const fetchLimit = Math.max(requiredCount, cachedCount + 24, limit * 3, 24);
+                    const feedVideos = await firebaseService.getFeed(fetchLimit);
+                    this.rememberFetchedFeed(feedVideos, fetchLimit);
+                }
+
+                const hasMore = this.userVideos.length > end || !!this.feedCache.hasMore;
                 return {
                     videos: this.userVideos.slice(start, end),
-                    hasMore: this.userVideos.length > end,
+                    hasMore,
                     total: this.userVideos.length
                 };
             }
@@ -231,6 +275,7 @@ class AdvancedDataService {
             // UI (лента/профиль) сейчас читает из this.userVideos, поэтому синхронизируем локальный кэш.
             if (uploaded) {
                 this.userVideos.unshift(uploaded);
+                this.syncFeedCacheWithLocal({ hasMore: true });
             }
             return uploaded;
         }
@@ -259,6 +304,7 @@ class AdvancedDataService {
                 };
                 
                 this.userVideos.unshift(newVideo);
+                this.syncFeedCacheWithLocal({ hasMore: true });
                 localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.userVideos));
                 
                 resolve(newVideo);
@@ -273,6 +319,8 @@ class AdvancedDataService {
         if (video) {
             video.isLiked = !video.isLiked;
             video.likes += video.isLiked ? 1 : -1;
+            video.likes = Math.max(0, parseInt(video.likes, 10) || 0);
+            this.syncFeedCacheWithLocal();
             localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.userVideos));
             return video.isLiked;
         }
@@ -294,6 +342,7 @@ class AdvancedDataService {
             
             video.comments = Array.isArray(video.comments) ? video.comments : [];
             video.comments.push(comment);
+            this.syncFeedCacheWithLocal();
             localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.userVideos));
             return comment;
         }
