@@ -85,6 +85,10 @@
             </svg>
             Обновление...
         </div>
+                <div class="feed-filter-tabs" id="feed-filter-tabs">
+            <button class="feed-filter-tab active" data-feed-source="for-you" type="button">Для вас</button>
+            <button class="feed-filter-tab" data-feed-source="following" type="button">Подписки</button>
+        </div>
         <button class="feed-back-btn hidden" id="feed-back-btn" type="button" aria-label="Назад">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
@@ -217,7 +221,11 @@
             <!-- Description & Tags -->
             <input type="text" id="upload-desc" class="form-input" placeholder="Описание видео">
             <input type="text" id="upload-tags" class="form-input" placeholder="#хэштеги (через пробел)">
-            
+            <div class="upload-draft-actions">
+                <button class="secondary-btn" id="save-draft-btn" type="button">Сохранить черновик</button>
+                <button class="secondary-btn" id="clear-draft-btn" type="button">Очистить</button>
+            </div>
+            <div class="upload-draft-note" id="upload-draft-note" style="display: none;"></div>            
             <!-- Advanced Options -->
             <details style="margin-bottom: 20px;">
                 <summary style="font-size: 14px; color: var(--secondary-text); cursor: pointer; padding: 10px; border-radius: 8px; background: rgba(255,255,255,0.05);">
@@ -413,6 +421,7 @@
                 <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
             </svg>
             <span>Профиль</span>
+            <div class="notification-badge social-badge" id="social-notification-badge" style="display: none;">0</div>
         </div>
     </div>
 
@@ -549,6 +558,27 @@
         </div>
     </div>
 
+    <!-- Components: Onboarding Interests Modal -->
+    <div class="onboarding-modal" id="onboarding-modal" style="display: none;">
+        <div class="onboarding-card">
+            <h3>Выберите интересы</h3>
+            <p>Это поможет настроить ленту "Для вас"</p>
+            <div class="onboarding-chips" id="onboarding-chips">
+                <button type="button" class="onboarding-chip" data-interest="#музыка">#музыка</button>
+                <button type="button" class="onboarding-chip" data-interest="#спорт">#спорт</button>
+                <button type="button" class="onboarding-chip" data-interest="#юмор">#юмор</button>
+                <button type="button" class="onboarding-chip" data-interest="#технологии">#технологии</button>
+                <button type="button" class="onboarding-chip" data-interest="#игры">#игры</button>
+                <button type="button" class="onboarding-chip" data-interest="#кино">#кино</button>
+                <button type="button" class="onboarding-chip" data-interest="#путешествия">#путешествия</button>
+                <button type="button" class="onboarding-chip" data-interest="#еда">#еда</button>
+            </div>
+            <div class="onboarding-actions">
+                <button type="button" class="secondary-btn" id="onboarding-skip-btn">Пропустить</button>
+                <button type="button" class="primary-btn" id="onboarding-save-btn">Продолжить</button>
+            </div>
+        </div>
+    </div>
     <!-- UI Feedback -->
     <div class="toast" id="toast">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
@@ -611,3 +641,5 @@
 </script>
 </body>
 </html>
+
+

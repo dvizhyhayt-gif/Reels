@@ -89,6 +89,28 @@
     filter: none;
 }
 
+.secondary-btn {
+    background: rgb(255 255 255 / 0.06);
+    color: var(--text-color-primary);
+    border: 1px solid var(--border-color);
+    padding: 12px 14px;
+    border-radius: var(--border-radius-md);
+    font-weight: 600;
+    cursor: pointer;
+    width: 100%;
+    font-size: 14px;
+    transition: var(--transition-fast);
+}
+
+.secondary-btn:hover {
+    background: rgb(255 255 255 / 0.1);
+    border-color: rgb(var(--accent-secondary-rgb) / 0.35);
+}
+
+.secondary-btn:active {
+    transform: scale(0.98);
+}
+
 /* Text Link */
 .text-link { 
     color: var(--text-color-secondary); 

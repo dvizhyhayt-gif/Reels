@@ -39,6 +39,12 @@ class FirebaseService {
                     if (typeof window.app.updateHamburgerVisibility === 'function') {
                         window.app.updateHamburgerVisibility();
                     }
+                    if (typeof window.app.restoreModerationPreferences === 'function') {
+                        window.app.restoreModerationPreferences();
+                    }
+                    if (typeof window.app.updateNotificationBadge === 'function') {
+                        window.app.updateNotificationBadge();
+                    }
                 }
             } else {
                 console.log('❌ Пользователь вышел');
@@ -49,6 +55,12 @@ class FirebaseService {
                     }
                     if (typeof window.app.updateHamburgerVisibility === 'function') {
                         window.app.updateHamburgerVisibility();
+                    }
+                    if (typeof window.app.restoreModerationPreferences === 'function') {
+                        window.app.restoreModerationPreferences();
+                    }
+                    if (typeof window.app.updateNotificationBadge === 'function') {
+                        window.app.updateNotificationBadge();
                     }
                 }
             }
@@ -90,11 +102,14 @@ class FirebaseService {
                 location: '',
                 website: '',
                 interests: '',
+                onboardingCompleted: false,
                 gender: 'other',
                 verified: false,
                 canVerify: false,
                 subscriptions: [],
                 subscribers: [],
+                blockedUsers: [],
+                hiddenAuthors: [],
                 notifications: [],
                 online: false,
                 lastSeen: Date.now(),
@@ -166,6 +181,13 @@ class FirebaseService {
                 return {
                     ...data,
                     uid,
+                    interests: typeof data.interests === 'string' ? data.interests : '',
+                    onboardingCompleted: data.onboardingCompleted === true,
+                    subscriptions: Array.isArray(data.subscriptions) ? data.subscriptions : [],
+                    subscribers: Array.isArray(data.subscribers) ? data.subscribers : [],
+                    blockedUsers: Array.isArray(data.blockedUsers) ? data.blockedUsers : [],
+                    hiddenAuthors: Array.isArray(data.hiddenAuthors) ? data.hiddenAuthors : [],
+                    notifications: Array.isArray(data.notifications) ? data.notifications : [],
                     online: !!data.online,
                     lastSeen: this.normalizeTimestamp(data.lastSeen),
                     lastActive: this.normalizeTimestamp(data.lastActive)
@@ -600,6 +622,22 @@ class FirebaseService {
                     likedBy: firebase.firestore.FieldValue.arrayUnion(uid),
                     likes: firebase.firestore.FieldValue.increment(1)
                 });
+
+                const authorUid = video && video.uid ? String(video.uid) : null;
+                if (authorUid && authorUid !== String(uid)) {
+                    try {
+                        const actor = this.currentUser || await this.getUserProfile(uid);
+                        await this.addNotification(authorUid, 'like', {
+                            fromUid: uid,
+                            fromUser: actor?.name || 'user',
+                            videoId: video?.id || firestoreId,
+                            videoThumbnail: video?.thumbnail || ''
+                        });
+                    } catch (notifError) {
+                        console.warn('?? �� ������� ������� ����������� � �����:', notifError?.message || notifError);
+                    }
+                }
+
                 console.log('❤️ Лайк добавлен');
                 return true;
             }
@@ -640,6 +678,23 @@ class FirebaseService {
             await this.db.collection('videos').doc(firestoreId).update({
                 comments: firebase.firestore.FieldValue.arrayUnion(comment)
             });
+
+            try {
+                const videoDoc = await this.db.collection('videos').doc(firestoreId).get();
+                const video = videoDoc.exists ? videoDoc.data() : null;
+                const authorUid = video && video.uid ? String(video.uid) : null;
+                if (authorUid && authorUid !== String(uid)) {
+                    await this.addNotification(authorUid, 'comment', {
+                        fromUid: uid,
+                        fromUser: userProfile?.name || 'user',
+                        videoId: video?.id || firestoreId,
+                        videoThumbnail: video?.thumbnail || '',
+                        text: text.length > 90 ? `${text.slice(0, 87)}...` : text
+                    });
+                }
+            } catch (notifError) {
+                console.warn('?? �� ������� ������� ����������� � �����������:', notifError?.message || notifError);
+            }
 
             console.log('✅ Комментарий добавлен');
             return comment;
@@ -1047,6 +1102,55 @@ class FirebaseService {
             });
     }
 
+    subscribeToIncomingMessages(callback) {
+        const currentUid = this.getCurrentUid();
+        if (!currentUid || typeof callback !== 'function') return () => {};
+
+        let initialized = false;
+        const seenIds = new Set();
+
+        return this.db.collection('messages')
+            .where('toUid', '==', currentUid)
+            .onSnapshot((snapshot) => {
+                let unreadCount = 0;
+                snapshot.docs.forEach(doc => {
+                    const data = doc.data() || {};
+                    if (!data.read) unreadCount += 1;
+                });
+
+                if (!initialized) {
+                    snapshot.docs.forEach(doc => seenIds.add(doc.id));
+                    initialized = true;
+                    callback({ unreadCount, newMessages: [] });
+                    return;
+                }
+
+                const newMessages = [];
+                snapshot.docChanges().forEach(change => {
+                    if (change.type !== 'added') return;
+                    if (seenIds.has(change.doc.id)) return;
+                    seenIds.add(change.doc.id);
+
+                    const data = change.doc.data() || {};
+                    if (data.read) return;
+
+                    newMessages.push({
+                        id: change.doc.id,
+                        ...data,
+                        timestamp: this.normalizeTimestamp(data.timestamp),
+                        delivered: !!data.delivered,
+                        read: !!data.read,
+                        type: data.type || 'text',
+                        file: data.file || null
+                    });
+                });
+
+                callback({ unreadCount, newMessages });
+            }, (error) => {
+                console.error('Ошибка подписки на входящие сообщения:', error);
+            });
+    }
+
     subscribeToTyping(chatId, callback) {
         const currentUid = this.getCurrentUid();
         if (!currentUid || !chatId || typeof callback !== 'function') return () => {};
@@ -1324,4 +1428,5 @@ setTimeout(() => {
         }, 500);
     }
 }, 200);
+
 

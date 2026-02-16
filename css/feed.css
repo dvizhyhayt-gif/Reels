@@ -20,7 +20,7 @@
 /* Pull to Refresh */
 .pull-indicator {
     position: absolute;
-    top: calc(var(--safe-top) + 12px);
+    top: calc(var(--safe-top) + 62px);
     left: 50%;
     transform: translateX(-50%);
     width: 40px;
@@ -44,9 +44,47 @@
     fill: var(--accent-primary);
 }
 
+.feed-filter-tabs {
+    position: absolute;
+    top: calc(var(--safe-top) + 12px);
+    left: 50%;
+    transform: translateX(-50%);
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px;
+    border-radius: 999px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px);
+    z-index: 25;
+}
+
+.feed-filter-tab {
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text-color-secondary);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 8px 14px;
+    cursor: pointer;
+    transition: var(--transition-fast);
+}
+
+.feed-filter-tab.active {
+    background: rgb(var(--accent-secondary-rgb) / 0.22);
+    color: var(--text-color-primary);
+}
+
+.feed-filter-tab:active {
+    transform: scale(0.97);
+}
+
 .feed-back-btn {
     position: absolute;
-    top: calc(var(--safe-top) + 12px + 44px + 10px);
+    top: calc(var(--safe-top) + 12px);
     left: 12px;
     width: 40px;
     height: 40px;
@@ -173,4 +211,31 @@
     width: 24px;
     height: 24px;
     filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+}
+
+.feed-empty-state {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 24px;
+    color: var(--text-color-secondary);
+    background:
+        radial-gradient(circle at 30% 20%, rgb(var(--accent-secondary-rgb) / 0.14), transparent 42%),
+        radial-gradient(circle at 70% 80%, rgb(var(--accent-primary-rgb) / 0.18), transparent 45%),
+        var(--bg-color-dark);
+}
+
+.feed-empty-state h3 {
+    font-size: 18px;
+    color: var(--text-color-primary);
+    margin-bottom: 8px;
+}
+
+.feed-empty-state p {
+    font-size: 14px;
+    max-width: 280px;
+    line-height: 1.45;
 }

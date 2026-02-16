@@ -12,6 +12,7 @@ class AdvancedApp {
             loading: false,
             hasMore: true,
             activeFeedIndex: 0,
+            feedSource: 'for-you', // 'for-you' | 'following'
             feedMode: 'global', // 'global' | 'custom' (e.g. opened from profile grid)
             feedReturnViewId: null,
             isRecording: false,
@@ -25,6 +26,16 @@ class AdvancedApp {
             currentChatUser: null,
             currentChatUid: null
         };
+        this.uploadDraftKey = 'reelgram_upload_draft_v1';
+        this.feedPrefsKey = 'reelgram_feed_prefs_v1';
+        this.moderationPrefsKey = 'reelgram_moderation_prefs_v1';
+        this.watchProfileKey = 'reelgram_watch_profile_v1';
+        this.uploadDraftSaveTimer = null;
+        this.uploadDraftNoteTimer = null;
+        this.notificationBadgeTimer = null;
+        this.watchProfile = { authors: {}, tags: {} };
+        this.moderationPrefs = { blockedUsers: [], hiddenAuthors: [] };
+        this.onboardingSelection = new Set();
         this.cameraInitialized = false;
         this.cameraInitPromise = null;
         this.recordBtnBound = false;
@@ -74,6 +85,8 @@ class AdvancedApp {
         this.setupPullToRefresh();
         this.setupFeedPaging();
         this.setupSwipe();
+        this.restoreFeedPreferences();
+        this.loadWatchProfile();
 
         // FirebaseService инициализируется асинхронно в firebase-service.js (через setTimeout).
         // Чтобы лента/профиль после перезагрузки брали данные из Firestore, ждём готовности (с таймаутом).
@@ -81,10 +94,12 @@ class AdvancedApp {
             await waitForFirebaseService(5000);
         }
 
+        this.restoreModerationPreferences();
         await this.loadFeed(true);
         this.updateProfileUI();
         this.setupIncomingMessagesWatcher();
         this.updateHamburgerVisibility();
+        this.scheduleNotificationBadgeRefresh();
         
         this.setupDeepLinks();
         const urlParams = new URLSearchParams(window.location.search);
@@ -100,6 +115,8 @@ class AdvancedApp {
     cacheElements() {
         this.feedContainer = document.getElementById('feed-container');
         this.feedBackBtn = document.getElementById('feed-back-btn');
+        this.feedFilterTabs = document.getElementById('feed-filter-tabs');
+        this.feedFilterButtons = document.querySelectorAll('.feed-filter-tab');
         this.views = document.querySelectorAll('.view');
         this.navItems = document.querySelectorAll('.nav-item');
         this.toast = document.getElementById('toast');
@@ -115,6 +132,7 @@ class AdvancedApp {
         this.searchEmpty = document.getElementById('search-empty');
         
         this.messagesBadge = document.getElementById('notification-badge');
+        this.notificationsBadge = document.getElementById('social-notification-badge');
         this.notificationsList = document.getElementById('notifications-list');
         this.notificationTabs = document.querySelectorAll('.notification-tab');
         this.notificationsEmpty = document.getElementById('notifications-empty');
@@ -151,6 +169,19 @@ class AdvancedApp {
         this.cameraVideo = document.getElementById('camera-video');
         this.cameraCanvas = document.getElementById('camera-canvas');
         this.recordBtn = document.getElementById('record-btn');
+
+        this.uploadDescInput = document.getElementById('upload-desc');
+        this.uploadTagsInput = document.getElementById('upload-tags');
+        this.allowCommentsInput = document.getElementById('allow-comments');
+        this.privateVideoInput = document.getElementById('private-video');
+        this.saveDraftBtn = document.getElementById('save-draft-btn');
+        this.clearDraftBtn = document.getElementById('clear-draft-btn');
+        this.uploadDraftNote = document.getElementById('upload-draft-note');
+
+        this.onboardingModal = document.getElementById('onboarding-modal');
+        this.onboardingChipsContainer = document.getElementById('onboarding-chips');
+        this.onboardingSaveBtn = document.getElementById('onboarding-save-btn');
+        this.onboardingSkipBtn = document.getElementById('onboarding-skip-btn');
     }
 
     setupAppViewportHeight() {
@@ -357,6 +388,8 @@ class AdvancedApp {
         this.setupCommentsEvents();
         this.setupSearchEvents();
         this.setupNotificationsEvents();
+        this.setupFeedFilterEvents();
+        this.setupOnboardingEvents();
         this.setupMessagesEvents();
         this.setupEditProfileEvents();
         this.setupProfileStatsEvents();
@@ -375,6 +408,23 @@ class AdvancedApp {
                 this.exitCustomFeedMode({ navigateBack: true });
             }
         });
+    }
+
+    setupFeedFilterEvents() {
+        if (!this.feedFilterButtons || !this.feedFilterButtons.length) return;
+
+        this.feedFilterButtons.forEach((btn) => {
+            if (!btn || btn.dataset.bound === '1') return;
+            btn.dataset.bound = '1';
+            btn.addEventListener('click', async () => {
+                const source = btn.dataset.feedSource === 'following' ? 'following' : 'for-you';
+                if (source === this.state.feedSource) return;
+                await this.setFeedSource(source, { reload: true });
+            });
+        });
+
+        this.applyFeedSourceUi();
+        this.updateFeedTopControls();
     }
 
     setupAuthEvents() {
@@ -405,6 +455,9 @@ class AdvancedApp {
 
                 this.navigateTo('feed-view');
                 this.updateProfileUI();
+                this.restoreModerationPreferences();
+                await this.loadFeed(true);
+                this.updateNotificationBadge();
             } catch (error) {
                 AdvancedViewRenderer.showToast(error.message, 'error');
             } finally {
@@ -459,6 +512,17 @@ class AdvancedApp {
                 
                 this.navigateTo('feed-view');
                 this.updateProfileUI();
+                this.restoreModerationPreferences();
+                await this.loadFeed(true);
+                this.updateNotificationBadge();
+                for (let i = 0; i < 20; i += 1) {
+                    const current = firebaseService && typeof firebaseService.getCurrentUser === 'function'
+                        ? firebaseService.getCurrentUser()
+                        : null;
+                    if (current && current.uid) break;
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                }
+                this.openOnboardingModal({ force: true });
             } catch (error) {
                 AdvancedViewRenderer.showToast(error.message || 'Ошибка регистрации', 'error');
             } finally {
@@ -472,6 +536,7 @@ class AdvancedApp {
         const uploadArea = document.getElementById('upload-area');
         const fileInput = document.getElementById('video-file-input');
         const cameraToggle = document.getElementById('camera-toggle');
+        if (!uploadArea || !fileInput || !cameraToggle) return;
         
         uploadArea.addEventListener('click', () => fileInput.click());
         
@@ -497,7 +562,10 @@ class AdvancedApp {
         
         fileInput.addEventListener('change', (e) => {
             const file = e.target.files[0];
-            if (file) this.previewVideo(file);
+            if (file) {
+                this.previewVideo(file);
+                this.showUploadDraftNote('Файл выбран. Текст и настройки сохраняются в черновике автоматически.');
+            }
         });
         
         cameraToggle.addEventListener('click', async () => this.toggleCamera());
@@ -518,12 +586,29 @@ class AdvancedApp {
                     const filter = this.dataService.filters.find(f => f.id === filterId);
                     previewVideo.style.filter = filter?.css || '';
                 }
+                this.scheduleUploadDraftAutosave();
             }
         });
 
+        [this.uploadDescInput, this.uploadTagsInput].forEach((input) => {
+            if (!input) return;
+            input.addEventListener('input', () => this.scheduleUploadDraftAutosave());
+        });
+        [this.allowCommentsInput, this.privateVideoInput].forEach((input) => {
+            if (!input) return;
+            input.addEventListener('change', () => this.scheduleUploadDraftAutosave());
+        });
+        this.saveDraftBtn?.addEventListener('click', () => {
+            this.saveUploadDraft({ manual: true });
+        });
+        this.clearDraftBtn?.addEventListener('click', () => {
+            this.clearUploadDraft({ clearForm: true, showToast: true });
+        });
+        this.restoreUploadDraft();
+
         document.getElementById('publish-btn').addEventListener('click', async () => {
             const file = fileInput.files[0];
-            const desc = document.getElementById('upload-desc').value.trim();
+            const desc = this.uploadDescInput ? this.uploadDescInput.value.trim() : '';
             
             if (!file && !this.state.recordedChunks.length) {
                 AdvancedViewRenderer.showToast('Выберите видео или запишите с камеры', 'warning');
@@ -555,9 +640,9 @@ class AdvancedApp {
                     videoBlob = file;
                 }
                 
-                const tags = document.getElementById('upload-tags').value.trim();
-                const allowComments = document.getElementById('allow-comments').checked;
-                const isPrivate = document.getElementById('private-video').checked;
+                const tags = this.uploadTagsInput ? this.uploadTagsInput.value.trim() : '';
+                const allowComments = this.allowCommentsInput ? this.allowCommentsInput.checked : true;
+                const isPrivate = this.privateVideoInput ? this.privateVideoInput.checked : false;
                 
                 await this.dataService.uploadVideo(videoBlob, {
                     desc,
@@ -570,12 +655,18 @@ class AdvancedApp {
                 AdvancedViewRenderer.showToast('Видео опубликовано!', 'success');
                 
                 fileInput.value = '';
-                document.getElementById('upload-desc').value = '';
-                document.getElementById('upload-tags').value = '';
+                if (this.uploadDescInput) this.uploadDescInput.value = '';
+                if (this.uploadTagsInput) this.uploadTagsInput.value = '';
+                if (this.allowCommentsInput) this.allowCommentsInput.checked = true;
+                if (this.privateVideoInput) this.privateVideoInput.checked = false;
                 document.getElementById('upload-preview').style.display = 'none';
                 uploadArea.style.display = 'flex';
                 this.state.recordedChunks = [];
                 this.state.selectedFilter = 'none';
+                document.querySelectorAll('.filter-option').forEach(opt => {
+                    opt.classList.toggle('active', opt.dataset.filter === 'none');
+                });
+                this.clearUploadDraft({ clearForm: false, showToast: false });
                 
                 this.navigateTo('profile-view');
                 this.updateProfileUI();
@@ -700,6 +791,195 @@ class AdvancedApp {
         });
     }
 
+    setupProfileStatsEvents() {
+        const followingStat = document.getElementById('following-stat');
+        const followersStat = document.getElementById('followers-stat');
+
+        if (followingStat && followingStat.dataset.bound !== '1') {
+            followingStat.dataset.bound = '1';
+            followingStat.addEventListener('click', () => this.openUserListSheet('following'));
+        }
+
+        if (followersStat && followersStat.dataset.bound !== '1') {
+            followersStat.dataset.bound = '1';
+            followersStat.addEventListener('click', () => this.openUserListSheet('followers'));
+        }
+    }
+
+    setupUserListSheetEvents() {
+        if (this.closeUserListBtn && this.closeUserListBtn.dataset.bound !== '1') {
+            this.closeUserListBtn.dataset.bound = '1';
+            this.closeUserListBtn.addEventListener('click', () => this.closeUserListSheet());
+        }
+
+        if (this.userListSheet && this.userListSheet.dataset.bound !== '1') {
+            this.userListSheet.dataset.bound = '1';
+            this.userListSheet.addEventListener('click', (e) => {
+                if (e.target === this.userListSheet) {
+                    this.closeUserListSheet();
+                }
+            });
+        }
+
+        if (!this.userListEscBound) {
+            this.userListEscBound = true;
+            document.addEventListener('keydown', (e) => {
+                if (e.key !== 'Escape') return;
+                if (!this.userListSheet || !this.userListSheet.classList.contains('open')) return;
+                this.closeUserListSheet();
+            });
+        }
+    }
+
+    closeUserListSheet() {
+        if (this.userListSheet) {
+            this.userListSheet.classList.remove('open');
+        }
+    }
+
+    async openUserListSheet(mode = 'following') {
+        if (!this.userListSheet || !this.userList || !this.userListTitle) return;
+
+        const normalizedMode = mode === 'followers' ? 'followers' : 'following';
+        const currentUid = firebaseService && typeof firebaseService.getCurrentUid === 'function'
+            ? firebaseService.getCurrentUid()
+            : null;
+        const targetUid = this.state.viewingProfileUid || currentUid;
+
+        if (!targetUid) {
+            AdvancedViewRenderer.showToast('Сначала войдите в аккаунт', 'warning');
+            return;
+        }
+
+        this.userListTitle.textContent = normalizedMode === 'followers' ? 'Подписчики' : 'Подписки';
+        this.userList.innerHTML = '<div class="user-list-empty">Загрузка...</div>';
+        this.userListSheet.classList.add('open');
+
+        const requestId = `${Date.now()}_${Math.random()}`;
+        this.userListRequestId = requestId;
+
+        let targetProfile = null;
+        try {
+            if (firebaseService && firebaseService.isInitialized && firebaseService.isInitialized() && typeof firebaseService.getUserProfile === 'function') {
+                targetProfile = await firebaseService.getUserProfile(targetUid);
+            } else if (this.dataService && typeof this.dataService.getUserProfile === 'function') {
+                targetProfile = this.dataService.getUserProfile();
+            }
+        } catch (error) {
+            console.error('Ошибка загрузки профиля для списка пользователей:', error);
+        }
+
+        if (this.userListRequestId !== requestId) return;
+
+        if (!targetProfile) {
+            this.userList.innerHTML = '<div class="user-list-empty">Не удалось загрузить список</div>';
+            return;
+        }
+
+        const source = normalizedMode === 'followers' ? targetProfile.subscribers : targetProfile.subscriptions;
+        const ids = Array.isArray(source)
+            ? Array.from(new Set(source.map(x => String(x)).filter(Boolean)))
+            : [];
+
+        if (ids.length === 0) {
+            const emptyText = normalizedMode === 'followers'
+                ? 'Подписчиков пока нет'
+                : 'Подписок пока нет';
+            this.userList.innerHTML = `<div class="user-list-empty">${emptyText}</div>`;
+            return;
+        }
+
+        const profileMap = new Map();
+
+        if (firebaseService && firebaseService.isInitialized && firebaseService.isInitialized() && typeof firebaseService.getUserProfile === 'function') {
+            const chunkSize = 12;
+            for (let i = 0; i < ids.length; i += chunkSize) {
+                const chunk = ids.slice(i, i + chunkSize);
+                const chunkProfiles = await Promise.all(
+                    chunk.map(async (identity) => {
+                        try {
+                            let profile = await firebaseService.getUserProfile(identity);
+                            if (!profile && typeof firebaseService.getUserByName === 'function') {
+                                profile = await firebaseService.getUserByName(identity);
+                            }
+                            return { key: String(identity), profile };
+                        } catch (_) {
+                            return { key: String(identity), profile: null };
+                        }
+                    })
+                );
+
+                chunkProfiles.forEach((result) => {
+                    if (result && result.profile) {
+                        profileMap.set(String(result.key), result.profile);
+                    }
+                });
+            }
+        }
+
+        if (this.dataService && typeof this.dataService.getAllUsers === 'function') {
+            const localUsers = this.dataService.getAllUsers();
+            if (Array.isArray(localUsers)) {
+                ids.forEach((identity) => {
+                    if (profileMap.has(identity)) return;
+                    const local = localUsers.find((u) => {
+                        if (!u) return false;
+                        const uid = u.uid ? String(u.uid) : '';
+                        const name = u.name ? String(u.name) : '';
+                        return uid === identity || name === identity;
+                    });
+                    if (local) {
+                        profileMap.set(identity, local);
+                    }
+                });
+            }
+        }
+
+        if (this.userListRequestId !== requestId) return;
+
+        this.userList.innerHTML = '';
+        ids.forEach((uid) => {
+            const profile = profileMap.get(uid) || null;
+            const name = profile && profile.name ? profile.name : 'user';
+            const avatar = profile && profile.avatar
+                ? profile.avatar
+                : `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random&size=64`;
+            const about = profile && profile.bio
+                ? this.escapeHtml(profile.bio)
+                : (profile && profile.email ? this.escapeHtml(profile.email) : 'Профиль Reelgram');
+
+            const item = document.createElement('div');
+            item.className = 'user-list-item';
+            item.innerHTML = `
+                <img src="${avatar}" alt="@${this.escapeHtml(name)}" class="user-list-avatar">
+                <div class="user-list-meta">
+                    <div class="user-list-name">${this.renderUserLabel(name, !!(profile && profile.verified))}</div>
+                    <div class="user-list-sub">${about}</div>
+                </div>
+            `;
+
+            item.addEventListener('click', async () => {
+                this.closeUserListSheet();
+                if (profile && profile.uid) {
+                    await this.openUserProfileByUid(profile.uid);
+                    return;
+                }
+                if (profile && profile.name && firebaseService && typeof firebaseService.getUserByName === 'function') {
+                    try {
+                        const resolved = await firebaseService.getUserByName(profile.name);
+                        if (resolved && resolved.uid) {
+                            await this.openUserProfileByUid(resolved.uid);
+                            return;
+                        }
+                    } catch (_) {}
+                }
+                AdvancedViewRenderer.showToast('Не удалось открыть профиль', 'warning');
+            });
+
+            this.userList.appendChild(item);
+        });
+    }
+
     async saveProfile() {
         if (!AdvancedViewRenderer.validateProfileForm()) return;
 
@@ -757,6 +1037,654 @@ class AdvancedApp {
         if ('Notification' in window) {
             if (Notification.permission === 'default') Notification.requestPermission();
         }
+    }
+
+    setupOnboardingEvents() {
+        if (this.onboardingChipsContainer && this.onboardingChipsContainer.dataset.bound !== '1') {
+            this.onboardingChipsContainer.dataset.bound = '1';
+            this.onboardingChipsContainer.addEventListener('click', (e) => {
+                const chip = e.target.closest('.onboarding-chip');
+                if (!chip) return;
+                chip.classList.toggle('active');
+            });
+        }
+
+        if (this.onboardingSaveBtn && this.onboardingSaveBtn.dataset.bound !== '1') {
+            this.onboardingSaveBtn.dataset.bound = '1';
+            this.onboardingSaveBtn.addEventListener('click', async () => {
+                await this.saveOnboardingInterests();
+            });
+        }
+
+        if (this.onboardingSkipBtn && this.onboardingSkipBtn.dataset.bound !== '1') {
+            this.onboardingSkipBtn.dataset.bound = '1';
+            this.onboardingSkipBtn.addEventListener('click', async () => {
+                await this.saveOnboardingInterests({ skipped: true });
+            });
+        }
+    }
+
+    restoreFeedPreferences() {
+        try {
+            const raw = localStorage.getItem(this.feedPrefsKey);
+            if (!raw) {
+                this.applyFeedSourceUi();
+                return;
+            }
+            const parsed = JSON.parse(raw);
+            const source = parsed && parsed.feedSource === 'following' ? 'following' : 'for-you';
+            this.state.feedSource = source;
+        } catch (_) {}
+        this.applyFeedSourceUi();
+    }
+
+    persistFeedPreferences() {
+        try {
+            localStorage.setItem(this.feedPrefsKey, JSON.stringify({
+                feedSource: this.state.feedSource === 'following' ? 'following' : 'for-you'
+            }));
+        } catch (_) {}
+    }
+
+    async setFeedSource(source, { reload = true } = {}) {
+        const normalized = source === 'following' ? 'following' : 'for-you';
+        this.state.feedSource = normalized;
+        this.persistFeedPreferences();
+        this.applyFeedSourceUi();
+        this.updateFeedTopControls();
+        if (reload && this.state.feedMode === 'global') {
+            await this.loadFeed(true);
+        }
+    }
+
+    applyFeedSourceUi() {
+        if (!this.feedFilterButtons || !this.feedFilterButtons.length) return;
+        this.feedFilterButtons.forEach((btn) => {
+            const source = btn.dataset.feedSource === 'following' ? 'following' : 'for-you';
+            btn.classList.toggle('active', source === this.state.feedSource);
+        });
+    }
+
+    updateFeedTopControls() {
+        const inCustomFeed = this.state.feedMode === 'custom';
+        if (this.feedBackBtn) {
+            this.feedBackBtn.classList.toggle('hidden', !inCustomFeed);
+        }
+        if (this.feedFilterTabs) {
+            this.feedFilterTabs.classList.toggle('hidden', inCustomFeed);
+        }
+    }
+
+    renderFeedEmptyState(source = 'for-you') {
+        if (!this.feedContainer) return;
+        const isFollowing = source === 'following';
+        const title = isFollowing ? 'Лента подписок пуста' : 'Пока нет подходящих видео';
+        const subtitle = isFollowing
+            ? 'Подпишитесь на авторов, чтобы видеть их видео здесь.'
+            : 'Смотрите ролики и отмечайте интересное, чтобы алгоритм подстроился.';
+        this.feedContainer.innerHTML = `
+            <div class="feed-empty-state">
+                <h3>${this.escapeHtml(title)}</h3>
+                <p>${this.escapeHtml(subtitle)}</p>
+            </div>
+        `;
+    }
+
+    collectInterestTags(value) {
+        const raw = Array.isArray(value) ? value.join(' ') : String(value || '');
+        if (!raw.trim()) return [];
+        const tokens = raw.split(/[\s,;]+/);
+        const normalized = tokens
+            .map((token) => token.trim().toLowerCase())
+            .filter(Boolean)
+            .map((token) => {
+                let clean = token.replace(/[^#\wа-яё-]/gi, '');
+                if (!clean) return '';
+                if (!clean.startsWith('#')) clean = `#${clean}`;
+                return clean;
+            })
+            .filter(Boolean);
+        return Array.from(new Set(normalized));
+    }
+
+    collectVideoHashtags(video) {
+        if (!video) return [];
+        const fromArray = Array.isArray(video.hashtags) ? video.hashtags : [];
+        const joined = `${fromArray.join(' ')} ${video.tags || ''} ${video.desc || ''}`;
+        const matched = joined.match(/#[\wа-яё-]+/gi) || [];
+        const normalized = matched
+            .map(tag => String(tag).trim().toLowerCase())
+            .filter(Boolean);
+        return Array.from(new Set(normalized));
+    }
+
+    stableHash(value) {
+        const str = String(value || '');
+        let hash = 0;
+        for (let i = 0; i < str.length; i += 1) {
+            hash = ((hash << 5) - hash) + str.charCodeAt(i);
+            hash |= 0;
+        }
+        return Math.abs(hash);
+    }
+
+    scoreVideoForForYou(video, { subscriptionsSet, interestSet } = {}) {
+        if (!video) return -Infinity;
+        const likes = parseInt(video.likes, 10) || 0;
+        const views = parseInt(video.views, 10) || 0;
+        const now = Date.now();
+        const ts = parseInt(video.timestamp, 10) || now;
+        const ageHours = Math.max(0, (now - ts) / 3600000);
+        const recency = Math.max(0, 72 - ageHours) * 0.45;
+        const popularity = Math.min(32, (likes * 1.5) + (views / 1600));
+
+        const authorUid = video.uid ? String(video.uid) : '';
+        const authorAffinityRaw = this.watchProfile?.authors?.[authorUid] || 0;
+        const authorAffinity = Math.min(26, authorAffinityRaw * 0.35);
+
+        const tags = this.collectVideoHashtags(video);
+        const tagAffinityRaw = tags.reduce((sum, tag) => sum + (this.watchProfile?.tags?.[tag] || 0), 0);
+        const tagAffinity = Math.min(32, tagAffinityRaw * 0.45);
+        const profileInterestsBoost = interestSet
+            ? tags.reduce((sum, tag) => sum + (interestSet.has(tag) ? 10 : 0), 0)
+            : 0;
+
+        const followBoost = (subscriptionsSet && authorUid && subscriptionsSet.has(authorUid)) ? 10 : 0;
+        const randomBoost = (this.stableHash(video.id || video.firestoreId || authorUid) % 7) / 10;
+
+        return recency + popularity + authorAffinity + tagAffinity + profileInterestsBoost + followBoost + randomBoost;
+    }
+
+    prepareGlobalFeedVideos(videos = []) {
+        const list = Array.isArray(videos) ? videos.filter(Boolean) : [];
+        const withoutMutedAuthors = list.filter((video) => {
+            const uid = video && video.uid ? String(video.uid) : null;
+            return !this.isAuthorFilteredOut(uid);
+        });
+
+        const current = firebaseService && firebaseService.getCurrentUser ? firebaseService.getCurrentUser() : null;
+        const subscriptionsSet = new Set(
+            current && Array.isArray(current.subscriptions)
+                ? current.subscriptions.map(v => String(v))
+                : []
+        );
+
+        if (this.state.feedSource === 'following') {
+            return withoutMutedAuthors
+                .filter((video) => {
+                    const uid = video && video.uid ? String(video.uid) : null;
+                    return !!(uid && subscriptionsSet.has(uid));
+                })
+                .sort((a, b) => (parseInt(b.timestamp, 10) || 0) - (parseInt(a.timestamp, 10) || 0));
+        }
+
+        const interestSet = new Set(this.collectInterestTags(current && current.interests ? current.interests : ''));
+        return withoutMutedAuthors
+            .slice()
+            .sort((a, b) => this.scoreVideoForForYou(b, { subscriptionsSet, interestSet }) - this.scoreVideoForForYou(a, { subscriptionsSet, interestSet }));
+    }
+
+    loadWatchProfile() {
+        try {
+            const raw = localStorage.getItem(this.watchProfileKey);
+            if (!raw) return;
+            const parsed = JSON.parse(raw);
+            const authors = parsed && typeof parsed.authors === 'object' ? parsed.authors : {};
+            const tags = parsed && typeof parsed.tags === 'object' ? parsed.tags : {};
+            this.watchProfile = {
+                authors: this.pruneScoreMap(authors, 120),
+                tags: this.pruneScoreMap(tags, 180)
+            };
+        } catch (_) {}
+    }
+
+    saveWatchProfile() {
+        try {
+            localStorage.setItem(this.watchProfileKey, JSON.stringify(this.watchProfile));
+        } catch (_) {}
+    }
+
+    pruneScoreMap(source, maxItems = 100) {
+        const entries = Object.entries(source || {})
+            .map(([key, value]) => [String(key), Number(value) || 0])
+            .filter(([key, value]) => key && value > 0)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, maxItems);
+        return Object.fromEntries(entries);
+    }
+
+    startVideoWatchSession(videoEl) {
+        if (!videoEl) return;
+        if (videoEl.dataset.watchStartAt) return;
+        videoEl.dataset.watchStartAt = String(Date.now());
+    }
+
+    endVideoWatchSession(item, videoEl) {
+        if (!videoEl) return;
+        const startedAt = parseInt(videoEl.dataset.watchStartAt || '0', 10);
+        if (!startedAt) return;
+        delete videoEl.dataset.watchStartAt;
+        const seconds = Math.max(0, (Date.now() - startedAt) / 1000);
+        if (seconds < 1.5) return;
+        this.recordWatchSignal(item, seconds);
+    }
+
+    recordWatchSignal(item, seconds = 0) {
+        if (!item || seconds <= 0) return;
+        const firestoreId = item.dataset ? item.dataset.firestoreId : null;
+        const id = item.dataset ? String(item.dataset.id || '') : '';
+        const localVideo = (this.dataService && Array.isArray(this.dataService.userVideos))
+            ? this.dataService.userVideos.find(v => (firestoreId
+                ? String(v.firestoreId || '') === String(firestoreId)
+                : String(v.id) === id))
+            : null;
+
+        const authorUid = localVideo && localVideo.uid
+            ? String(localVideo.uid)
+            : (item.dataset && item.dataset.uid ? String(item.dataset.uid) : null);
+        if (authorUid) {
+            const current = this.watchProfile.authors[authorUid] || 0;
+            this.watchProfile.authors[authorUid] = current + seconds;
+        }
+
+        let tags = localVideo ? this.collectVideoHashtags(localVideo) : [];
+        if (!tags.length) {
+            tags = Array.from(item.querySelectorAll('.hashtag'))
+                .map(el => String(el.textContent || '').trim().toLowerCase())
+                .filter(Boolean);
+        }
+        tags.forEach((tag) => {
+            const current = this.watchProfile.tags[tag] || 0;
+            this.watchProfile.tags[tag] = current + seconds;
+        });
+
+        this.watchProfile.authors = this.pruneScoreMap(this.watchProfile.authors, 120);
+        this.watchProfile.tags = this.pruneScoreMap(this.watchProfile.tags, 180);
+        this.saveWatchProfile();
+    }
+
+    normalizeUidList(list) {
+        if (!Array.isArray(list)) return [];
+        return Array.from(new Set(list
+            .map(v => String(v || '').trim())
+            .filter(Boolean)));
+    }
+
+    getModerationStorageKey(uid = 'guest') {
+        return `${this.moderationPrefsKey}:${uid}`;
+    }
+
+    restoreModerationPreferences() {
+        const current = firebaseService && firebaseService.getCurrentUser ? firebaseService.getCurrentUser() : null;
+        const uid = current && current.uid ? String(current.uid) : 'guest';
+        let local = {};
+        try {
+            const raw = localStorage.getItem(this.getModerationStorageKey(uid));
+            local = raw ? JSON.parse(raw) : {};
+        } catch (_) {
+            local = {};
+        }
+
+        const blockedFromProfile = current && Array.isArray(current.blockedUsers) ? current.blockedUsers : null;
+        const hiddenFromProfile = current && Array.isArray(current.hiddenAuthors) ? current.hiddenAuthors : null;
+        this.moderationPrefs = {
+            blockedUsers: this.normalizeUidList(blockedFromProfile || local.blockedUsers || []),
+            hiddenAuthors: this.normalizeUidList(hiddenFromProfile || local.hiddenAuthors || [])
+        };
+    }
+
+    async persistModerationPreferences(nextPrefs = null) {
+        const blockedUsers = this.normalizeUidList(
+            nextPrefs && nextPrefs.blockedUsers ? nextPrefs.blockedUsers : this.moderationPrefs.blockedUsers
+        );
+        const hiddenAuthors = this.normalizeUidList(
+            nextPrefs && nextPrefs.hiddenAuthors ? nextPrefs.hiddenAuthors : this.moderationPrefs.hiddenAuthors
+        );
+        this.moderationPrefs = { blockedUsers, hiddenAuthors };
+
+        const current = firebaseService && firebaseService.getCurrentUser ? firebaseService.getCurrentUser() : null;
+        const uid = current && current.uid ? String(current.uid) : 'guest';
+        try {
+            localStorage.setItem(this.getModerationStorageKey(uid), JSON.stringify(this.moderationPrefs));
+        } catch (_) {}
+
+        if (firebaseService
+            && firebaseService.isInitialized
+            && firebaseService.isInitialized()
+            && uid !== 'guest'
+            && typeof firebaseService.updateUserProfile === 'function') {
+            try {
+                await firebaseService.updateUserProfile(uid, {
+                    blockedUsers,
+                    hiddenAuthors
+                });
+            } catch (error) {
+                console.warn('⚠️ Не удалось сохранить модерацию в профиле:', error?.message || error);
+            }
+        }
+    }
+
+    isAuthorFilteredOut(uid) {
+        if (!uid) return false;
+        const normalized = String(uid);
+        return this.moderationPrefs.blockedUsers.includes(normalized)
+            || this.moderationPrefs.hiddenAuthors.includes(normalized);
+    }
+
+    removeAuthorFromCurrentFeed(authorUid) {
+        if (!authorUid || !this.feedContainer) return;
+        const normalized = String(authorUid);
+        const selector = `.video-item[data-uid="${normalized}"]`;
+        this.feedContainer.querySelectorAll(selector).forEach((item) => {
+            const video = item.querySelector('video');
+            if (video) this.unloadVideo(video);
+            item.remove();
+        });
+
+        if (this.customFeed && Array.isArray(this.customFeed.videos)) {
+            this.customFeed.videos = this.customFeed.videos.filter(v => String(v.uid || '') !== normalized);
+        }
+    }
+
+    async hideAuthorInFeed(video) {
+        const current = firebaseService && firebaseService.getCurrentUser ? firebaseService.getCurrentUser() : null;
+        const authorUid = video && video.uid ? String(video.uid) : null;
+        if (!authorUid) {
+            AdvancedViewRenderer.showToast('Не удалось определить автора', 'warning');
+            return;
+        }
+        if (current && current.uid && String(current.uid) === authorUid) {
+            AdvancedViewRenderer.showToast('Нельзя скрыть собственный аккаунт', 'info');
+            return;
+        }
+
+        if (!this.moderationPrefs.hiddenAuthors.includes(authorUid)) {
+            this.moderationPrefs.hiddenAuthors.push(authorUid);
+            await this.persistModerationPreferences();
+        }
+        this.removeAuthorFromCurrentFeed(authorUid);
+        if (this.state.feedMode === 'global' && this.getFeedVideoItems().length === 0) {
+            await this.loadFeed(true);
+        }
+        AdvancedViewRenderer.showToast('Автор скрыт из вашей ленты', 'success');
+    }
+
+    async blockAuthorInFeed(video) {
+        const current = firebaseService && firebaseService.getCurrentUser ? firebaseService.getCurrentUser() : null;
+        const currentUid = current && current.uid ? String(current.uid) : null;
+        const authorUid = video && video.uid ? String(video.uid) : null;
+        if (!authorUid) {
+            AdvancedViewRenderer.showToast('Не удалось определить автора', 'warning');
+            return;
+        }
+        if (currentUid && currentUid === authorUid) {
+            AdvancedViewRenderer.showToast('Нельзя заблокировать себя', 'info');
+            return;
+        }
+
+        if (!confirm('Заблокировать автора? Его видео больше не будут показываться.')) return;
+
+        if (!this.moderationPrefs.blockedUsers.includes(authorUid)) {
+            this.moderationPrefs.blockedUsers.push(authorUid);
+        }
+        if (!this.moderationPrefs.hiddenAuthors.includes(authorUid)) {
+            this.moderationPrefs.hiddenAuthors.push(authorUid);
+        }
+        await this.persistModerationPreferences();
+
+        try {
+            if (currentUid
+                && firebaseService
+                && firebaseService.isInitialized
+                && firebaseService.isInitialized()
+                && typeof firebaseService.unsubscribe === 'function'
+                && current
+                && Array.isArray(current.subscriptions)
+                && current.subscriptions.map(String).includes(authorUid)) {
+                await firebaseService.unsubscribe(authorUid);
+            }
+        } catch (_) {}
+
+        this.removeAuthorFromCurrentFeed(authorUid);
+        if (this.state.feedMode === 'global') {
+            await this.loadFeed(true);
+        }
+
+        if (this.state.viewingProfileUid && String(this.state.viewingProfileUid) === authorUid) {
+            this.state.viewingProfileUid = null;
+            this.navigateTo('feed-view');
+        }
+        AdvancedViewRenderer.showToast('Автор заблокирован', 'success');
+    }
+
+    async reportVideo(video) {
+        if (!video) return;
+        const reason = window.prompt('Причина жалобы (необязательно):', 'Неподходящий контент');
+        if (reason === null) return;
+
+        const current = firebaseService && firebaseService.getCurrentUser ? firebaseService.getCurrentUser() : null;
+        const payload = {
+            id: Date.now(),
+            videoId: video.id || null,
+            firestoreId: video.firestoreId || null,
+            authorUid: video.uid || null,
+            author: video.author || '',
+            reporterUid: current && current.uid ? current.uid : null,
+            reporterName: current && current.name ? current.name : 'user',
+            reason: String(reason || '').trim(),
+            createdAt: Date.now()
+        };
+
+        try {
+            const key = 'reelgram_reports';
+            const raw = localStorage.getItem(key);
+            const list = raw ? JSON.parse(raw) : [];
+            const normalized = Array.isArray(list) ? list : [];
+            normalized.unshift(payload);
+            localStorage.setItem(key, JSON.stringify(normalized.slice(0, 300)));
+        } catch (_) {}
+
+        AdvancedViewRenderer.showToast('Жалоба отправлена', 'success');
+    }
+
+    scheduleUploadDraftAutosave() {
+        clearTimeout(this.uploadDraftSaveTimer);
+        this.uploadDraftSaveTimer = setTimeout(() => {
+            this.saveUploadDraft();
+        }, 350);
+    }
+
+    getUploadDraftSnapshot() {
+        const desc = this.uploadDescInput ? this.uploadDescInput.value.trim() : '';
+        const tags = this.uploadTagsInput ? this.uploadTagsInput.value.trim() : '';
+        const allowComments = this.allowCommentsInput ? this.allowCommentsInput.checked : true;
+        const isPrivate = this.privateVideoInput ? this.privateVideoInput.checked : false;
+        const filter = this.state.selectedFilter || 'none';
+
+        const hasMeaningfulData = !!(desc || tags || !allowComments || isPrivate || filter !== 'none');
+        if (!hasMeaningfulData) return null;
+
+        return {
+            desc,
+            tags,
+            allowComments,
+            private: isPrivate,
+            filter,
+            updatedAt: Date.now()
+        };
+    }
+
+    saveUploadDraft({ manual = false } = {}) {
+        const draft = this.getUploadDraftSnapshot();
+        try {
+            if (!draft) {
+                localStorage.removeItem(this.uploadDraftKey);
+                return;
+            }
+            localStorage.setItem(this.uploadDraftKey, JSON.stringify(draft));
+            if (manual) {
+                this.showUploadDraftNote('Черновик сохранен');
+                AdvancedViewRenderer.showToast('Черновик сохранен', 'success');
+            } else {
+                this.showUploadDraftNote('Черновик обновлен автоматически');
+            }
+        } catch (error) {
+            if (manual) {
+                AdvancedViewRenderer.showToast('Не удалось сохранить черновик', 'error');
+            }
+            console.error('Ошибка сохранения черновика:', error);
+        }
+    }
+
+    restoreUploadDraft() {
+        if (!this.uploadDescInput || !this.uploadTagsInput) return;
+        try {
+            const raw = localStorage.getItem(this.uploadDraftKey);
+            if (!raw) return;
+            const draft = JSON.parse(raw);
+            if (!draft || typeof draft !== 'object') return;
+
+            this.uploadDescInput.value = draft.desc || '';
+            this.uploadTagsInput.value = draft.tags || '';
+            if (this.allowCommentsInput) this.allowCommentsInput.checked = draft.allowComments !== false;
+            if (this.privateVideoInput) this.privateVideoInput.checked = draft.private === true;
+
+            const filter = draft.filter || 'none';
+            this.state.selectedFilter = filter;
+            document.querySelectorAll('.filter-option').forEach((opt) => {
+                opt.classList.toggle('active', opt.dataset.filter === filter);
+            });
+            const previewVideo = document.getElementById('preview-video');
+            if (previewVideo) {
+                const selected = this.dataService.filters.find(f => f.id === filter);
+                previewVideo.style.filter = selected?.css || '';
+            }
+
+            this.showUploadDraftNote('Черновик восстановлен');
+        } catch (error) {
+            console.error('Ошибка восстановления черновика:', error);
+        }
+    }
+
+    clearUploadDraft({ clearForm = true, showToast = false } = {}) {
+        clearTimeout(this.uploadDraftSaveTimer);
+        try {
+            localStorage.removeItem(this.uploadDraftKey);
+        } catch (_) {}
+
+        if (clearForm) {
+            if (this.uploadDescInput) this.uploadDescInput.value = '';
+            if (this.uploadTagsInput) this.uploadTagsInput.value = '';
+            if (this.allowCommentsInput) this.allowCommentsInput.checked = true;
+            if (this.privateVideoInput) this.privateVideoInput.checked = false;
+            this.state.selectedFilter = 'none';
+            document.querySelectorAll('.filter-option').forEach((opt) => {
+                opt.classList.toggle('active', opt.dataset.filter === 'none');
+            });
+            const previewVideo = document.getElementById('preview-video');
+            if (previewVideo) previewVideo.style.filter = '';
+        }
+
+        if (this.uploadDraftNote) {
+            this.uploadDraftNote.style.display = 'none';
+            this.uploadDraftNote.textContent = '';
+        }
+        if (showToast) {
+            AdvancedViewRenderer.showToast('Черновик удален', 'info');
+        }
+    }
+
+    showUploadDraftNote(text = '') {
+        if (!this.uploadDraftNote) return;
+        this.uploadDraftNote.textContent = text;
+        this.uploadDraftNote.style.display = text ? 'block' : 'none';
+        clearTimeout(this.uploadDraftNoteTimer);
+        if (text) {
+            this.uploadDraftNoteTimer = setTimeout(() => {
+                if (!this.uploadDraftNote) return;
+                this.uploadDraftNote.style.display = 'none';
+            }, 2600);
+        }
+    }
+
+    openOnboardingModal({ force = false } = {}) {
+        if (!this.onboardingModal || !this.onboardingChipsContainer) return;
+        const current = firebaseService && firebaseService.getCurrentUser ? firebaseService.getCurrentUser() : null;
+        if (!current) return;
+
+        const onboardingDone = !!current.onboardingCompleted;
+        if (!force && onboardingDone) return;
+
+        const selected = new Set(this.collectInterestTags(current.interests || ''));
+        this.onboardingChipsContainer.querySelectorAll('.onboarding-chip').forEach((chip) => {
+            const tag = String(chip.dataset.interest || '').toLowerCase();
+            chip.classList.toggle('active', selected.has(tag));
+        });
+
+        this.onboardingModal.style.display = 'flex';
+        requestAnimationFrame(() => this.onboardingModal.classList.add('open'));
+    }
+
+    closeOnboardingModal() {
+        if (!this.onboardingModal) return;
+        this.onboardingModal.classList.remove('open');
+        setTimeout(() => {
+            if (this.onboardingModal) this.onboardingModal.style.display = 'none';
+        }, 180);
+    }
+
+    getSelectedOnboardingInterests() {
+        if (!this.onboardingChipsContainer) return [];
+        return Array.from(this.onboardingChipsContainer.querySelectorAll('.onboarding-chip.active'))
+            .map(chip => String(chip.dataset.interest || '').trim().toLowerCase())
+            .filter(Boolean);
+    }
+
+    async saveOnboardingInterests({ skipped = false } = {}) {
+        const selected = skipped ? [] : this.getSelectedOnboardingInterests();
+        if (!skipped && selected.length === 0) {
+            AdvancedViewRenderer.showToast('Выберите хотя бы один интерес или нажмите "Пропустить"', 'warning');
+            return;
+        }
+
+        const current = firebaseService && firebaseService.getCurrentUser ? firebaseService.getCurrentUser() : null;
+        if (!current || !current.uid) {
+            this.closeOnboardingModal();
+            return;
+        }
+
+        try {
+            if (firebaseService
+                && firebaseService.isInitialized
+                && firebaseService.isInitialized()
+                && typeof firebaseService.updateUserProfile === 'function') {
+                await firebaseService.updateUserProfile(current.uid, {
+                    interests: selected.join(' '),
+                    onboardingCompleted: true
+                });
+            }
+        } catch (error) {
+            console.error('Ошибка сохранения onboarding:', error);
+            AdvancedViewRenderer.showToast('Не удалось сохранить интересы', 'error');
+            return;
+        }
+
+        this.closeOnboardingModal();
+        this.updateProfileUI();
+        await this.loadFeed(true);
+        AdvancedViewRenderer.showToast(skipped ? 'Можно настроить интересы позже в профиле' : 'Интересы сохранены', 'success');
+    }
+
+    scheduleNotificationBadgeRefresh() {
+        if (this.notificationBadgeTimer) {
+            clearInterval(this.notificationBadgeTimer);
+            this.notificationBadgeTimer = null;
+        }
+        this.notificationBadgeTimer = setInterval(() => {
+            const user = this.dataService && this.dataService.getCurrentUser ? this.dataService.getCurrentUser() : null;
+            if (!user) return;
+            this.updateNotificationBadge();
+        }, 20000);
     }
 
     async setupCamera() {
@@ -968,6 +1896,12 @@ class AdvancedApp {
     }
 
     resetFeedVideoLifecycle() {
+        if (this.feedContainer) {
+            this.feedContainer.querySelectorAll('.video-item').forEach((item) => {
+                const video = item.querySelector('video');
+                this.endVideoWatchSession(item, video);
+            });
+        }
         if (this.feedVideoObserver) {
             this.feedVideoObserver.disconnect();
             this.feedVideoObserver = null;
@@ -1058,8 +1992,7 @@ class AdvancedApp {
 
         this.navigateTo('feed-view');
         this.renderFeedVideos(list);
-
-        this.feedBackBtn?.classList.remove('hidden');
+        this.updateFeedTopControls();
 
         const safeIndex = Math.max(0, Math.min(parseInt(startIndex, 10) || 0, list.length - 1));
         this.setActiveFeedIndex(safeIndex, {
@@ -1078,7 +2011,7 @@ class AdvancedApp {
         this.state.feedReturnViewId = null;
         this.customFeed = null;
 
-        this.feedBackBtn?.classList.add('hidden');
+        this.updateFeedTopControls();
 
         // Free resources aggressively without forcing extra loads.
         this.feedContainer?.querySelectorAll('video').forEach(v => {
@@ -1124,6 +2057,7 @@ class AdvancedApp {
     async loadFeed(clear = false) {
         if (this.state.loading) return;
         this.state.loading = true;
+        this.updateFeedTopControls();
         
         if (clear) {
             this.state.currentPage = 0;
@@ -1142,7 +2076,9 @@ class AdvancedApp {
         }
         
         try {
-            const { videos, hasMore } = await this.dataService.getFeed(this.state.currentPage);
+            const pageSize = this.state.feedSource === 'following' ? 15 : 8;
+            const { videos, hasMore } = await this.dataService.getFeed(this.state.currentPage, pageSize);
+            const preparedVideos = this.prepareGlobalFeedVideos(videos);
             
             if (clear) this.feedContainer.innerHTML = '';
             
@@ -1151,7 +2087,7 @@ class AdvancedApp {
             const subscriptions = current && Array.isArray(current.subscriptions) ? current.subscriptions.map(String) : [];
 
             const frag = document.createDocumentFragment();
-            videos.forEach(video => {
+            preparedVideos.forEach(video => {
                 const authorUid = video && video.uid ? String(video.uid) : null;
                 const isOwn = !!(currentUid && authorUid && currentUid === authorUid);
                 const isSubscribed = !!(authorUid && !isOwn && subscriptions.includes(authorUid));
@@ -1163,7 +2099,11 @@ class AdvancedApp {
                 });
                 frag.appendChild(card);
             });
-            this.feedContainer.appendChild(frag);
+            if (preparedVideos.length > 0) {
+                this.feedContainer.appendChild(frag);
+            } else if (clear) {
+                this.renderFeedEmptyState(this.state.feedSource);
+            }
             
             this.attachVideoEvents();
             this.setupVideoProgress();
@@ -1171,9 +2111,9 @@ class AdvancedApp {
             this.state.currentPage++;
             this.state.hasMore = hasMore;
             
-            if (clear) {
+            if (clear && preparedVideos.length > 0) {
                 this.setActiveFeedIndex(0, { play: this.dataService.settings.autoplay });
-            } else {
+            } else if (!clear && preparedVideos.length > 0) {
                 // Keep the currently active video loaded after appending new items
                 this.setActiveFeedIndex(this.state.activeFeedIndex, { play: false });
             }
@@ -1237,6 +2177,10 @@ class AdvancedApp {
 
     unloadVideo(videoEl) {
         if (!videoEl) return;
+        const item = videoEl.closest ? videoEl.closest('.video-item') : null;
+        if (item) {
+            this.endVideoWatchSession(item, videoEl);
+        }
 
         try { videoEl.pause(); } catch (_) {}
         videoEl.muted = true;
@@ -1328,6 +2272,13 @@ class AdvancedApp {
         const clamped = Math.max(0, Math.min(parseInt(index, 10) || 0, items.length - 1));
         const prevIndex = this.state.activeFeedIndex;
         this.state.activeFeedIndex = clamped;
+        if (prevIndex !== clamped) {
+            const prevItem = items[prevIndex];
+            if (prevItem) {
+                const prevVideo = prevItem.querySelector('video');
+                this.endVideoWatchSession(prevItem, prevVideo);
+            }
+        }
 
         if (scroll) {
             this.scrollFeedToIndex(clamped, behavior);
@@ -1346,10 +2297,14 @@ class AdvancedApp {
                 if (play && this.dataService?.settings?.autoplay) {
                     video.play().catch(() => {});
                 }
+                if (!video.paused) {
+                    this.startVideoWatchSession(video);
+                }
                 return;
             }
 
             // Non-active: always stop sound/playback. Unload only when fully offscreen.
+            this.endVideoWatchSession(item, video);
             try { video.pause(); } catch (_) {}
             video.muted = true;
 
@@ -1447,7 +2402,7 @@ class AdvancedApp {
                                 localVideo.isLiked = !!isLiked;
                             }
                         } else {
-                            isLiked = this.dataService.toggleLike(parseInt(videoId, 10));
+                            isLiked = this.dataService.toggleLike(videoId);
                         }
 
                         likeBtn.classList.toggle('liked', !!isLiked);
@@ -1469,12 +2424,12 @@ class AdvancedApp {
             
             commentBtn?.addEventListener('click', (e) => {
                 e.stopPropagation();
-                this.openComments(parseInt(videoId));
+                this.openComments(videoId);
             });
             
             shareBtn?.addEventListener('click', (e) => {
                 e.stopPropagation();
-                this.showShareModal(parseInt(videoId));
+                this.showShareModal(videoId);
             });
             
             avatar?.addEventListener('click', (e) => {
@@ -1566,6 +2521,14 @@ class AdvancedApp {
             });
             
             if (video) {
+                video.addEventListener('play', () => {
+                    this.startVideoWatchSession(video);
+                });
+
+                video.addEventListener('pause', () => {
+                    this.endVideoWatchSession(item, video);
+                });
+
                 video.addEventListener('timeupdate', () => {
                     const progressBar = item.querySelector('.video-progress-bar');
                     if (progressBar) {
@@ -1575,8 +2538,9 @@ class AdvancedApp {
                 });
                 
                 video.addEventListener('ended', () => {
+                    this.endVideoWatchSession(item, video);
                     video.currentTime = 0;
-                    video.play();
+                    video.play().catch(() => {});
                 });
             }
         });
@@ -1690,6 +2654,7 @@ class AdvancedApp {
                 }
             }
             if (viewId === 'feed-view') {
+                this.updateFeedTopControls();
                 setTimeout(() => {
                     if (this.state.feedMode !== 'global') return;
                     const index = this.getNearestFeedIndex();
@@ -1698,6 +2663,7 @@ class AdvancedApp {
             }
             if (viewId === 'upload-view') {
                 this.setupCamera();
+                this.restoreUploadDraft();
             }
             if (viewId === 'messages-view') {
                 if (this.chatDialog && this.messagesListSection) {
@@ -1705,6 +2671,10 @@ class AdvancedApp {
                     this.messagesListSection.style.display = 'flex';
                 }
                 this.loadChats();
+            }
+            if (viewId === 'notifications-view') {
+                this.loadNotifications('all');
+                this.updateNotificationBadge();
             }
         }
 
@@ -1804,6 +2774,17 @@ class AdvancedApp {
         const trimmed = preview.length > 80 ? (preview.slice(0, 77) + '...') : preview;
         const text = `💬 @${fromUser}: ${trimmed || 'сообщение'}`;
 
+        if ('Notification' in window
+            && Notification.permission === 'granted'
+            && document.visibilityState !== 'visible') {
+            try {
+                new Notification(`Сообщение от @${fromUser}`, {
+                    body: trimmed || 'Новое сообщение',
+                    tag: chatId ? `chat-${chatId}` : undefined
+                });
+            } catch (_) {}
+        }
+
         const toast = document.getElementById('toast');
         if (toast) {
             toast.dataset.chatId = chatId ? String(chatId) : '';
@@ -1826,23 +2807,56 @@ class AdvancedApp {
         AdvancedViewRenderer.showToast(text, 'info');
     }
 
-    openComments(videoId) {
-        const video = this.dataService.userVideos.find(v => v.id === videoId);
+    async openComments(videoId) {
+        const id = String(videoId);
+        let video = this.dataService.userVideos.find(v => String(v.id) === id);
+        if (!video && this.feedContainer) {
+            const feedItem = this.feedContainer.querySelector(`.video-item[data-id="${id}"]`);
+            if (feedItem) {
+                video = {
+                    id,
+                    firestoreId: feedItem.dataset.firestoreId || null,
+                    comments: []
+                };
+                if (this.dataService && Array.isArray(this.dataService.userVideos)) {
+                    this.dataService.userVideos.push(video);
+                }
+            }
+        }
         if (!video) return;
         
-        this.state.activeCommentsVideoId = videoId;
+        this.state.activeCommentsVideoId = id;
         
         const commentsList = document.getElementById('comments-list');
         const commentCount = document.getElementById('comment-count');
+        const comments = Array.isArray(video.comments) ? video.comments : [];
         
-        commentCount.textContent = video.comments.length;
-        commentsList.innerHTML = AdvancedViewRenderer.renderComments(video.comments);
+        commentCount.textContent = comments.length;
+        commentsList.innerHTML = AdvancedViewRenderer.renderComments(comments);
         
         this.commentsSheet.classList.add('open');
         document.getElementById('comment-input').focus();
+
+        // Refresh from Firestore (if available) to avoid stale comments in sheet.
+        if (video.firestoreId
+            && firebaseService
+            && typeof firebaseService.isInitialized === 'function'
+            && firebaseService.isInitialized()
+            && typeof firebaseService.getComments === 'function') {
+            try {
+                const remoteComments = await firebaseService.getComments(video.firestoreId);
+                if (Array.isArray(remoteComments)) {
+                    video.comments = remoteComments;
+                    commentCount.textContent = remoteComments.length;
+                    commentsList.innerHTML = AdvancedViewRenderer.renderComments(remoteComments);
+                }
+            } catch (error) {
+                console.error('Ошибка загрузки комментариев:', error);
+            }
+        }
     }
 
-    sendComment() {
+    async sendComment() {
         const input = document.getElementById('comment-input');
         const text = input.value.trim();
         
@@ -1851,13 +2865,55 @@ class AdvancedApp {
             AdvancedViewRenderer.showToast('Войдите, чтобы комментировать', 'warning');
             return;
         }
-        
-        const comment = this.dataService.addComment(this.state.activeCommentsVideoId, text);
+
+        const targetId = String(this.state.activeCommentsVideoId || '');
+        let video = this.dataService.userVideos.find(v => String(v.id) === targetId);
+        if (!video && this.feedContainer) {
+            const feedItem = this.feedContainer.querySelector(`.video-item[data-id="${targetId}"]`);
+            if (feedItem) {
+                video = {
+                    id: targetId,
+                    firestoreId: feedItem.dataset.firestoreId || null,
+                    comments: []
+                };
+                if (this.dataService && Array.isArray(this.dataService.userVideos)) {
+                    this.dataService.userVideos.push(video);
+                }
+            }
+        }
+        if (!video) {
+            AdvancedViewRenderer.showToast('Видео для комментария не найдено', 'warning');
+            return;
+        }
+
+        let comment = null;
+        if (video.firestoreId
+            && firebaseService
+            && typeof firebaseService.isInitialized === 'function'
+            && firebaseService.isInitialized()
+            && typeof firebaseService.addComment === 'function') {
+            try {
+                comment = await firebaseService.addComment(video.firestoreId, text);
+                video.comments = Array.isArray(video.comments) ? video.comments : [];
+                video.comments.push(comment);
+            } catch (error) {
+                console.error('Ошибка добавления комментария:', error);
+                AdvancedViewRenderer.showToast('Не удалось отправить комментарий', 'error');
+                return;
+            }
+        } else {
+            comment = this.dataService.addComment(targetId, text);
+        }
+
         if (comment) {
             const commentsList = document.getElementById('comments-list');
+            const avatar = comment.avatar
+                || (firebaseService && firebaseService.getCurrentUser ? firebaseService.getCurrentUser()?.avatar : null)
+                || this.dataService.getCurrentUser()?.avatar
+                || `https://ui-avatars.com/api/?name=${encodeURIComponent(comment.user || 'user')}&background=random&size=32`;
             const newCommentHTML = `
                 <div class="comment-item">
-                    <img src="${firebaseService.getCurrentUser().avatar}" class="comment-avatar">
+                    <img src="${avatar}" class="comment-avatar">
                     <div class="comment-content">
                         <div class="comment-author">
                             @${comment.user}
@@ -1967,11 +3023,38 @@ class AdvancedApp {
     }
 
     showShareModal(videoId) {
-        const video = this.dataService.userVideos.find(v => v.id === videoId);
+        const id = String(videoId);
+        const video = this.dataService.userVideos.find(v => String(v.id) === id);
         if (!video) return;
+        const currentUser = firebaseService && firebaseService.getCurrentUser ? firebaseService.getCurrentUser() : null;
+        const currentUid = currentUser && currentUser.uid ? String(currentUser.uid) : null;
+        const authorUid = video && video.uid ? String(video.uid) : null;
+        const isOwnAuthor = !!(currentUid && authorUid && currentUid === authorUid);
         
         const shareModal = document.getElementById('share-modal');
-        shareModal.innerHTML = AdvancedViewRenderer.renderShareOptions(videoId);
+        shareModal.innerHTML = AdvancedViewRenderer.renderShareOptions(video.id);
+        if (!isOwnAuthor && authorUid) {
+            shareModal.insertAdjacentHTML('beforeend', `
+                <div class="share-option" data-action="hide-author">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M12 6a9.77 9.77 0 0 1 9 6 9.77 9.77 0 0 1-9 6 9.77 9.77 0 0 1-9-6 9.77 9.77 0 0 1 9-6m0-2C6.5 4 1.73 7.11 0 12c1.73 4.89 6.5 8 12 8s10.27-3.11 12-8c-1.73-4.89-6.5-8-12-8zm0 5a3 3 0 1 0 3 3 3 3 0 0 0-3-3z"></path>
+                    </svg>
+                    <span>Скрыть автора</span>
+                </div>
+                <div class="share-option" data-action="block-author">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm6.36 14.95L7.05 5.64A8 8 0 0 1 18.36 16.95zM5.64 7.05l11.31 11.31A8 8 0 0 1 5.64 7.05z"></path>
+                    </svg>
+                    <span>Заблокировать</span>
+                </div>
+                <div class="share-option danger" data-action="report">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M14.4 6 14 4H5v16h2v-6h5.6l.4 2H21V6z"></path>
+                    </svg>
+                    <span>Пожаловаться</span>
+                </div>
+            `);
+        }
         if (this.canCurrentUserDeleteVideo(video)) {
             shareModal.insertAdjacentHTML('beforeend', `
                 <div class="share-option danger" data-action="delete">
@@ -2001,6 +3084,15 @@ class AdvancedApp {
                         break;
                     case 'twitter':
                         window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(video.desc)}&url=${encodeURIComponent(option.dataset.url || '')}`, '_blank');
+                        break;
+                    case 'hide-author':
+                        await this.hideAuthorInFeed(video);
+                        break;
+                    case 'block-author':
+                        await this.blockAuthorInFeed(video);
+                        break;
+                    case 'report':
+                        await this.reportVideo(video);
                         break;
                     case 'delete':
                         await this.deleteVideoWithConfirm(video);
@@ -2341,6 +3433,11 @@ class AdvancedApp {
 
     async updateNotificationBadge() {
         if (!this.notificationsBadge) return;
+        const user = this.dataService && this.dataService.getCurrentUser ? this.dataService.getCurrentUser() : null;
+        if (!user) {
+            this.notificationsBadge.style.display = 'none';
+            return;
+        }
         let unreadCount = 0;
         try {
             if (firebaseService && firebaseService.isInitialized() && typeof firebaseService.getUserNotifications === 'function') {
@@ -2354,7 +3451,7 @@ class AdvancedApp {
             unreadCount = 0;
         }
         if (unreadCount > 0) {
-            this.notificationsBadge.textContent = unreadCount;
+            this.notificationsBadge.textContent = unreadCount > 99 ? '99+' : String(unreadCount);
             this.notificationsBadge.style.display = 'flex';
         } else {
             this.notificationsBadge.style.display = 'none';

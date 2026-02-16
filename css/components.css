@@ -13,8 +13,8 @@
     transition: transform 0.4s cubic-bezier(0.32, 0.72, 0, 1);
     z-index: 2000;
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 20px;
+    grid-template-columns: repeat(auto-fit, minmax(78px, 1fr));
+    gap: 14px;
 }
 
 .share-modal.open {
@@ -45,6 +45,12 @@
     height: 30px;
     fill: white;
     transition: var(--transition);
+}
+
+.share-option span {
+    font-size: 12px;
+    text-align: center;
+    line-height: 1.2;
 }
 
 .share-option:hover svg {
@@ -135,4 +141,80 @@
 /* Utility Classes */
 .hidden { 
     display: none !important; 
+}
+
+.onboarding-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 2600;
+    background: rgb(0 0 0 / 0.5);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 18px;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.onboarding-modal.open {
+    opacity: 1;
+}
+
+.onboarding-card {
+    width: min(100%, 430px);
+    background:
+        radial-gradient(circle at 85% 5%, rgb(var(--accent-primary-rgb) / 0.2), transparent 45%),
+        radial-gradient(circle at 15% 90%, rgb(var(--accent-secondary-rgb) / 0.2), transparent 42%),
+        var(--bg-color-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 18px;
+    padding: 20px;
+    box-shadow: var(--shadow-md);
+}
+
+.onboarding-card h3 {
+    margin: 0;
+    font-size: 20px;
+}
+
+.onboarding-card p {
+    margin: 8px 0 14px;
+    color: var(--text-color-secondary);
+    font-size: 14px;
+}
+
+.onboarding-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.onboarding-chip {
+    border: 1px solid var(--border-color);
+    background: rgb(255 255 255 / 0.05);
+    color: var(--text-color-primary);
+    border-radius: 999px;
+    padding: 8px 12px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: var(--transition-fast);
+}
+
+.onboarding-chip.active {
+    background: rgb(var(--accent-secondary-rgb) / 0.28);
+    border-color: rgb(var(--accent-secondary-rgb) / 0.55);
+    color: #fff;
+}
+
+.onboarding-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 16px;
+}
+
+.onboarding-actions .primary-btn,
+.onboarding-actions .secondary-btn {
+    margin-top: 0;
 }

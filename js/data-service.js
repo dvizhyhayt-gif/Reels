@@ -100,7 +100,13 @@ class AdvancedDataService {
         
         if (!user) return null;
         
-        const userVideos = this.userVideos.filter(v => v.author === user.name);
+        const userUid = user.uid ? String(user.uid) : null;
+        const userVideos = this.userVideos.filter(v => {
+            if (userUid && v && v.uid) {
+                return String(v.uid) === userUid;
+            }
+            return v && v.author === user.name;
+        });
         const totalLikes = userVideos.reduce((sum, v) => sum + v.likes, 0);
         
         return {
@@ -262,7 +268,8 @@ class AdvancedDataService {
     }
 
     toggleLike(videoId) {
-        const video = this.userVideos.find(v => v.id === videoId);
+        const targetId = String(videoId);
+        const video = this.userVideos.find(v => String(v.id) === targetId);
         if (video) {
             video.isLiked = !video.isLiked;
             video.likes += video.isLiked ? 1 : -1;
@@ -274,7 +281,8 @@ class AdvancedDataService {
 
     addComment(videoId, text) {
         const user = this.getCurrentUser();
-        const video = this.userVideos.find(v => v.id === videoId);
+        const targetId = String(videoId);
+        const video = this.userVideos.find(v => String(v.id) === targetId);
         
         if (video && user) {
             const comment = {
@@ -284,6 +292,7 @@ class AdvancedDataService {
                 likes: 0
             };
             
+            video.comments = Array.isArray(video.comments) ? video.comments : [];
             video.comments.push(comment);
             localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.userVideos));
             return comment;
@@ -292,7 +301,8 @@ class AdvancedDataService {
     }
 
     incrementViews(videoId) {
-        const video = this.userVideos.find(v => v.id === videoId);
+        const targetId = String(videoId);
+        const video = this.userVideos.find(v => String(v.id) === targetId);
         if (video) {
             video.views = (video.views || 0) + 1;
             localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.userVideos));
