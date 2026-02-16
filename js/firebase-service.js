@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Firebase Service
  * Управление всеми операциями с Firebase (Auth, Firestore, Storage)
  */
@@ -42,6 +42,9 @@ class FirebaseService {
                     if (typeof window.app.updateHamburgerVisibility === 'function') {
                         window.app.updateHamburgerVisibility();
                     }
+                    if (typeof window.app.updateAdminMenuVisibility === 'function') {
+                        window.app.updateAdminMenuVisibility();
+                    }
                     if (typeof window.app.restoreModerationPreferences === 'function') {
                         window.app.restoreModerationPreferences();
                     }
@@ -61,6 +64,9 @@ class FirebaseService {
                     }
                     if (typeof window.app.updateHamburgerVisibility === 'function') {
                         window.app.updateHamburgerVisibility();
+                    }
+                    if (typeof window.app.updateAdminMenuVisibility === 'function') {
+                        window.app.updateAdminMenuVisibility();
                     }
                     if (typeof window.app.restoreModerationPreferences === 'function') {
                         window.app.restoreModerationPreferences();
@@ -112,6 +118,7 @@ class FirebaseService {
                 gender: 'other',
                 verified: false,
                 canVerify: false,
+                isAdmin: false,
                 subscriptions: [],
                 subscribers: [],
                 blockedUsers: [],
@@ -200,27 +207,45 @@ class FirebaseService {
         return String(msg.content || '');
     }
 
+    normalizeUserRecord(data = {}, uid = null) {
+        const source = data || {};
+        return {
+            ...source,
+            uid: uid || source.uid || null,
+            interests: typeof source.interests === 'string' ? source.interests : '',
+            onboardingCompleted: source.onboardingCompleted === true,
+            subscriptions: Array.isArray(source.subscriptions) ? source.subscriptions : [],
+            subscribers: Array.isArray(source.subscribers) ? source.subscribers : [],
+            blockedUsers: Array.isArray(source.blockedUsers) ? source.blockedUsers : [],
+            hiddenAuthors: Array.isArray(source.hiddenAuthors) ? source.hiddenAuthors : [],
+            notifications: Array.isArray(source.notifications) ? source.notifications : [],
+            online: !!source.online,
+            verified: !!source.verified,
+            canVerify: source.canVerify === true,
+            isAdmin: source.isAdmin === true,
+            lastSeen: this.normalizeTimestamp(source.lastSeen),
+            lastActive: this.normalizeTimestamp(source.lastActive)
+        };
+    }
+
+    isCurrentUserAdmin(user = null) {
+        const current = user || this.getCurrentUser();
+        return !!(current && (current.isAdmin === true || current.canVerify === true));
+    }
+
+    requireAdminAccess(actionLabel = 'действию') {
+        if (!this.isCurrentUserAdmin()) {
+            throw new Error(`Доступ к ${actionLabel} разрешен только администратору`);
+        }
+    }
+
     // ===================== USER PROFILE =====================
 
     async getUserProfile(uid) {
         try {
             const doc = await this.db.collection('users').doc(uid).get();
             if (doc.exists) {
-                const data = doc.data();
-                return {
-                    ...data,
-                    uid,
-                    interests: typeof data.interests === 'string' ? data.interests : '',
-                    onboardingCompleted: data.onboardingCompleted === true,
-                    subscriptions: Array.isArray(data.subscriptions) ? data.subscriptions : [],
-                    subscribers: Array.isArray(data.subscribers) ? data.subscribers : [],
-                    blockedUsers: Array.isArray(data.blockedUsers) ? data.blockedUsers : [],
-                    hiddenAuthors: Array.isArray(data.hiddenAuthors) ? data.hiddenAuthors : [],
-                    notifications: Array.isArray(data.notifications) ? data.notifications : [],
-                    online: !!data.online,
-                    lastSeen: this.normalizeTimestamp(data.lastSeen),
-                    lastActive: this.normalizeTimestamp(data.lastActive)
-                };
+                return this.normalizeUserRecord(doc.data(), uid);
             }
             return null;
         } catch (error) {
@@ -263,18 +288,44 @@ class FirebaseService {
     async updateUserProfile(uid, updates) {
         try {
             const before = await this.getUserProfile(uid);
+            const incoming = (updates && typeof updates === 'object') ? updates : {};
+            const allowedProfileKeys = new Set([
+                'name',
+                'avatar',
+                'avatar_local',
+                'bio',
+                'location',
+                'website',
+                'interests',
+                'gender',
+                'onboardingCompleted',
+                'blockedUsers',
+                'hiddenAuthors'
+            ]);
+            const safeUpdates = {};
+            Object.keys(incoming).forEach((key) => {
+                if (!allowedProfileKeys.has(key)) return;
+                safeUpdates[key] = incoming[key];
+            });
 
-            if (updates && typeof updates.name === 'string' && updates.name.trim()) {
-                const normalizedName = updates.name.trim();
+            if (safeUpdates.blockedUsers && !Array.isArray(safeUpdates.blockedUsers)) {
+                safeUpdates.blockedUsers = [];
+            }
+            if (safeUpdates.hiddenAuthors && !Array.isArray(safeUpdates.hiddenAuthors)) {
+                safeUpdates.hiddenAuthors = [];
+            }
+
+            if (typeof safeUpdates.name === 'string' && safeUpdates.name.trim()) {
+                const normalizedName = safeUpdates.name.trim();
                 const existing = await this.getUserByName(normalizedName);
                 if (existing && existing.uid !== uid) {
                     throw new Error('Имя профиля уже занято');
                 }
-                updates.name = normalizedName;
+                safeUpdates.name = normalizedName;
             }
 
             await this.db.collection('users').doc(uid).update({
-                ...updates,
+                ...safeUpdates,
                 updatedAt: new Date()
             });
             this.currentUser = await this.getUserProfile(uid);
@@ -355,10 +406,7 @@ class FirebaseService {
     }
 
     async setUserVerified(targetUid, verified) {
-        const current = this.getCurrentUser();
-        if (!current || current.canVerify !== true) {
-            throw new Error('Недостаточно прав для выдачи галочки');
-        }
+        this.requireAdminAccess('управлению верификацией');
         if (!targetUid) {
             throw new Error('Не указан пользователь');
         }
@@ -391,6 +439,11 @@ class FirebaseService {
                 this.currentUser.verified = verifiedValue;
             }
 
+            await this.logAdminAction('set_user_verified', {
+                targetUid,
+                verified: verifiedValue
+            });
+
             return true;
         } catch (error) {
             console.error('❌ Ошибка обновления верификации:', error);
@@ -406,7 +459,7 @@ class FirebaseService {
                 .get();
             
             if (querySnapshot.empty) return null;
-            return { ...querySnapshot.docs[0].data(), uid: querySnapshot.docs[0].id };
+            return this.normalizeUserRecord(querySnapshot.docs[0].data(), querySnapshot.docs[0].id);
         } catch (error) {
             console.error('❌ Ошибка поиска пользователя:', error);
             return null;
@@ -416,11 +469,186 @@ class FirebaseService {
     async getAllUsers() {
         try {
             const snapshot = await this.db.collection('users').get();
-            return snapshot.docs.map(doc => ({ ...doc.data(), uid: doc.id }));
+            return snapshot.docs.map(doc => this.normalizeUserRecord(doc.data(), doc.id));
         } catch (error) {
             console.error('❌ Ошибка получения пользователей:', error);
             return [];
         }
+    }
+
+    async getUsersForAdmin(limit = 300) {
+        this.requireAdminAccess('получению списка пользователей');
+        const safeLimit = Math.max(1, Math.min(Number(limit) || 300, 1000));
+
+        try {
+            const snapshot = await this.db.collection('users').limit(safeLimit).get();
+            const users = snapshot.docs.map(doc => this.normalizeUserRecord(doc.data(), doc.id));
+            users.sort((a, b) => {
+                const aTime = this.normalizeTimestamp(a.createdAt || a.updatedAt || 0);
+                const bTime = this.normalizeTimestamp(b.createdAt || b.updatedAt || 0);
+                return bTime - aTime;
+            });
+            return users;
+        } catch (error) {
+            console.error('Ошибка загрузки списка пользователей для админки:', error);
+            return [];
+        }
+    }
+
+    async setUserAdmin(targetUid, isAdmin) {
+        this.requireAdminAccess('управлению ролями администратора');
+        const current = this.getCurrentUser();
+        if (!targetUid) throw new Error('Не указан пользователь');
+
+        const value = isAdmin === true;
+        if (current && current.uid === targetUid && !value) {
+            throw new Error('Нельзя снять права администратора у самого себя');
+        }
+
+        await this.db.collection('users').doc(targetUid).set({
+            isAdmin: value,
+            updatedAt: new Date()
+        }, { merge: true });
+
+        if (this.currentUser && this.currentUser.uid === targetUid) {
+            this.currentUser = {
+                ...this.currentUser,
+                isAdmin: value
+            };
+        }
+
+        await this.logAdminAction('set_user_admin', {
+            targetUid,
+            isAdmin: value
+        });
+
+        return true;
+    }
+
+    async logAdminAction(action, payload = {}) {
+        if (!action) return false;
+        const current = this.getCurrentUser();
+        if (!this.isCurrentUserAdmin(current)) return false;
+
+        const now = Date.now();
+        await this.db.collection('adminAuditLogs').add({
+            action: String(action),
+            payload: payload || {},
+            adminUid: current?.uid || null,
+            adminName: current?.name || null,
+            adminEmail: current?.email || null,
+            timestamp: now,
+            createdAt: new Date()
+        });
+        return true;
+    }
+
+    async exportChatHistoryForLegalRequest({ uidA, uidB, caseId = '', requestedBy = '', reason = '' } = {}) {
+        this.requireAdminAccess('выгрузке чата');
+
+        const firstUid = String(uidA || '').trim();
+        const secondUid = String(uidB || '').trim();
+        if (!firstUid || !secondUid) throw new Error('Выберите двух пользователей');
+        if (firstUid === secondUid) throw new Error('Пользователи должны быть разными');
+
+        const chatId = this.buildChatId(firstUid, secondUid);
+        if (!chatId) throw new Error('Не удалось сформировать ID чата');
+
+        const [profileA, profileB, chatSnapshot, participantSnapshot] = await Promise.all([
+            this.getUserProfile(firstUid),
+            this.getUserProfile(secondUid),
+            this.db.collection('messages').where('chatId', '==', chatId).get(),
+            this.db.collection('messages').where('participants', 'array-contains', firstUid).get()
+        ]);
+
+        const messageDocs = new Map();
+        chatSnapshot.docs.forEach((doc) => {
+            messageDocs.set(doc.id, doc);
+        });
+        participantSnapshot.docs.forEach((doc) => {
+            if (messageDocs.has(doc.id)) return;
+            const data = doc.data() || {};
+            const participants = Array.isArray(data.participants) ? data.participants.map(x => String(x)) : [];
+            if (!participants.includes(secondUid)) return;
+            const docChatId = typeof data.chatId === 'string' ? data.chatId : '';
+            if (docChatId && docChatId !== chatId) return;
+            messageDocs.set(doc.id, doc);
+        });
+
+        const messages = Array.from(messageDocs.values())
+            .map((doc) => {
+                const data = doc.data() || {};
+                const ts = this.normalizeTimestamp(data.timestamp);
+                const deliveredAt = this.normalizeTimestamp(data.deliveredAt);
+                const readAt = this.normalizeTimestamp(data.readAt);
+
+                return {
+                    id: doc.id,
+                    chatId: data.chatId || chatId,
+                    fromUid: data.fromUid || null,
+                    fromUser: data.fromUser || null,
+                    toUid: data.toUid || null,
+                    toUser: data.toUser || null,
+                    content: typeof data.content === 'string' ? data.content : '',
+                    type: data.type || 'text',
+                    file: data.file || null,
+                    sticker: data.sticker || null,
+                    call: data.call || null,
+                    delivered: !!data.delivered,
+                    deliveredAt: deliveredAt || null,
+                    deliveredAtIso: deliveredAt ? new Date(deliveredAt).toISOString() : null,
+                    read: !!data.read,
+                    readAt: readAt || null,
+                    readAtIso: readAt ? new Date(readAt).toISOString() : null,
+                    timestamp: ts || 0,
+                    timestampIso: ts ? new Date(ts).toISOString() : null
+                };
+            })
+            .sort((a, b) => a.timestamp - b.timestamp);
+
+        const exportedAt = Date.now();
+        const admin = this.getCurrentUser() || {};
+        const exportPayload = {
+            exportedAt,
+            exportedAtIso: new Date(exportedAt).toISOString(),
+            exportedBy: {
+                uid: admin.uid || null,
+                name: admin.name || null,
+                email: admin.email || null
+            },
+            legalRequest: {
+                caseId: String(caseId || '').trim(),
+                requestedBy: String(requestedBy || '').trim(),
+                reason: String(reason || '').trim()
+            },
+            chatId,
+            participants: [
+                {
+                    uid: firstUid,
+                    name: profileA?.name || null,
+                    email: profileA?.email || null
+                },
+                {
+                    uid: secondUid,
+                    name: profileB?.name || null,
+                    email: profileB?.email || null
+                }
+            ],
+            messageCount: messages.length,
+            messages
+        };
+
+        await this.logAdminAction('export_chat_history', {
+            chatId,
+            uidA: firstUid,
+            uidB: secondUid,
+            caseId: exportPayload.legalRequest.caseId || null,
+            requestedBy: exportPayload.legalRequest.requestedBy || null,
+            reason: exportPayload.legalRequest.reason || null,
+            messageCount: messages.length
+        });
+
+        return exportPayload;
     }
 
     // ===================== VIDEOS =====================
@@ -1667,5 +1895,8 @@ setTimeout(() => {
         }, 500);
     }
 }, 200);
+
+
+
 
 

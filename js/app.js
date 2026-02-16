@@ -101,6 +101,8 @@ class AdvancedApp {
         this.callAnswerSent = false;
         this.callRemoteDescriptionSet = false;
         this.callStarting = false;
+        this.adminUsers = [];
+        this.adminFilteredUsers = [];
 
         this.init();
     }
@@ -130,6 +132,7 @@ class AdvancedApp {
         this.setupIncomingMessagesWatcher();
         this.setupIncomingCallsWatcher();
         this.updateHamburgerVisibility();
+        this.updateAdminMenuVisibility();
         this.scheduleNotificationBadgeRefresh();
         
         this.setupDeepLinks();
@@ -156,6 +159,7 @@ class AdvancedApp {
         this.hamburgerBtn = document.getElementById('hamburger-btn');
         this.menuDropdown = document.getElementById('menu-dropdown');
         this.themeToggleMenu = document.getElementById('theme-toggle-menu');
+        this.adminMenu = document.getElementById('admin-menu');
         this.logoutMenu = document.getElementById('logout-menu');
         this.searchViewInput = document.getElementById('search-view-input');
         this.searchViewClear = document.getElementById('search-view-clear');
@@ -227,6 +231,18 @@ class AdvancedApp {
         this.onboardingChipsContainer = document.getElementById('onboarding-chips');
         this.onboardingSaveBtn = document.getElementById('onboarding-save-btn');
         this.onboardingSkipBtn = document.getElementById('onboarding-skip-btn');
+
+        this.adminBackBtn = document.getElementById('admin-back-btn');
+        this.adminRefreshBtn = document.getElementById('admin-refresh-btn');
+        this.adminUserSearchInput = document.getElementById('admin-user-search');
+        this.adminUsersList = document.getElementById('admin-users-list');
+        this.adminExportUserA = document.getElementById('admin-export-user-a');
+        this.adminExportUserB = document.getElementById('admin-export-user-b');
+        this.adminCaseIdInput = document.getElementById('admin-case-id');
+        this.adminRequestedByInput = document.getElementById('admin-requested-by');
+        this.adminExportReasonInput = document.getElementById('admin-export-reason');
+        this.adminExportChatBtn = document.getElementById('admin-export-chat-btn');
+        this.adminLastExport = document.getElementById('admin-last-export');
     }
 
     setupAppViewportHeight() {
@@ -397,6 +413,346 @@ class AdvancedApp {
         });
     }
 
+    isCurrentUserAdmin() {
+        const current = firebaseService && typeof firebaseService.getCurrentUser === 'function'
+            ? firebaseService.getCurrentUser()
+            : this.dataService.getCurrentUser();
+        return !!(current && (current.isAdmin === true || current.canVerify === true));
+    }
+
+    updateAdminMenuVisibility() {
+        if (!this.adminMenu) return;
+        const canAccessAdmin = this.isCurrentUserAdmin();
+        this.adminMenu.style.display = canAccessAdmin ? 'flex' : 'none';
+
+        if (!canAccessAdmin && this.state.activeViewId === 'admin-view') {
+            this.navigateTo('profile-view');
+        }
+    }
+
+    setupAdminEvents() {
+        if (this.adminMenu && this.adminMenu.dataset.bound !== '1') {
+            this.adminMenu.dataset.bound = '1';
+            this.adminMenu.addEventListener('click', async () => {
+                if (!this.isCurrentUserAdmin()) {
+                    AdvancedViewRenderer.showToast('Доступ только для администратора', 'warning');
+                    this.updateAdminMenuVisibility();
+                    return;
+                }
+
+                if (this.hamburgerBtn) this.hamburgerBtn.classList.remove('active');
+                if (this.menuDropdown) this.menuDropdown.classList.remove('active');
+
+                this.navigateTo('admin-view');
+            });
+        }
+
+        if (this.adminBackBtn && this.adminBackBtn.dataset.bound !== '1') {
+            this.adminBackBtn.dataset.bound = '1';
+            this.adminBackBtn.addEventListener('click', () => {
+                this.navigateTo('profile-view');
+            });
+        }
+
+        if (this.adminRefreshBtn && this.adminRefreshBtn.dataset.bound !== '1') {
+            this.adminRefreshBtn.dataset.bound = '1';
+            this.adminRefreshBtn.addEventListener('click', async () => {
+                await this.loadAdminPanelData({ showToast: true });
+            });
+        }
+
+        if (this.adminUserSearchInput && this.adminUserSearchInput.dataset.bound !== '1') {
+            this.adminUserSearchInput.dataset.bound = '1';
+            this.adminUserSearchInput.addEventListener('input', () => {
+                this.renderAdminUsersList(this.adminUserSearchInput.value || '');
+            });
+        }
+
+        if (this.adminExportChatBtn && this.adminExportChatBtn.dataset.bound !== '1') {
+            this.adminExportChatBtn.dataset.bound = '1';
+            this.adminExportChatBtn.addEventListener('click', async () => {
+                await this.exportAdminChatHistory();
+            });
+        }
+    }
+
+    async loadAdminPanelData({ showToast = false } = {}) {
+        if (!this.isCurrentUserAdmin()) {
+            this.updateAdminMenuVisibility();
+            if (this.adminUsersList) {
+                this.adminUsersList.innerHTML = '<div class="admin-empty">Требуются права администратора.</div>';
+            }
+            return;
+        }
+
+        if (!(firebaseService && firebaseService.isInitialized && firebaseService.isInitialized())) {
+            if (showToast) AdvancedViewRenderer.showToast('Firebase еще не готов', 'warning');
+            return;
+        }
+
+        try {
+            if (this.adminUsersList) {
+                this.adminUsersList.innerHTML = '<div class="admin-empty">Загрузка пользователей...</div>';
+            }
+
+            let users = [];
+            if (typeof firebaseService.getUsersForAdmin === 'function') {
+                users = await firebaseService.getUsersForAdmin(500);
+            } else if (typeof firebaseService.getAllUsers === 'function') {
+                users = await firebaseService.getAllUsers();
+            }
+
+            this.adminUsers = Array.isArray(users) ? users : [];
+            this.renderAdminUsersList(this.adminUserSearchInput ? this.adminUserSearchInput.value : '');
+            this.populateAdminExportUsers();
+
+            if (showToast) {
+                AdvancedViewRenderer.showToast(`Загружено пользователей: ${this.adminUsers.length}`, 'success');
+            }
+        } catch (error) {
+            console.error('Admin panel load error:', error);
+            this.adminUsers = [];
+            if (this.adminUsersList) {
+                this.adminUsersList.innerHTML = '<div class="admin-empty">Не удалось загрузить пользователей.</div>';
+            }
+            if (showToast) {
+                AdvancedViewRenderer.showToast(error.message || 'Ошибка админки', 'error');
+            }
+        }
+    }
+
+    renderAdminUsersList(query = '') {
+        if (!this.adminUsersList) return;
+
+        const needle = String(query || '').trim().toLowerCase();
+        const filtered = this.adminUsers.filter((user) => {
+            if (!needle) return true;
+            const name = String(user?.name || '').toLowerCase();
+            const uid = String(user?.uid || '').toLowerCase();
+            const email = String(user?.email || '').toLowerCase();
+            return name.includes(needle) || uid.includes(needle) || email.includes(needle);
+        });
+        this.adminFilteredUsers = filtered;
+
+        this.adminUsersList.innerHTML = '';
+        if (!filtered.length) {
+            this.adminUsersList.innerHTML = '<div class="admin-empty">Пользователи не найдены.</div>';
+            return;
+        }
+
+        const currentUid = firebaseService && typeof firebaseService.getCurrentUid === 'function'
+            ? firebaseService.getCurrentUid()
+            : null;
+
+        filtered.forEach((user) => {
+            const row = document.createElement('div');
+            row.className = 'admin-user-row';
+
+            const meta = document.createElement('div');
+            meta.className = 'admin-user-meta';
+            const nameEl = document.createElement('div');
+            nameEl.className = 'admin-user-name';
+            nameEl.textContent = `@${user?.name || 'user'}`;
+            const subEl = document.createElement('div');
+            subEl.className = 'admin-user-sub';
+            const flags = [];
+            if (user?.isAdmin) flags.push('админ');
+            if (user?.verified) flags.push('галочка');
+            subEl.textContent = `${user?.uid || 'без uid'}${flags.length ? ` • ${flags.join(' • ')}` : ''}`;
+            meta.appendChild(nameEl);
+            meta.appendChild(subEl);
+
+            const adminBtn = document.createElement('button');
+            adminBtn.className = `admin-toggle-btn${user?.isAdmin ? ' is-on' : ''}`;
+            adminBtn.textContent = user?.isAdmin ? 'Админ: ВКЛ' : 'Сделать админом';
+            if (currentUid && user?.uid === currentUid) {
+                adminBtn.disabled = true;
+                adminBtn.title = 'Нельзя изменить свою роль';
+            }
+            adminBtn.addEventListener('click', async () => {
+                await this.adminToggleUserAdmin(user);
+            });
+
+            const verifyBtn = document.createElement('button');
+            verifyBtn.className = `admin-toggle-btn${user?.verified ? ' is-verified' : ''}`;
+            verifyBtn.textContent = user?.verified ? 'Галочка: ВКЛ' : 'Выдать галочку';
+            verifyBtn.addEventListener('click', async () => {
+                await this.adminToggleUserVerification(user);
+            });
+
+            row.appendChild(meta);
+            row.appendChild(adminBtn);
+            row.appendChild(verifyBtn);
+            this.adminUsersList.appendChild(row);
+        });
+    }
+
+    populateAdminExportUsers() {
+        if (!this.adminExportUserA || !this.adminExportUserB) return;
+
+        const selectedA = this.adminExportUserA.value || '';
+        const selectedB = this.adminExportUserB.value || '';
+        const users = Array.isArray(this.adminUsers) ? this.adminUsers : [];
+
+        const fillSelect = (selectEl, selectedValue) => {
+            selectEl.innerHTML = '';
+
+            const placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = 'Выберите пользователя';
+            selectEl.appendChild(placeholder);
+
+            users.forEach((user) => {
+                if (!user || !user.uid) return;
+                const option = document.createElement('option');
+                option.value = user.uid;
+                option.textContent = `@${user.name || 'user'} (${String(user.uid).slice(0, 8)})`;
+                selectEl.appendChild(option);
+            });
+
+            if (selectedValue && users.some(user => user.uid === selectedValue)) {
+                selectEl.value = selectedValue;
+            }
+        };
+
+        fillSelect(this.adminExportUserA, selectedA);
+        fillSelect(this.adminExportUserB, selectedB);
+    }
+
+    async adminToggleUserAdmin(user) {
+        if (!user || !user.uid) return;
+        if (!(firebaseService && firebaseService.isInitialized && firebaseService.isInitialized())) return;
+        if (typeof firebaseService.setUserAdmin !== 'function') {
+            AdvancedViewRenderer.showToast('API роли администратора недоступен', 'warning');
+            return;
+        }
+
+        try {
+            await firebaseService.setUserAdmin(user.uid, !user.isAdmin);
+            this.adminUsers = this.adminUsers.map((item) => {
+                if (!item || item.uid !== user.uid) return item;
+                return { ...item, isAdmin: !user.isAdmin };
+            });
+
+            this.updateAdminMenuVisibility();
+            this.renderAdminUsersList(this.adminUserSearchInput ? this.adminUserSearchInput.value : '');
+            this.populateAdminExportUsers();
+            const currentUid = firebaseService && typeof firebaseService.getCurrentUid === 'function'
+                ? firebaseService.getCurrentUid()
+                : null;
+            if (currentUid && user.uid === currentUid) {
+                this.updateProfileUI();
+            }
+            AdvancedViewRenderer.showToast(!user.isAdmin ? 'Права администратора выданы' : 'Права администратора сняты', 'success');
+        } catch (error) {
+            console.error(error);
+            AdvancedViewRenderer.showToast(error.message || 'Не удалось изменить роль администратора', 'error');
+        }
+    }
+
+    async adminToggleUserVerification(user) {
+        if (!user || !user.uid) return;
+        if (!(firebaseService && firebaseService.isInitialized && firebaseService.isInitialized())) return;
+        if (typeof firebaseService.setUserVerified !== 'function') {
+            AdvancedViewRenderer.showToast('API верификации недоступен', 'warning');
+            return;
+        }
+
+        try {
+            await firebaseService.setUserVerified(user.uid, !user.verified);
+            this.adminUsers = this.adminUsers.map((item) => {
+                if (!item || item.uid !== user.uid) return item;
+                return { ...item, verified: !user.verified };
+            });
+
+            this.renderAdminUsersList(this.adminUserSearchInput ? this.adminUserSearchInput.value : '');
+            const currentUid = firebaseService && typeof firebaseService.getCurrentUid === 'function'
+                ? firebaseService.getCurrentUid()
+                : null;
+            if (currentUid && user.uid === currentUid) {
+                this.updateProfileUI();
+            }
+            AdvancedViewRenderer.showToast(!user.verified ? 'Галочка выдана' : 'Галочка снята', 'success');
+        } catch (error) {
+            console.error(error);
+            AdvancedViewRenderer.showToast(error.message || 'Не удалось изменить верификацию', 'error');
+        }
+    }
+
+    async exportAdminChatHistory() {
+        if (!(firebaseService && firebaseService.isInitialized && firebaseService.isInitialized())) {
+            AdvancedViewRenderer.showToast('Firebase еще не готов', 'warning');
+            return;
+        }
+        if (typeof firebaseService.exportChatHistoryForLegalRequest !== 'function') {
+            AdvancedViewRenderer.showToast('API выгрузки чата недоступен', 'warning');
+            return;
+        }
+
+        const uidA = this.adminExportUserA ? this.adminExportUserA.value : '';
+        const uidB = this.adminExportUserB ? this.adminExportUserB.value : '';
+
+        if (!uidA || !uidB) {
+            AdvancedViewRenderer.showToast('Выберите двух пользователей для выгрузки', 'warning');
+            return;
+        }
+        if (uidA === uidB) {
+            AdvancedViewRenderer.showToast('Пользователи должны быть разными', 'warning');
+            return;
+        }
+
+        const caseId = this.adminCaseIdInput ? this.adminCaseIdInput.value.trim() : '';
+        const requestedBy = this.adminRequestedByInput ? this.adminRequestedByInput.value.trim() : '';
+        const reason = this.adminExportReasonInput ? this.adminExportReasonInput.value.trim() : '';
+
+        const button = this.adminExportChatBtn;
+        const originalText = button ? button.textContent : '';
+        if (button) {
+            button.disabled = true;
+            button.textContent = 'Выгрузка...';
+        }
+
+        try {
+            const payload = await firebaseService.exportChatHistoryForLegalRequest({
+                uidA,
+                uidB,
+                caseId,
+                requestedBy,
+                reason
+            });
+
+            const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const fileName = `reelgram_chat_export_${payload.chatId}_${stamp}.json`;
+            this.downloadAdminJson(payload, fileName);
+
+            if (this.adminLastExport) {
+                this.adminLastExport.textContent = `Последняя выгрузка: ${new Date().toLocaleString()} (${payload.messageCount} сообщений)`;
+            }
+
+            AdvancedViewRenderer.showToast(`Выгрузка завершена (${payload.messageCount} сообщений)`, 'success');
+        } catch (error) {
+            console.error(error);
+            AdvancedViewRenderer.showToast(error.message || 'Не удалось выгрузить чат', 'error');
+        } finally {
+            if (button) {
+                button.disabled = false;
+                button.textContent = originalText;
+            }
+        }
+    }
+
+    downloadAdminJson(data, fileName) {
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName || `reelgram_export_${Date.now()}.json`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
     setupEventListeners() {
         this.navItems.forEach(item => {
             item.addEventListener('click', () => {
@@ -442,6 +798,7 @@ class AdvancedApp {
         this.setupEditProfileEvents();
         this.setupProfileStatsEvents();
         this.setupUserListSheetEvents();
+        this.setupAdminEvents();
 
         this.feedContainer.addEventListener('scroll', () => {
             if (this.state.feedMode !== 'global') return;
@@ -2735,6 +3092,11 @@ class AdvancedApp {
     }
 
     navigateTo(viewId) {
+        if (viewId === 'admin-view' && !this.isCurrentUserAdmin()) {
+            AdvancedViewRenderer.showToast('Доступ только для администратора', 'warning');
+            viewId = 'profile-view';
+        }
+
         document.querySelectorAll('video').forEach(v => v.pause());
         this.state.activeViewId = viewId;
         if (viewId !== 'messages-view') {
@@ -2792,9 +3154,13 @@ class AdvancedApp {
                 this.loadNotifications('all');
                 this.updateNotificationBadge();
             }
+            if (viewId === 'admin-view') {
+                this.loadAdminPanelData({ showToast: false });
+            }
         }
 
         this.updateHamburgerVisibility();
+        this.updateAdminMenuVisibility();
     }
 
     updateHamburgerVisibility() {
@@ -2816,6 +3182,8 @@ class AdvancedApp {
             if (this.hamburgerBtn) this.hamburgerBtn.classList.remove('active');
             if (this.menuDropdown) this.menuDropdown.classList.remove('active');
         }
+
+        this.updateAdminMenuVisibility();
     }
 
     setupIncomingMessagesWatcher() {
@@ -3427,6 +3795,7 @@ class AdvancedApp {
 
     updateProfileUI() {
         const userProfile = this.dataService.getUserProfile();
+        this.updateAdminMenuVisibility();
         if (!userProfile) {
             document.getElementById('profile-name').textContent = '@guest';
             document.getElementById('profile-avatar-img').src = 'https://ui-avatars.com/api/?name=Guest&background=random&size=150';
@@ -5518,7 +5887,7 @@ class AdvancedApp {
         };
 
         const current = firebaseService && firebaseService.getCurrentUser && firebaseService.getCurrentUser();
-        const canManageVerification = !!(current && current.canVerify === true && targetUid);
+        const canManageVerification = !!(this.isCurrentUserAdmin() && targetUid);
         if (canManageVerification) {
             if (!verifyBtn) {
                 verifyBtn = document.createElement('button');

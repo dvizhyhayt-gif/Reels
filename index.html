@@ -24,6 +24,7 @@
     <link rel="stylesheet" href="css/menu.css">
     <link rel="stylesheet" href="css/notifications.css">
     <link rel="stylesheet" href="css/messages.css">
+    <link rel="stylesheet" href="css/admin.css">
 </head>
 <body>
 
@@ -66,6 +67,12 @@
                     });
                 </script>
             <div class="menu-divider"></div>
+            <div class="menu-item" id="admin-menu" style="display: none;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 2l7 4v6c0 5-3.4 9.74-7 11-3.6-1.26-7-6-7-11V6l7-4zm0 2.18L7 6.94V12c0 3.89 2.48 7.92 5 8.98 2.52-1.06 5-5.09 5-8.98V6.94l-5-2.76zm-1 3.82h2v4h-2V8zm0 6h2v2h-2v-2z"/>
+                </svg>
+                <span>Админка</span>
+            </div>
             <div class="menu-item" id="logout-menu">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/>
@@ -407,6 +414,59 @@
             </div>
         </div>
         <div class="video-grid" id="profile-grid"></div>
+    </div>
+
+    <!-- View: Admin -->
+    <div id="admin-view" class="view">
+        <div class="admin-view-container">
+            <div class="admin-header">
+                <button class="admin-back-btn" id="admin-back-btn" type="button" aria-label="Назад в профиль">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/>
+                    </svg>
+                    <span>Профиль</span>
+                </button>
+                <h3>Админка</h3>
+                <button class="admin-refresh-btn" id="admin-refresh-btn" type="button">Обновить</button>
+            </div>
+
+            <section class="admin-card">
+                <div class="admin-card-head">
+                    <h4>Пользователи</h4>
+                    <input id="admin-user-search" type="text" placeholder="Поиск по @имени или uid">
+                </div>
+                <div class="admin-users-list" id="admin-users-list"></div>
+            </section>
+
+            <section class="admin-card">
+                <h4>Выгрузка переписки</h4>
+                <p class="admin-hint">Используйте только по официальным юридическим запросам. Экспорт включает полную историю сообщений между двумя пользователями.</p>
+                <div class="admin-export-grid">
+                    <label>
+                        <span>Пользователь A</span>
+                        <select id="admin-export-user-a"></select>
+                    </label>
+                    <label>
+                        <span>Пользователь B</span>
+                        <select id="admin-export-user-b"></select>
+                    </label>
+                    <label>
+                        <span>Номер дела</span>
+                        <input id="admin-case-id" type="text" placeholder="Например: 2026-CR-0147">
+                    </label>
+                    <label>
+                        <span>Кто запросил</span>
+                        <input id="admin-requested-by" type="text" placeholder="Суд / Полиция / Орган">
+                    </label>
+                </div>
+                <label class="admin-reason-field">
+                    <span>Основание запроса</span>
+                    <textarea id="admin-export-reason" rows="3" placeholder="Номер постановления, статья, детали запроса"></textarea>
+                </label>
+                <button class="primary-btn" id="admin-export-chat-btn" type="button">Выгрузить чат (JSON)</button>
+                <div class="admin-last-export" id="admin-last-export">Выгрузок пока не было.</div>
+            </section>
+        </div>
     </div>
 
     <!-- Navigation -->

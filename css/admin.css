@@ -1,0 +1,199 @@
+/* Admin panel */
+#admin-view {
+    background:
+        radial-gradient(120% 80% at 0% -10%, rgb(var(--accent-secondary-rgb) / 0.16), transparent 52%),
+        radial-gradient(100% 60% at 100% 0%, rgb(var(--accent-primary-rgb) / 0.14), transparent 58%),
+        var(--bg-color-dark);
+}
+
+.admin-view-container {
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.admin-header {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 2px 0 10px;
+    background: linear-gradient(180deg, var(--bg-color-dark) 70%, rgb(0 0 0 / 0));
+}
+
+.admin-header h3 {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+}
+
+.admin-back-btn,
+.admin-refresh-btn,
+.admin-toggle-btn {
+    border: 1px solid var(--border-color);
+    background: var(--glass-bg-bright);
+    color: var(--text-color-primary);
+    border-radius: 10px;
+    padding: 8px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: var(--transition-fast);
+}
+
+.admin-back-btn:active,
+.admin-refresh-btn:active,
+.admin-toggle-btn:active {
+    transform: scale(0.98);
+}
+
+.admin-card {
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    background: var(--glass-bg);
+    backdrop-filter: blur(12px);
+    padding: 12px;
+}
+
+.admin-card h4 {
+    font-size: 14px;
+    margin: 0 0 10px;
+}
+
+.admin-card-head {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.admin-card-head input,
+.admin-export-grid input,
+.admin-export-grid select,
+.admin-reason-field textarea {
+    width: 100%;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-color-tertiary);
+    color: var(--text-color-primary);
+    padding: 10px 12px;
+    font-size: 13px;
+}
+
+.admin-hint {
+    margin: 0 0 10px;
+    color: var(--secondary-text);
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+.admin-users-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: min(44vh, 420px);
+    overflow: auto;
+    padding-right: 2px;
+}
+
+.admin-user-row {
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    background: rgb(255 255 255 / 0.03);
+    padding: 10px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 8px;
+    align-items: center;
+}
+
+.admin-user-meta {
+    min-width: 0;
+}
+
+.admin-user-name {
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+.admin-user-sub {
+    font-size: 11px;
+    color: var(--secondary-text);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+}
+
+.admin-toggle-btn.is-on {
+    border-color: rgb(var(--accent-secondary-rgb) / 0.45);
+    color: #d7e8ff;
+    background: rgb(var(--accent-secondary-rgb) / 0.2);
+}
+
+.admin-toggle-btn.is-verified {
+    border-color: rgb(var(--accent-primary-rgb) / 0.5);
+    color: #ffe2d5;
+    background: rgb(var(--accent-primary-rgb) / 0.2);
+}
+
+.admin-export-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.admin-export-grid label,
+.admin-reason-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.admin-export-grid span,
+.admin-reason-field span {
+    font-size: 12px;
+    color: var(--secondary-text);
+}
+
+.admin-reason-field {
+    margin-bottom: 10px;
+}
+
+.admin-last-export {
+    margin-top: 10px;
+    font-size: 12px;
+    color: var(--secondary-text);
+}
+
+.admin-empty {
+    font-size: 12px;
+    color: var(--secondary-text);
+    padding: 8px 2px;
+}
+
+@media (max-width: 520px) {
+    .admin-view-container {
+        padding: 12px;
+        gap: 10px;
+    }
+
+    .admin-export-grid {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+
+    .admin-user-row {
+        grid-template-columns: 1fr;
+    }
+}
