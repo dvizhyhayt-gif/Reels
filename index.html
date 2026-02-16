@@ -312,6 +312,11 @@
                             <span id="chat-user-status" class="chat-status">был(а) недавно</span>
                         </div>
                     </button>
+                    <button class="chat-call-btn" id="video-call-btn" type="button" title="Видеозвонок" aria-label="Видеозвонок">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M17 10.5V6.75A1.75 1.75 0 0 0 15.25 5H5.75A1.75 1.75 0 0 0 4 6.75v10.5C4 18.22 4.78 19 5.75 19h9.5c.97 0 1.75-.78 1.75-1.75V13.5l3.29 2.47c.58.43 1.41.02 1.41-.71v-6.52c0-.73-.83-1.14-1.41-.71L17 10.5z"/>
+                        </svg>
+                    </button>
                 </div>
 
                 <div class="typing-indicator" id="typing-indicator" style="display: none;">
@@ -326,8 +331,14 @@
                 </div>
 
                 <div class="emoji-picker" id="emoji-picker" style="display: none;"></div>
+                <div class="sticker-picker" id="sticker-picker" style="display: none;"></div>
                 
                 <div class="message-input-area" id="message-input-area">
+                    <button class="message-tool-btn" id="sticker-toggle-btn" type="button" title="Стикеры">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 2l2.45 4.96L20 8.05l-4 3.9.95 5.52L12 14.8 7.05 17.47 8 11.95l-4-3.9 5.55-1.09L12 2z"/>
+                        </svg>
+                    </button>
                     <button class="message-tool-btn" id="emoji-toggle-btn" type="button" title="Смайлы">
                         <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
                             <path d="M12 22C6.48 22 2 17.52 2 12S6.48 2 12 2s10 4.48 10 10-4.48 10-10 10zm-4-8c.83 1.66 2.46 2.5 4 2.5s3.17-.84 4-2.5h-8zm1.5-3.5A1.5 1.5 0 1 0 9.5 7a1.5 1.5 0 0 0 0 3.5zm5 0A1.5 1.5 0 1 0 14.5 7a1.5 1.5 0 0 0 0 3.5z"/>
@@ -338,6 +349,12 @@
                             <path d="M16.5 6.5v9.75a4.25 4.25 0 0 1-8.5 0V5.75a2.75 2.75 0 0 1 5.5 0v9.5a1.25 1.25 0 0 1-2.5 0V7h-1.5v8.25a2.75 2.75 0 0 0 5.5 0v-9.5a4.25 4.25 0 0 0-8.5 0v10.5a5.75 5.75 0 0 0 11.5 0V6.5h-1.5z"/>
                         </svg>
                     </button>
+                    <button class="message-tool-btn" id="video-circle-btn" type="button" title="Видеокружок">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 3a9 9 0 1 0 9 9 9.01 9.01 0 0 0-9-9zm-1 13V8l6 4z"/>
+                        </svg>
+                    </button>
+                    <input type="file" id="chat-video-circle-input" style="display: none;" accept="video/*" capture="user">
                     <input type="file" id="chat-file-input" style="display: none;" accept="image/*,video/*,.pdf,.doc,.docx,.txt,.zip,.rar,.xls,.xlsx,.ppt,.pptx">
                     <div class="message-input-wrap">
                         <input type="text" id="message-input" placeholder="Напишите сообщение..." maxlength="2000">
@@ -580,6 +597,22 @@
         </div>
     </div>
     <!-- UI Feedback -->
+    <div class="call-modal" id="call-modal" style="display: none;">
+        <div class="call-card">
+            <div class="call-title" id="call-title">Видеозвонок</div>
+            <div class="call-peer" id="call-peer">@user</div>
+            <div class="call-videos">
+                <video id="call-remote-video" class="call-remote-video" autoplay playsinline></video>
+                <video id="call-local-video" class="call-local-video" autoplay muted playsinline></video>
+                <div class="call-video-placeholder" id="call-video-placeholder">Ожидание подключения...</div>
+            </div>
+            <div class="call-status" id="call-status">Подключение...</div>
+            <div class="call-actions">
+                <button class="call-btn decline" id="call-decline-btn" type="button">Отклонить</button>
+                <button class="call-btn accept" id="call-accept-btn" type="button">Принять</button>
+            </div>
+        </div>
+    </div>
     <div class="toast" id="toast">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
             <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>

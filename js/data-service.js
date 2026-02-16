@@ -42,6 +42,7 @@ class AdvancedDataService {
         this.messages = this.getDefaultMessages();
         this.userPresence = {};
         this.typingState = {};
+        this.disableVideoCachePersistence = false;
         this.feedCache = {
             fetchedAt: 0,
             fetchedCount: 0,
@@ -59,6 +60,17 @@ class AdvancedDataService {
 
     saveSettings() {
         // Удалено сохранение настроек в localStorage
+    }
+
+    persistVideoCache() {
+        if (this.disableVideoCachePersistence) return;
+        try {
+            localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.userVideos));
+        } catch (error) {
+            this.disableVideoCachePersistence = true;
+            // On some devices localStorage quota is tiny. Keep app working without hard failure.
+            console.warn('⚠️ Не удалось сохранить кэш видео в localStorage:', error?.message || error);
+        }
     }
 
     invalidateFeedCache() {
@@ -305,7 +317,7 @@ class AdvancedDataService {
                 
                 this.userVideos.unshift(newVideo);
                 this.syncFeedCacheWithLocal({ hasMore: true });
-                localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.userVideos));
+                this.persistVideoCache();
                 
                 resolve(newVideo);
             };
@@ -321,7 +333,7 @@ class AdvancedDataService {
             video.likes += video.isLiked ? 1 : -1;
             video.likes = Math.max(0, parseInt(video.likes, 10) || 0);
             this.syncFeedCacheWithLocal();
-            localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.userVideos));
+            this.persistVideoCache();
             return video.isLiked;
         }
         return false;
@@ -342,8 +354,9 @@ class AdvancedDataService {
             
             video.comments = Array.isArray(video.comments) ? video.comments : [];
             video.comments.push(comment);
+            video.commentsCount = (parseInt(video.commentsCount, 10) || 0) + 1;
             this.syncFeedCacheWithLocal();
-            localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.userVideos));
+            this.persistVideoCache();
             return comment;
         }
         return null;
@@ -354,7 +367,7 @@ class AdvancedDataService {
         const video = this.userVideos.find(v => String(v.id) === targetId);
         if (video) {
             video.views = (video.views || 0) + 1;
-            localStorage.setItem(this.STORAGE_KEY, JSON.stringify(this.userVideos));
+            this.persistVideoCache();
         }
     }
 
@@ -438,10 +451,21 @@ class AdvancedDataService {
         return Date.now();
     }
 
+    getMessagePreviewText(message = {}) {
+        const msg = message || {};
+        if (msg.type === 'file') return `📎 ${msg.file?.name || 'Файл'}`;
+        if (msg.type === 'sticker') return '🪄 Стикер';
+        if (msg.type === 'video-circle') return '🎥 Видеокружок';
+        if (msg.type === 'call-event') return '📹 Видеозвонок';
+        return String(msg.content || '');
+    }
+
     addMessage(chatId, fromUser, toUser, content, options = {}) {
         const text = (content || '').trim();
-        const isFile = options.type === 'file';
-        if (!isFile && !text) throw new Error('Пустое сообщение');
+        const messageType = typeof options.type === 'string'
+            ? options.type
+            : (options.file ? 'file' : 'text');
+        if (messageType === 'text' && !text) throw new Error('Пустое сообщение');
 
         const timestamp = Date.now();
         const message = {
@@ -452,8 +476,10 @@ class AdvancedDataService {
             fromUid: options.fromUid || null,
             toUid: options.toUid || null,
             content: text,
-            type: isFile ? 'file' : 'text',
+            type: messageType,
             file: options.file || null,
+            sticker: options.sticker || null,
+            call: options.call || null,
             timestamp,
             delivered: !!options.delivered,
             deliveredAt: options.delivered ? timestamp : null,
@@ -479,9 +505,7 @@ class AdvancedDataService {
             const otherUid = isFromCurrent ? (msg.toUid || null) : (msg.fromUid || null);
             const chatId = msg.chatId || [msg.fromUser, msg.toUser].sort().join('_');
             const timestamp = this.normalizeTimestamp(msg.timestamp);
-            const previewText = (msg.type === 'file')
-                ? `📎 ${msg.file?.name || 'Файл'}`
-                : (msg.content || '');
+            const previewText = this.getMessagePreviewText(msg);
             
             if (!chatsMap.has(chatId)) {
                 const presence = this.getUserPresence(otherUid, otherUser);
@@ -530,7 +554,11 @@ class AdvancedDataService {
                 ...m,
                 timestamp: this.normalizeTimestamp(m.timestamp),
                 delivered: !!m.delivered,
-                read: !!m.read
+                read: !!m.read,
+                type: m.type || 'text',
+                file: m.file || null,
+                sticker: m.sticker || null,
+                call: m.call || null
             }))
             .sort((a, b) => a.timestamp - b.timestamp);
     }

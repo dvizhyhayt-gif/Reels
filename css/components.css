@@ -120,11 +120,13 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    pointer-events: none;
 }
 
 .toast.show { 
     opacity: 1; 
     top: calc(var(--safe-top) + 18px);
+    pointer-events: auto;
 }
 
 /* Loader */

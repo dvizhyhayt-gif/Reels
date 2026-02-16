@@ -17,7 +17,9 @@ class AdvancedViewRenderer {
             `<span class="hashtag">${tag}</span>`
         ).join(' ') || '';
 
-        const commentsCount = Array.isArray(video.comments) ? video.comments.length : 0;
+        const commentsCount = Number.isFinite(parseInt(video.commentsCount, 10))
+            ? (parseInt(video.commentsCount, 10) || 0)
+            : (Array.isArray(video.comments) ? video.comments.length : 0);
         
         // Определяем текст кнопки подписки
         const isSubscribed = options.isSubscribed ? true : false;

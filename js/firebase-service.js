@@ -36,6 +36,9 @@ class FirebaseService {
                     if (typeof window.app.setupIncomingMessagesWatcher === 'function') {
                         window.app.setupIncomingMessagesWatcher();
                     }
+                    if (typeof window.app.setupIncomingCallsWatcher === 'function') {
+                        window.app.setupIncomingCallsWatcher();
+                    }
                     if (typeof window.app.updateHamburgerVisibility === 'function') {
                         window.app.updateHamburgerVisibility();
                     }
@@ -52,6 +55,9 @@ class FirebaseService {
                 if (window.app) {
                     if (typeof window.app.setupIncomingMessagesWatcher === 'function') {
                         window.app.setupIncomingMessagesWatcher();
+                    }
+                    if (typeof window.app.setupIncomingCallsWatcher === 'function') {
+                        window.app.setupIncomingCallsWatcher();
                     }
                     if (typeof window.app.updateHamburgerVisibility === 'function') {
                         window.app.updateHamburgerVisibility();
@@ -171,6 +177,29 @@ class FirebaseService {
         return this.auth.currentUser?.uid || null;
     }
 
+    buildUiAvatar(name = 'user') {
+        return `https://ui-avatars.com/api/?name=${encodeURIComponent(name || 'user')}&background=random&size=64`;
+    }
+
+    sanitizeAvatarForPublicPayload(avatarValue, fallbackName = 'user') {
+        const raw = (typeof avatarValue === 'string') ? avatarValue.trim() : '';
+        if (!raw) return this.buildUiAvatar(fallbackName);
+        // Prevent oversized public payload fields (comments/videos) from base64 avatars.
+        if (raw.startsWith('data:') || raw.length > 4096) {
+            return this.buildUiAvatar(fallbackName);
+        }
+        return raw;
+    }
+
+    getMessagePreviewText(message = {}) {
+        const msg = message || {};
+        if (msg.type === 'file') return `📎 ${msg.file?.name || 'Файл'}`;
+        if (msg.type === 'sticker') return '🪄 Стикер';
+        if (msg.type === 'video-circle') return '🎥 Видеокружок';
+        if (msg.type === 'call-event') return '📹 Видеозвонок';
+        return String(msg.content || '');
+    }
+
     // ===================== USER PROFILE =====================
 
     async getUserProfile(uid) {
@@ -263,9 +292,10 @@ class FirebaseService {
 
             if (shouldSyncVideos) {
                 try {
+                    const safeAvatar = this.sanitizeAvatarForPublicPayload(after.avatar, after.name || 'user');
                     await this.syncUserVideosAuthorMeta(uid, {
                         author: after.name,
-                        avatar: after.avatar,
+                        avatar: safeAvatar,
                         authorVerified: !!after.verified
                     });
                 } catch (syncError) {
@@ -401,6 +431,8 @@ class FirebaseService {
 
         try {
             const userProfile = await this.getUserProfile(uid);
+            const safeAuthor = (userProfile && userProfile.name) ? userProfile.name : 'user';
+            const safeAvatar = this.sanitizeAvatarForPublicPayload(userProfile && userProfile.avatar, safeAuthor);
             const uploaded = await this.uploadMedia(file, `videos/${uid}`, {
                 uid,
                 purpose: 'video'
@@ -410,8 +442,8 @@ class FirebaseService {
             const videoDoc = {
                 id: Date.now(),
                 uid: uid,
-                author: userProfile.name,
-                avatar: userProfile.avatar,
+                author: safeAuthor,
+                avatar: safeAvatar,
                 authorVerified: !!userProfile.verified,
                 url: uploaded.url,
                 storagePath: uploaded.storagePath,
@@ -422,7 +454,7 @@ class FirebaseService {
                 filter: metadata.filter || 'none',
                 likes: 0,
                 likedBy: [], // UIDs людей, которые лайкнули
-                comments: [],
+                commentsCount: 0,
                 views: 0,
                 shares: 0,
                 allowComments: metadata.allowComments !== false,
@@ -449,8 +481,13 @@ class FirebaseService {
         try {
             const mapVideoDoc = (doc) => {
                 const data = doc.data() || {};
+                const commentsCount = Number.isFinite(parseInt(data.commentsCount, 10))
+                    ? (parseInt(data.commentsCount, 10) || 0)
+                    : (Array.isArray(data.comments) ? data.comments.length : 0);
                 return {
                     ...data,
+                    comments: [], // comments are loaded lazily from subcollection
+                    commentsCount,
                     // Firestore возвращает Timestamp, UI ждёт number (ms)
                     timestamp: this.normalizeTimestamp(data.timestamp),
                     firestoreId: doc.id,
@@ -498,8 +535,13 @@ class FirebaseService {
             const uid = this.getCurrentUid();
             const mapVideoDoc = (doc) => {
                 const data = doc.data() || {};
+                const commentsCount = Number.isFinite(parseInt(data.commentsCount, 10))
+                    ? (parseInt(data.commentsCount, 10) || 0)
+                    : (Array.isArray(data.comments) ? data.comments.length : 0);
                 return {
                     ...data,
+                    comments: [],
+                    commentsCount,
                     timestamp: this.normalizeTimestamp(data.timestamp),
                     firestoreId: doc.id,
                     isLiked: uid ? Array.isArray(data.likedBy) && data.likedBy.includes(uid) : false
@@ -534,8 +576,13 @@ class FirebaseService {
             const currentUid = this.getCurrentUid();
             const mapVideoDoc = (doc) => {
                 const data = doc.data() || {};
+                const commentsCount = Number.isFinite(parseInt(data.commentsCount, 10))
+                    ? (parseInt(data.commentsCount, 10) || 0)
+                    : (Array.isArray(data.comments) ? data.comments.length : 0);
                 return {
                     ...data,
+                    comments: [],
+                    commentsCount,
                     timestamp: this.normalizeTimestamp(data.timestamp),
                     firestoreId: doc.id,
                     isLiked: currentUid ? Array.isArray(data.likedBy) && data.likedBy.includes(currentUid) : false
@@ -669,19 +716,36 @@ class FirebaseService {
 
         try {
             const userProfile = await this.getUserProfile(uid);
+            const safeUser = (userProfile && userProfile.name) ? String(userProfile.name) : 'user';
+            const safeAvatar = this.sanitizeAvatarForPublicPayload(userProfile && userProfile.avatar, safeUser);
+            const safeText = String(text || '').trim();
+            if (!safeText) throw new Error('Пустой комментарий');
+            const now = Date.now();
             const comment = {
                 uid: uid,
-                user: userProfile.name,
-                avatar: userProfile.avatar,
-                text,
+                user: safeUser,
+                avatar: safeAvatar,
+                text: safeText,
                 likes: 0,
-                time: new Date(),
-                likedBy: []
+                likedBy: [],
+                time: now,
+                createdAt: new Date()
             };
 
-            await this.db.collection('videos').doc(firestoreId).update({
-                comments: firebase.firestore.FieldValue.arrayUnion(comment)
-            });
+            const commentRef = await this.db.collection('videos')
+                .doc(firestoreId)
+                .collection('comments')
+                .add(comment);
+
+            // Keep a lightweight counter on video doc (best effort).
+            try {
+                await this.db.collection('videos').doc(firestoreId).update({
+                    commentsCount: firebase.firestore.FieldValue.increment(1),
+                    updatedAt: new Date()
+                });
+            } catch (counterError) {
+                console.warn('⚠️ Не удалось обновить commentsCount:', counterError?.message || counterError);
+            }
 
             try {
                 const videoDoc = await this.db.collection('videos').doc(firestoreId).get();
@@ -693,7 +757,7 @@ class FirebaseService {
                         fromUser: userProfile?.name || 'user',
                         videoId: video?.id || firestoreId,
                         videoThumbnail: video?.thumbnail || '',
-                        text: text.length > 90 ? `${text.slice(0, 87)}...` : text
+                        text: safeText.length > 90 ? `${safeText.slice(0, 87)}...` : safeText
                     });
                 }
             } catch (notifError) {
@@ -701,7 +765,7 @@ class FirebaseService {
             }
 
             console.log('✅ Комментарий добавлен');
-            return comment;
+            return { ...comment, id: commentRef.id };
         } catch (error) {
             console.error('❌ Ошибка добавления комментария:', error);
             throw error;
@@ -730,8 +794,42 @@ class FirebaseService {
 
     async getComments(firestoreId) {
         try {
+            const commentsRef = this.db.collection('videos').doc(firestoreId).collection('comments');
+            let snapshot = null;
+
+            try {
+                snapshot = await commentsRef
+                    .orderBy('createdAt', 'desc')
+                    .limit(300)
+                    .get();
+            } catch (_) {
+                // If index/orderBy is unavailable, read without order and sort in memory.
+                snapshot = await commentsRef.limit(300).get();
+            }
+
+            if (snapshot && !snapshot.empty) {
+                const comments = snapshot.docs.map((doc) => {
+                    const data = doc.data() || {};
+                    const timeValue = this.normalizeTimestamp(data.time || data.createdAt || data.timestamp);
+                    return {
+                        ...data,
+                        id: doc.id,
+                        time: timeValue || Date.now()
+                    };
+                });
+                comments.sort((a, b) => (parseInt(b.time, 10) || 0) - (parseInt(a.time, 10) || 0));
+                return comments;
+            }
+
+            // Legacy fallback: old comments array stored directly in the video document.
             const doc = await this.db.collection('videos').doc(firestoreId).get();
-            return doc.data()?.comments || [];
+            const legacy = Array.isArray(doc.data()?.comments) ? doc.data().comments : [];
+            return legacy
+                .map((c) => ({
+                    ...c,
+                    time: this.normalizeTimestamp(c.time || c.createdAt || c.timestamp) || Date.now()
+                }))
+                .sort((a, b) => (parseInt(b.time, 10) || 0) - (parseInt(a.time, 10) || 0));
         } catch (error) {
             console.error('❌ Ошибка получения комментариев:', error);
             return [];
@@ -808,8 +906,10 @@ class FirebaseService {
         if (!currentUid) throw new Error('Необходимо авторизироваться');
 
         const text = (content || '').trim();
-        const isFileMessage = options.type === 'file';
-        if (!isFileMessage && !text) throw new Error('Пустое сообщение');
+        const messageType = typeof options.type === 'string'
+            ? options.type
+            : (options.file ? 'file' : 'text');
+        if (messageType === 'text' && !text) throw new Error('Пустое сообщение');
 
         try {
             const senderProfile = await this.getUserProfile(currentUid);
@@ -855,8 +955,10 @@ class FirebaseService {
                 toUid: targetUid,
                 toUser: targetName,
                 content: text,
-                type: isFileMessage ? 'file' : 'text',
+                type: messageType,
                 file: options.file || null,
+                sticker: options.sticker || null,
+                call: options.call || null,
                 timestamp: now,
                 delivered,
                 deliveredAt: delivered ? now : null,
@@ -891,7 +993,9 @@ class FirebaseService {
                         delivered: !!data.delivered,
                         read: !!data.read,
                         type: data.type || 'text',
-                        file: data.file || null
+                        file: data.file || null,
+                        sticker: data.sticker || null,
+                        call: data.call || null
                     };
                 })
                 .sort((a, b) => a.timestamp - b.timestamp);
@@ -922,9 +1026,7 @@ class FirebaseService {
                 const isFromCurrent = msg.fromUid === currentUid;
                 const otherUid = isFromCurrent ? msg.toUid : msg.fromUid;
                 const otherUser = isFromCurrent ? msg.toUser : msg.fromUser;
-                const previewText = (msg.type === 'file')
-                    ? `📎 ${msg.file?.name || 'Файл'}`
-                    : (msg.content || '');
+                const previewText = this.getMessagePreviewText(msg);
                 const unreadCurrent = msg.toUid === currentUid && !msg.read;
 
                 if (!chatsMap.has(chatId)) {
@@ -1096,7 +1198,9 @@ class FirebaseService {
                             delivered: !!data.delivered,
                             read: !!data.read,
                             type: data.type || 'text',
-                            file: data.file || null
+                            file: data.file || null,
+                            sticker: data.sticker || null,
+                            call: data.call || null
                         };
                     })
                     .sort((a, b) => a.timestamp - b.timestamp);
@@ -1145,7 +1249,9 @@ class FirebaseService {
                         delivered: !!data.delivered,
                         read: !!data.read,
                         type: data.type || 'text',
-                        file: data.file || null
+                        file: data.file || null,
+                        sticker: data.sticker || null,
+                        call: data.call || null
                     });
                 });
 
@@ -1165,6 +1271,135 @@ class FirebaseService {
                 callback(doc.exists ? doc.data() : {});
             }, (error) => {
                 console.error('❌ Ошибка подписки на typing:', error);
+            });
+    }
+
+    async createVideoCall({ chatId, toUid, toUser = '' } = {}) {
+        const currentUid = this.getCurrentUid();
+        if (!currentUid) throw new Error('Необходимо авторизоваться');
+        if (!toUid) throw new Error('Получатель не найден');
+        if (toUid === currentUid) throw new Error('Нельзя звонить самому себе');
+
+        const fromProfile = await this.getUserProfile(currentUid);
+        const fromUser = fromProfile?.name || 'user';
+        const targetProfile = await this.getUserProfile(toUid);
+        const targetName = (toUser || '').trim() || targetProfile?.name || 'user';
+        const normalizedChatId = chatId || this.buildChatId(currentUid, toUid);
+        if (!normalizedChatId) throw new Error('Не удалось создать чат');
+
+        const now = Date.now();
+        const payload = {
+            chatId: normalizedChatId,
+            fromUid: currentUid,
+            fromUser,
+            toUid,
+            toUser: targetName,
+            mode: 'video',
+            status: 'ringing',
+            createdAt: now,
+            updatedAt: now,
+            acceptedAt: null,
+            endedAt: null,
+            endedBy: null,
+            offer: null,
+            answer: null
+        };
+
+        const ref = await this.db.collection('calls').add(payload);
+        return { id: ref.id, ...payload };
+    }
+
+    async updateCall(callId, patch = {}) {
+        if (!callId) return false;
+        const payload = { ...patch, updatedAt: Date.now() };
+        await this.db.collection('calls').doc(callId).set(payload, { merge: true });
+        return true;
+    }
+
+    subscribeToIncomingCalls(callback) {
+        const currentUid = this.getCurrentUid();
+        if (!currentUid || typeof callback !== 'function') return () => {};
+
+        return this.db.collection('calls')
+            .where('toUid', '==', currentUid)
+            .onSnapshot((snapshot) => {
+                const calls = snapshot.docs
+                    .map(doc => {
+                        const data = doc.data() || {};
+                        return {
+                            id: doc.id,
+                            ...data,
+                            createdAt: this.normalizeTimestamp(data.createdAt),
+                            updatedAt: this.normalizeTimestamp(data.updatedAt),
+                            acceptedAt: this.normalizeTimestamp(data.acceptedAt),
+                            endedAt: this.normalizeTimestamp(data.endedAt)
+                        };
+                    })
+                    .sort((a, b) => b.createdAt - a.createdAt);
+                callback(calls);
+            }, (error) => {
+                console.error('Ошибка подписки на входящие звонки:', error);
+            });
+    }
+
+    subscribeToCall(callId, callback) {
+        if (!callId || typeof callback !== 'function') return () => {};
+        return this.db.collection('calls').doc(callId).onSnapshot((doc) => {
+            if (!doc.exists) {
+                callback(null);
+                return;
+            }
+            const data = doc.data() || {};
+            callback({
+                id: doc.id,
+                ...data,
+                createdAt: this.normalizeTimestamp(data.createdAt),
+                updatedAt: this.normalizeTimestamp(data.updatedAt),
+                acceptedAt: this.normalizeTimestamp(data.acceptedAt),
+                endedAt: this.normalizeTimestamp(data.endedAt)
+            });
+        }, (error) => {
+            console.error('Ошибка подписки на звонок:', error);
+        });
+    }
+
+    async addCallCandidate(callId, candidate) {
+        const uid = this.getCurrentUid();
+        if (!uid || !callId || !candidate) return null;
+
+        const payload = {
+            uid,
+            candidate: candidate?.toJSON ? candidate.toJSON() : candidate,
+            createdAt: Date.now()
+        };
+        const ref = await this.db.collection('calls')
+            .doc(callId)
+            .collection('candidates')
+            .add(payload);
+        return { id: ref.id, ...payload };
+    }
+
+    subscribeToCallCandidates(callId, callback) {
+        if (!callId || typeof callback !== 'function') return () => {};
+
+        return this.db.collection('calls')
+            .doc(callId)
+            .collection('candidates')
+            .onSnapshot((snapshot) => {
+                const candidates = snapshot.docChanges()
+                    .filter(change => change.type === 'added')
+                    .map(change => {
+                        const data = change.doc.data() || {};
+                        return {
+                            id: change.doc.id,
+                            uid: data.uid || null,
+                            candidate: data.candidate || null,
+                            createdAt: this.normalizeTimestamp(data.createdAt)
+                        };
+                    });
+                callback(candidates);
+            }, (error) => {
+                console.error('Ошибка подписки на ICE candidates:', error);
             });
     }
 

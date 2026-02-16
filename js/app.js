@@ -24,7 +24,8 @@ class AdvancedApp {
             avatarData: null,
             currentChatId: null,
             currentChatUser: null,
-            currentChatUid: null
+            currentChatUid: null,
+            activeCallId: null
         };
         this.uploadDraftKey = 'reelgram_upload_draft_v1';
         this.feedPrefsKey = 'reelgram_feed_prefs_v1';
@@ -48,6 +49,17 @@ class AdvancedApp {
         this.lastTypingAt = 0;
         this.keyboardHandlersBound = false;
         this.emojiList = ['😀', '😂', '😍', '😎', '🥳', '🔥', '❤️', '👍', '👏', '🤝', '🤔', '😢', '🙌', '✨', '😅', '🎉'];
+        this.stickerPack = [
+            { id: 'party', title: 'Party', emoji: '🥳', style: 'sticker-style-party', motion: 'sticker-motion-bounce' },
+            { id: 'wow', title: 'Wow', emoji: '🤯', style: 'sticker-style-wow', motion: 'sticker-motion-pop' },
+            { id: 'cool', title: 'Cool', emoji: '😎', style: 'sticker-style-cool', motion: 'sticker-motion-wiggle' },
+            { id: 'love', title: 'Love', emoji: '😍', style: 'sticker-style-love', motion: 'sticker-motion-pulse' },
+            { id: 'fire', title: 'Fire', emoji: '🔥', style: 'sticker-style-fire', motion: 'sticker-motion-pop' },
+            { id: 'lol', title: 'Lol', emoji: '😂', style: 'sticker-style-lol', motion: 'sticker-motion-bounce' },
+            { id: 'power', title: 'Power', emoji: '💪', style: 'sticker-style-power', motion: 'sticker-motion-pulse' },
+            { id: 'hype', title: 'Hype', emoji: '⚡', style: 'sticker-style-hype', motion: 'sticker-motion-wiggle' }
+        ];
+        this.stickerPackById = new Map(this.stickerPack.map(sticker => [sticker.id, sticker]));
 
         // Feed video lifecycle / paging
         this.feedVideoObserver = null;
@@ -71,6 +83,24 @@ class AdvancedApp {
         // Realtime incoming message UI (badge + toast)
         this.incomingMessagesUnsubscribe = null;
         this.incomingMessagesUid = null;
+        this.incomingCallsUnsubscribe = null;
+        this.incomingCallsUid = null;
+        this.knownIncomingCallIds = new Set();
+
+        // WebRTC call state
+        this.pendingIncomingCall = null;
+        this.activeCall = null;
+        this.callDocUnsubscribe = null;
+        this.callCandidatesUnsubscribe = null;
+        this.callPeerConnection = null;
+        this.callLocalStream = null;
+        this.callRemoteStream = null;
+        this.callKnownCandidateIds = new Set();
+        this.pendingCallCandidates = [];
+        this.callOfferSent = false;
+        this.callAnswerSent = false;
+        this.callRemoteDescriptionSet = false;
+        this.callStarting = false;
 
         this.init();
     }
@@ -98,6 +128,7 @@ class AdvancedApp {
         await this.loadFeed(true);
         this.updateProfileUI();
         this.setupIncomingMessagesWatcher();
+        this.setupIncomingCallsWatcher();
         this.updateHamburgerVisibility();
         this.scheduleNotificationBadgeRefresh();
         
@@ -160,10 +191,24 @@ class AdvancedApp {
         this.typingIndicator = document.getElementById('typing-indicator');
         this.typingText = document.getElementById('typing-text');
         this.emojiPicker = document.getElementById('emoji-picker');
+        this.stickerPicker = document.getElementById('sticker-picker');
         this.emojiToggleBtn = document.getElementById('emoji-toggle-btn');
+        this.stickerToggleBtn = document.getElementById('sticker-toggle-btn');
+        this.videoCircleBtn = document.getElementById('video-circle-btn');
+        this.videoCallBtn = document.getElementById('video-call-btn');
         this.attachFileBtn = document.getElementById('attach-file-btn');
+        this.chatVideoCircleInput = document.getElementById('chat-video-circle-input');
         this.chatFileInput = document.getElementById('chat-file-input');
         this.messageInputArea = document.getElementById('message-input-area');
+        this.callModal = document.getElementById('call-modal');
+        this.callTitle = document.getElementById('call-title');
+        this.callPeer = document.getElementById('call-peer');
+        this.callStatus = document.getElementById('call-status');
+        this.callAcceptBtn = document.getElementById('call-accept-btn');
+        this.callDeclineBtn = document.getElementById('call-decline-btn');
+        this.callRemoteVideo = document.getElementById('call-remote-video');
+        this.callLocalVideo = document.getElementById('call-local-video');
+        this.callVideoPlaceholder = document.getElementById('call-video-placeholder');
 
         this.cameraPreview = document.getElementById('camera-preview');
         this.cameraVideo = document.getElementById('camera-video');
@@ -2695,6 +2740,7 @@ class AdvancedApp {
         if (viewId !== 'messages-view') {
             this.teardownChatRealtime();
             this.hideEmojiPicker();
+            this.hideStickerPicker();
             this.updateTypingStatus(false);
             if (this.chatDialog) this.chatDialog.style.setProperty('--keyboard-offset', '0px');
         }
@@ -2810,6 +2856,77 @@ class AdvancedApp {
         });
     }
 
+    setupIncomingCallsWatcher() {
+        const uid = firebaseService && typeof firebaseService.getCurrentUid === 'function'
+            ? firebaseService.getCurrentUid()
+            : null;
+
+        if (!(firebaseService && firebaseService.isInitialized && firebaseService.isInitialized() && uid)) {
+            if (this.incomingCallsUnsubscribe) {
+                try { this.incomingCallsUnsubscribe(); } catch (_) {}
+            }
+            this.incomingCallsUnsubscribe = null;
+            this.incomingCallsUid = null;
+            this.knownIncomingCallIds.clear();
+            this.resetCallSession();
+            return;
+        }
+
+        const uidStr = String(uid);
+        if (this.incomingCallsUid === uidStr && this.incomingCallsUnsubscribe) {
+            return;
+        }
+
+        if (this.incomingCallsUnsubscribe) {
+            try { this.incomingCallsUnsubscribe(); } catch (_) {}
+        }
+
+        this.incomingCallsUid = uidStr;
+        this.knownIncomingCallIds.clear();
+
+        if (typeof firebaseService.subscribeToIncomingCalls !== 'function') return;
+
+        this.incomingCallsUnsubscribe = firebaseService.subscribeToIncomingCalls((calls = []) => {
+            if (!Array.isArray(calls)) return;
+
+            if (this.pendingIncomingCall && this.pendingIncomingCall.id) {
+                const pendingId = String(this.pendingIncomingCall.id);
+                const pendingState = calls.find(item => String(item?.id || '') === pendingId);
+                if (!pendingState || String(pendingState.status || '') !== 'ringing') {
+                    this.pendingIncomingCall = null;
+                    if (!this.activeCall) this.hideCallModal();
+                }
+            }
+
+            if (calls.length === 0) return;
+
+            calls.forEach((call) => {
+                if (!call || !call.id) return;
+                if (String(call.toUid || '') !== uidStr) return;
+                if (String(call.status || '') !== 'ringing') return;
+
+                const callId = String(call.id);
+                if (this.knownIncomingCallIds.has(callId)) return;
+                this.knownIncomingCallIds.add(callId);
+
+                if (this.activeCall && this.activeCall.id && this.activeCall.id !== callId) {
+                    if (typeof firebaseService.updateCall === 'function') {
+                        firebaseService.updateCall(callId, {
+                            status: 'missed',
+                            endedBy: 'busy',
+                            endedAt: Date.now()
+                        }).catch(() => {});
+                    }
+                    return;
+                }
+
+                this.pendingIncomingCall = call;
+                this.showIncomingCallModal(call);
+                this.maybeShowIncomingCallToast(call);
+            });
+        });
+    }
+
     updateMessagesBadge(count) {
         if (!this.messagesBadge) return;
 
@@ -2820,6 +2937,15 @@ class AdvancedApp {
         } else {
             this.messagesBadge.style.display = 'none';
         }
+    }
+
+    getMessagePreviewText(message = {}) {
+        const msg = message || {};
+        if (msg.type === 'file') return `📎 ${msg.file?.name || 'Файл'}`;
+        if (msg.type === 'sticker') return '🪄 Стикер';
+        if (msg.type === 'video-circle') return '🎥 Видеокружок';
+        if (msg.type === 'call-event') return '📹 Видеозвонок';
+        return String(msg.content || '').trim();
     }
 
     maybeShowIncomingMessageToast(message) {
@@ -2837,9 +2963,7 @@ class AdvancedApp {
         }
 
         const fromUser = msg.fromUser || 'user';
-        const preview = (msg.type === 'file')
-            ? `📎 ${msg.file?.name || 'Файл'}`
-            : String(msg.content || '').trim();
+        const preview = this.getMessagePreviewText(msg);
 
         const trimmed = preview.length > 80 ? (preview.slice(0, 77) + '...') : preview;
         const text = `💬 @${fromUser}: ${trimmed || 'сообщение'}`;
@@ -2874,6 +2998,18 @@ class AdvancedApp {
             }
         }
 
+        AdvancedViewRenderer.showToast(text, 'info');
+    }
+
+    maybeShowIncomingCallToast(call) {
+        const fromUser = call?.fromUser || 'user';
+        const text = `📹 Видеозвонок от @${fromUser}`;
+        const toast = document.getElementById('toast');
+        if (toast) {
+            toast.dataset.chatId = '';
+            toast.dataset.chatUid = '';
+            toast.dataset.chatUser = '';
+        }
         AdvancedViewRenderer.showToast(text, 'info');
     }
 
@@ -2917,10 +3053,13 @@ class AdvancedApp {
         const commentsList = document.getElementById('comments-list');
         const commentCount = document.getElementById('comment-count');
         const comments = Array.isArray(video.comments) ? video.comments : [];
+        const initialCount = Number.isFinite(parseInt(video.commentsCount, 10))
+            ? (parseInt(video.commentsCount, 10) || 0)
+            : comments.length;
         
-        commentCount.textContent = comments.length;
+        commentCount.textContent = String(initialCount);
         commentsList.innerHTML = AdvancedViewRenderer.renderComments(comments);
-        this.updateFeedCommentCount(id, comments.length);
+        this.updateFeedCommentCount(id, initialCount);
         
         this.commentsSheet.classList.add('open');
         document.getElementById('comment-input').focus();
@@ -2935,6 +3074,7 @@ class AdvancedApp {
                 const remoteComments = await firebaseService.getComments(video.firestoreId);
                 if (Array.isArray(remoteComments)) {
                     video.comments = remoteComments;
+                    video.commentsCount = remoteComments.length;
                     commentCount.textContent = remoteComments.length;
                     commentsList.innerHTML = AdvancedViewRenderer.renderComments(remoteComments);
                     this.updateFeedCommentCount(id, remoteComments.length);
@@ -2990,8 +3130,12 @@ class AdvancedApp {
                 }
             } catch (error) {
                 console.error('Ошибка добавления комментария:', error);
-                AdvancedViewRenderer.showToast('Не удалось отправить комментарий', 'error');
-                return;
+                comment = this.dataService.addComment(targetId, text);
+                if (!comment) {
+                    AdvancedViewRenderer.showToast('Не удалось отправить комментарий', 'error');
+                    return;
+                }
+                AdvancedViewRenderer.showToast('Сбой сети: комментарий сохранен локально', 'warning');
             }
         } else {
             comment = this.dataService.addComment(targetId, text);
@@ -3027,6 +3171,7 @@ class AdvancedApp {
             const commentCount = document.getElementById('comment-count');
             const nextCount = (parseInt(commentCount.textContent, 10) || 0) + 1;
             commentCount.textContent = String(nextCount);
+            video.commentsCount = nextCount;
             this.updateFeedCommentCount(targetId, nextCount);
             
             input.value = '';
@@ -3364,7 +3509,9 @@ class AdvancedApp {
                 gridItem.dataset.id = video.id;
                 if (video.firestoreId) gridItem.dataset.firestoreId = video.firestoreId;
 
-                const commentsCount = Array.isArray(video.comments) ? video.comments.length : 0;
+                const commentsCount = Number.isFinite(parseInt(video.commentsCount, 10))
+                    ? (parseInt(video.commentsCount, 10) || 0)
+                    : (Array.isArray(video.comments) ? video.comments.length : 0);
                 const safeUrl = this.escapeHtml(video.url || '');
                 const safePoster = video.thumbnail ? this.escapeHtml(video.thumbnail) : '';
                 const posterAttr = safePoster ? ` poster="${safePoster}"` : '';
@@ -3610,6 +3757,7 @@ class AdvancedApp {
                 await this.updateTypingStatus(false);
                 this.teardownChatRealtime();
                 this.hideEmojiPicker();
+                this.hideStickerPicker();
                 this.chatDialog.style.display = 'none';
                 this.chatDialog.style.setProperty('--keyboard-offset', '0px');
                 this.messagesListSection.style.display = 'flex';
@@ -3664,6 +3812,13 @@ class AdvancedApp {
             });
         }
 
+        if (this.stickerToggleBtn) {
+            this.stickerToggleBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.toggleStickerPicker();
+            });
+        }
+
         if (this.attachFileBtn && this.chatFileInput) {
             this.attachFileBtn.addEventListener('click', () => this.chatFileInput.click());
             this.chatFileInput.addEventListener('change', async (e) => {
@@ -3675,14 +3830,45 @@ class AdvancedApp {
             });
         }
 
+        if (this.videoCircleBtn && this.chatVideoCircleInput) {
+            this.videoCircleBtn.addEventListener('click', () => this.chatVideoCircleInput.click());
+            this.chatVideoCircleInput.addEventListener('change', async (e) => {
+                const file = e.target.files && e.target.files[0];
+                if (file) {
+                    await this.sendVideoCircleMessage(file);
+                }
+                this.chatVideoCircleInput.value = '';
+            });
+        }
+
+        if (this.videoCallBtn) {
+            this.videoCallBtn.addEventListener('click', () => this.startVideoCall());
+        }
+
+        if (this.callAcceptBtn) {
+            this.callAcceptBtn.addEventListener('click', () => this.acceptIncomingVideoCall());
+        }
+
+        if (this.callDeclineBtn) {
+            this.callDeclineBtn.addEventListener('click', () => {
+                const status = this.pendingIncomingCall && !this.activeCall ? 'declined' : 'ended';
+                this.endCurrentCall(status);
+            });
+        }
+
         document.addEventListener('click', (e) => {
-            if (!this.emojiPicker || !this.emojiToggleBtn) return;
-            if (!this.emojiPicker.contains(e.target) && !this.emojiToggleBtn.contains(e.target)) {
+            if (this.emojiPicker && this.emojiToggleBtn
+                && !this.emojiPicker.contains(e.target) && !this.emojiToggleBtn.contains(e.target)) {
                 this.hideEmojiPicker();
+            }
+            if (this.stickerPicker && this.stickerToggleBtn
+                && !this.stickerPicker.contains(e.target) && !this.stickerToggleBtn.contains(e.target)) {
+                this.hideStickerPicker();
             }
         });
 
         this.renderEmojiPicker();
+        this.renderStickerPicker();
         this.setupKeyboardViewportSync();
         if (this.sendMessageBtn) this.sendMessageBtn.disabled = true;
         this.loadChats();
@@ -3791,6 +3977,7 @@ class AdvancedApp {
         await this.updateTypingStatus(false);
         this.teardownChatRealtime();
         this.hideEmojiPicker();
+        this.hideStickerPicker();
 
         let resolvedTargetUid = targetUid;
         let targetProfile = null;
@@ -3885,6 +4072,9 @@ class AdvancedApp {
         this.state.currentChatAvatar = avatar;
         this.state.currentChatOnline = online;
         this.state.currentChatLastSeen = this.normalizeTimestampValue(lastSeen);
+        if (this.videoCallBtn) {
+            this.videoCallBtn.style.display = resolvedTargetUid ? '' : 'none';
+        }
 
         await this.refreshCurrentChatMessages();
         this.subscribeToActiveChat();
@@ -3933,10 +4123,7 @@ class AdvancedApp {
             const statusClass = msg.read ? 'read' : (msg.delivered ? 'delivered' : 'sent');
             const statusIcon = msg.read ? '✓✓' : (msg.delivered ? '✓✓' : '✓');
             const statusHtml = isOwn ? `<span class="message-status ${statusClass}">${statusIcon}</span>` : '';
-            const safeText = this.escapeHtml(msg.content || '').replace(/\n/g, '<br>');
-            const bodyHtml = msg.type === 'file'
-                ? this.renderFileMessageBody(msg)
-                : `<div class="message-content">${safeText}</div>`;
+            const bodyHtml = this.renderChatMessageBody(msg);
 
             msgEl.innerHTML = `
                 ${bodyHtml}
@@ -3947,6 +4134,84 @@ class AdvancedApp {
             `;
             this.messagesContainer.appendChild(msgEl);
         });
+    }
+
+    renderChatMessageBody(message = {}) {
+        const msg = message || {};
+        if (msg.type === 'file') return this.renderFileMessageBody(msg);
+        if (msg.type === 'sticker') return this.renderStickerMessageBody(msg);
+        if (msg.type === 'video-circle') return this.renderVideoCircleMessageBody(msg);
+        if (msg.type === 'call-event') return this.renderCallEventMessageBody(msg);
+
+        const safeText = this.escapeHtml(msg.content || '').replace(/\n/g, '<br>');
+        return `<div class="message-content">${safeText}</div>`;
+    }
+
+    getStickerById(stickerId = '') {
+        const fallback = this.stickerPack[0];
+        const key = String(stickerId || '').trim();
+        if (!key || !this.stickerPackById || !this.stickerPackById.has(key)) return fallback;
+        return this.stickerPackById.get(key);
+    }
+
+    renderStickerMessageBody(message = {}) {
+        const rawSticker = message.sticker || {};
+        const preset = this.getStickerById(rawSticker.id);
+        const sticker = {
+            id: preset?.id || 'party',
+            title: rawSticker.title || preset?.title || 'Sticker',
+            emoji: rawSticker.emoji || preset?.emoji || '✨',
+            style: preset?.style || 'sticker-style-party',
+            motion: preset?.motion || 'sticker-motion-pop'
+        };
+
+        const safeTitle = this.escapeHtml(sticker.title);
+        const safeEmoji = this.escapeHtml(sticker.emoji);
+        const safeStyle = this.escapeHtml(sticker.style);
+        const safeMotion = this.escapeHtml(sticker.motion);
+
+        return `
+            <div class="message-content message-sticker">
+                <div class="chat-sticker ${safeStyle}">
+                    <span class="chat-sticker-glyph ${safeMotion}">${safeEmoji}</span>
+                    <span class="chat-sticker-title">${safeTitle}</span>
+                </div>
+            </div>
+        `;
+    }
+
+    renderVideoCircleMessageBody(message = {}) {
+        const file = message.file || {};
+        const safeUrl = file.url ? this.escapeHtml(file.url) : '';
+        const safeName = this.escapeHtml(file.name || 'Видеокружок');
+        const openLink = safeUrl
+            ? `<a class="message-video-circle-link" href="${safeUrl}" target="_blank" rel="noopener noreferrer">Открыть</a>`
+            : '';
+        const video = safeUrl
+            ? `<video class="message-video-circle" src="${safeUrl}" playsinline preload="metadata" loop muted controls></video>`
+            : `<div class="message-file-icon">🎥</div>`;
+
+        return `
+            <div class="message-content message-video-circle-wrap">
+                <div class="message-video-circle-frame">
+                    ${video}
+                    <div class="message-file-size">${safeName}</div>
+                    ${openLink}
+                </div>
+            </div>
+        `;
+    }
+
+    renderCallEventMessageBody(message = {}) {
+        const call = message.call || {};
+        const modeLabel = call.mode === 'video' ? 'Видеозвонок' : 'Звонок';
+        const eventLabel = call.event === 'missed'
+            ? 'Пропущен'
+            : (call.event === 'declined'
+                ? 'Отклонен'
+                : (call.event === 'ended' ? 'Завершен' : 'Начат'));
+        const text = this.escapeHtml(`${modeLabel}: ${eventLabel}`);
+        return `<div class="message-content message-call-event">${text}</div>`;
     }
 
     renderFileMessageBody(message) {
@@ -4009,18 +4274,50 @@ class AdvancedApp {
                 this.messageInput.focus();
                 this.onMessageInputChanged();
                 this.updateTypingStatus(true);
+                this.hideStickerPicker();
+            });
+        });
+    }
+
+    renderStickerPicker() {
+        if (!this.stickerPicker) return;
+        this.stickerPicker.innerHTML = this.stickerPack.map(sticker => `
+            <button class="sticker-btn ${sticker.style}" type="button" data-sticker-id="${sticker.id}">
+                <span class="sticker-btn-glyph ${sticker.motion}">${sticker.emoji}</span>
+                <span class="sticker-btn-title">${this.escapeHtml(sticker.title)}</span>
+            </button>
+        `).join('');
+
+        this.stickerPicker.querySelectorAll('.sticker-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const sticker = this.getStickerById(btn.dataset.stickerId || '');
+                if (sticker) {
+                    await this.sendStickerMessage(sticker);
+                }
             });
         });
     }
 
     toggleEmojiPicker() {
         if (!this.emojiPicker) return;
+        this.hideStickerPicker();
         const open = this.emojiPicker.style.display !== 'none';
         this.emojiPicker.style.display = open ? 'none' : 'flex';
     }
 
     hideEmojiPicker() {
         if (this.emojiPicker) this.emojiPicker.style.display = 'none';
+    }
+
+    toggleStickerPicker() {
+        if (!this.stickerPicker) return;
+        this.hideEmojiPicker();
+        const open = this.stickerPicker.style.display !== 'none';
+        this.stickerPicker.style.display = open ? 'none' : 'grid';
+    }
+
+    hideStickerPicker() {
+        if (this.stickerPicker) this.stickerPicker.style.display = 'none';
     }
 
     setupKeyboardViewportSync() {
@@ -4244,6 +4541,7 @@ class AdvancedApp {
         this.messageInput.value = '';
         this.onMessageInputChanged();
         this.hideEmojiPicker();
+        this.hideStickerPicker();
         await this.updateTypingStatus(false);
 
         try {
@@ -4294,6 +4592,7 @@ class AdvancedApp {
         }
 
         this.hideEmojiPicker();
+        this.hideStickerPicker();
         await this.updateTypingStatus(false);
 
         try {
@@ -4344,6 +4643,642 @@ class AdvancedApp {
         } catch (error) {
             console.error('Ошибка отправки файла:', error);
             AdvancedViewRenderer.showToast(error?.message || 'Не удалось отправить файл', 'error');
+        }
+    }
+
+    async sendStickerMessage(stickerPreset) {
+        if (!stickerPreset) return;
+        if (!this.state.currentChatId || !this.state.currentChatUser) {
+            AdvancedViewRenderer.showToast('Сначала выберите чат', 'warning');
+            return;
+        }
+
+        const currentUser = this.dataService.getCurrentUser();
+        if (!currentUser) {
+            this.navigateTo('auth-view');
+            return;
+        }
+
+        const stickerPayload = {
+            id: stickerPreset.id,
+            title: stickerPreset.title,
+            emoji: stickerPreset.emoji,
+            style: stickerPreset.style,
+            motion: stickerPreset.motion
+        };
+
+        this.hideEmojiPicker();
+        this.hideStickerPicker();
+        await this.updateTypingStatus(false);
+
+        const options = {
+            fromUid: currentUser.uid || null,
+            toUid: this.state.currentChatUid || null,
+            delivered: !!this.state.currentChatOnline,
+            type: 'sticker',
+            sticker: stickerPayload
+        };
+
+        try {
+            if (firebaseService && firebaseService.isInitialized() && typeof firebaseService.addMessage === 'function') {
+                await firebaseService.addMessage(
+                    this.state.currentChatId,
+                    currentUser.name,
+                    this.state.currentChatUser,
+                    '',
+                    this.state.currentChatUid,
+                    options
+                );
+            } else {
+                this.dataService.addMessage(
+                    this.state.currentChatId,
+                    currentUser.name,
+                    this.state.currentChatUser,
+                    '',
+                    options
+                );
+                await this.refreshCurrentChatMessages();
+            }
+            await this.loadChats();
+            if (this.messagesContainer) this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+        } catch (error) {
+            console.error('Ошибка отправки стикера:', error);
+            AdvancedViewRenderer.showToast(error?.message || 'Не удалось отправить стикер', 'error');
+        }
+    }
+
+    async sendVideoCircleMessage(file) {
+        if (!file) return;
+        if (!this.state.currentChatId || !this.state.currentChatUser) {
+            AdvancedViewRenderer.showToast('Сначала выберите чат', 'warning');
+            return;
+        }
+        if (!(file.type || '').startsWith('video/')) {
+            AdvancedViewRenderer.showToast('Выберите видеофайл', 'warning');
+            return;
+        }
+        if (file.size > 25 * 1024 * 1024) {
+            AdvancedViewRenderer.showToast('Видеокружок слишком большой (макс. 25MB)', 'warning');
+            return;
+        }
+
+        const currentUser = this.dataService.getCurrentUser();
+        if (!currentUser) {
+            this.navigateTo('auth-view');
+            return;
+        }
+
+        this.hideEmojiPicker();
+        this.hideStickerPicker();
+        await this.updateTypingStatus(false);
+
+        try {
+            let filePayload = null;
+            if (firebaseService && firebaseService.isInitialized() && typeof firebaseService.uploadChatFile === 'function') {
+                filePayload = await firebaseService.uploadChatFile(this.state.currentChatId, file);
+                await firebaseService.addMessage(
+                    this.state.currentChatId,
+                    currentUser.name,
+                    this.state.currentChatUser,
+                    '',
+                    this.state.currentChatUid,
+                    { type: 'video-circle', file: filePayload }
+                );
+            } else {
+                filePayload = {
+                    name: file.name || 'video-circle.webm',
+                    size: file.size || 0,
+                    mime: file.type || 'video/webm',
+                    url: URL.createObjectURL(file)
+                };
+                this.dataService.addMessage(
+                    this.state.currentChatId,
+                    currentUser.name,
+                    this.state.currentChatUser,
+                    '',
+                    {
+                        fromUid: currentUser.uid || null,
+                        toUid: this.state.currentChatUid || null,
+                        delivered: !!this.state.currentChatOnline,
+                        type: 'video-circle',
+                        file: filePayload
+                    }
+                );
+                await this.refreshCurrentChatMessages();
+            }
+
+            await this.loadChats();
+            if (this.messagesContainer) this.messagesContainer.scrollTop = this.messagesContainer.scrollHeight;
+        } catch (error) {
+            console.error('Ошибка отправки видеокружка:', error);
+            AdvancedViewRenderer.showToast(error?.message || 'Не удалось отправить видеокружок', 'error');
+        }
+    }
+
+    showIncomingCallModal(call) {
+        if (!this.callModal) return;
+        const fromUser = call?.fromUser || 'user';
+        this.callModal.style.display = 'flex';
+        if (this.callTitle) this.callTitle.textContent = 'Входящий видеозвонок';
+        if (this.callPeer) this.callPeer.textContent = `@${fromUser}`;
+        if (this.callStatus) this.callStatus.textContent = 'Нажмите "Принять"';
+        if (this.callAcceptBtn) this.callAcceptBtn.style.display = '';
+        if (this.callDeclineBtn) this.callDeclineBtn.textContent = 'Отклонить';
+        if (this.callVideoPlaceholder) {
+            this.callVideoPlaceholder.style.display = 'flex';
+            this.callVideoPlaceholder.textContent = 'Входящий вызов...';
+        }
+        if (this.callRemoteVideo) this.callRemoteVideo.srcObject = null;
+        if (this.callLocalVideo) this.callLocalVideo.srcObject = null;
+    }
+
+    showActiveCallModal(call, statusText = 'Подключение...') {
+        if (!this.callModal) return;
+        const role = this.activeCall?.role || 'caller';
+        const peerName = role === 'caller'
+            ? (call?.toUser || this.activeCall?.peerName || this.state.currentChatUser || 'user')
+            : (call?.fromUser || this.activeCall?.peerName || this.state.currentChatUser || 'user');
+
+        this.callModal.style.display = 'flex';
+        if (this.callTitle) this.callTitle.textContent = 'Видеозвонок';
+        if (this.callPeer) this.callPeer.textContent = `@${peerName}`;
+        if (this.callStatus) this.callStatus.textContent = statusText;
+        if (this.callAcceptBtn) this.callAcceptBtn.style.display = 'none';
+        if (this.callDeclineBtn) this.callDeclineBtn.textContent = 'Завершить';
+        if (this.callVideoPlaceholder) {
+            this.callVideoPlaceholder.style.display = 'flex';
+            this.callVideoPlaceholder.textContent = 'Ожидание подключения...';
+        }
+    }
+
+    hideCallModal() {
+        if (!this.callModal) return;
+        this.callModal.style.display = 'none';
+    }
+
+    updateCallStatusText(text = '') {
+        if (this.callStatus) this.callStatus.textContent = text || '';
+    }
+
+    getCallStatusText(call) {
+        const status = String(call?.status || '');
+        if (status === 'ringing') return 'Звоним...';
+        if (status === 'accepted') return 'Подключение...';
+        if (status === 'active') return 'В звонке';
+        if (status === 'declined') return 'Вызов отклонен';
+        if (status === 'missed') return 'Пропущенный вызов';
+        if (status === 'ended') return 'Вызов завершен';
+        return 'Подключение...';
+    }
+
+    resetCallSession() {
+        if (this.callDocUnsubscribe) {
+            try { this.callDocUnsubscribe(); } catch (_) {}
+            this.callDocUnsubscribe = null;
+        }
+        if (this.callCandidatesUnsubscribe) {
+            try { this.callCandidatesUnsubscribe(); } catch (_) {}
+            this.callCandidatesUnsubscribe = null;
+        }
+        if (this.callPeerConnection) {
+            try { this.callPeerConnection.close(); } catch (_) {}
+            this.callPeerConnection = null;
+        }
+        if (this.callLocalStream) {
+            this.callLocalStream.getTracks().forEach(track => {
+                try { track.stop(); } catch (_) {}
+            });
+            this.callLocalStream = null;
+        }
+        this.callRemoteStream = null;
+        this.callKnownCandidateIds.clear();
+        this.pendingCallCandidates = [];
+        this.callOfferSent = false;
+        this.callAnswerSent = false;
+        this.callRemoteDescriptionSet = false;
+        this.callStarting = false;
+        this.activeCall = null;
+        this.pendingIncomingCall = null;
+        this.state.activeCallId = null;
+        if (this.callLocalVideo) this.callLocalVideo.srcObject = null;
+        if (this.callRemoteVideo) this.callRemoteVideo.srcObject = null;
+        this.hideCallModal();
+    }
+
+    async ensureCallLocalMedia() {
+        if (this.callLocalStream) return this.callLocalStream;
+        if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) {
+            throw new Error('Ваше устройство не поддерживает видеозвонки');
+        }
+
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        this.callLocalStream = stream;
+        if (this.callLocalVideo) this.callLocalVideo.srcObject = stream;
+        return stream;
+    }
+
+    ensureCallPeerConnection(callId) {
+        if (this.callPeerConnection) return this.callPeerConnection;
+        if (typeof RTCPeerConnection === 'undefined') {
+            throw new Error('WebRTC недоступен в этом браузере');
+        }
+
+        const pc = new RTCPeerConnection({
+            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+        });
+        this.callPeerConnection = pc;
+        this.callRemoteStream = new MediaStream();
+        if (this.callRemoteVideo) this.callRemoteVideo.srcObject = this.callRemoteStream;
+
+        if (this.callLocalStream) {
+            const existingTrackIds = new Set(
+                pc.getSenders().map(sender => sender.track && sender.track.id).filter(Boolean)
+            );
+            this.callLocalStream.getTracks().forEach(track => {
+                if (!existingTrackIds.has(track.id)) {
+                    pc.addTrack(track, this.callLocalStream);
+                }
+            });
+        }
+
+        pc.ontrack = (event) => {
+            const incomingStream = event.streams && event.streams[0];
+            if (!incomingStream || !this.callRemoteStream) return;
+            incomingStream.getTracks().forEach(track => {
+                if (!this.callRemoteStream.getTracks().some(t => t.id === track.id)) {
+                    this.callRemoteStream.addTrack(track);
+                }
+            });
+            if (this.callVideoPlaceholder) this.callVideoPlaceholder.style.display = 'none';
+        };
+
+        pc.onicecandidate = (event) => {
+            if (!event.candidate) return;
+            if (!(firebaseService && firebaseService.isInitialized() && typeof firebaseService.addCallCandidate === 'function')) {
+                return;
+            }
+            firebaseService.addCallCandidate(callId, event.candidate).catch((error) => {
+                console.error('Ошибка отправки ICE candidate:', error);
+            });
+        };
+
+        pc.onconnectionstatechange = () => {
+            const state = pc.connectionState;
+            if (state === 'connected') {
+                if (this.activeCall) this.activeCall.connected = true;
+                this.updateCallStatusText('В звонке');
+                if (this.callVideoPlaceholder) this.callVideoPlaceholder.style.display = 'none';
+                return;
+            }
+            if (state === 'failed') {
+                this.updateCallStatusText('Связь потеряна');
+                this.endCurrentCall('ended');
+                return;
+            }
+            if (state === 'disconnected') {
+                this.updateCallStatusText('Переподключение...');
+            }
+        };
+
+        return pc;
+    }
+
+    async flushPendingCallCandidates() {
+        if (!this.callPeerConnection || !this.callPeerConnection.remoteDescription) return;
+        if (!Array.isArray(this.pendingCallCandidates) || this.pendingCallCandidates.length === 0) return;
+
+        const queue = [...this.pendingCallCandidates];
+        this.pendingCallCandidates = [];
+        for (const candidate of queue) {
+            try {
+                await this.callPeerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+            } catch (error) {
+                console.warn('Не удалось применить ICE candidate:', error);
+            }
+        }
+    }
+
+    subscribeToCurrentCall(callId) {
+        if (this.callDocUnsubscribe) {
+            try { this.callDocUnsubscribe(); } catch (_) {}
+            this.callDocUnsubscribe = null;
+        }
+        if (!(firebaseService && firebaseService.isInitialized() && typeof firebaseService.subscribeToCall === 'function')) return;
+
+        this.callDocUnsubscribe = firebaseService.subscribeToCall(callId, async (call) => {
+            await this.handleCallSnapshot(call);
+        });
+    }
+
+    subscribeToCurrentCallCandidates(callId) {
+        if (this.callCandidatesUnsubscribe) {
+            try { this.callCandidatesUnsubscribe(); } catch (_) {}
+            this.callCandidatesUnsubscribe = null;
+        }
+        if (!(firebaseService && firebaseService.isInitialized() && typeof firebaseService.subscribeToCallCandidates === 'function')) return;
+
+        const currentUid = firebaseService && typeof firebaseService.getCurrentUid === 'function'
+            ? firebaseService.getCurrentUid()
+            : null;
+        this.callKnownCandidateIds.clear();
+        this.pendingCallCandidates = [];
+
+        this.callCandidatesUnsubscribe = firebaseService.subscribeToCallCandidates(callId, async (candidates = []) => {
+            if (!Array.isArray(candidates) || candidates.length === 0) return;
+
+            for (const row of candidates) {
+                if (!row || !row.id || !row.candidate) continue;
+                const candidateId = String(row.id);
+                if (this.callKnownCandidateIds.has(candidateId)) continue;
+                this.callKnownCandidateIds.add(candidateId);
+
+                if (currentUid && row.uid && String(row.uid) === String(currentUid)) continue;
+                if (!this.callPeerConnection || !this.callPeerConnection.remoteDescription) {
+                    this.pendingCallCandidates.push(row.candidate);
+                    continue;
+                }
+
+                try {
+                    await this.callPeerConnection.addIceCandidate(new RTCIceCandidate(row.candidate));
+                } catch (error) {
+                    console.warn('Не удалось добавить ICE candidate:', error);
+                }
+            }
+        });
+    }
+
+    async createAndSendOffer(callId) {
+        if (!this.callPeerConnection || this.callOfferSent) return;
+        const offer = await this.callPeerConnection.createOffer({
+            offerToReceiveAudio: true,
+            offerToReceiveVideo: true
+        });
+        await this.callPeerConnection.setLocalDescription(offer);
+        if (firebaseService && typeof firebaseService.updateCall === 'function') {
+            await firebaseService.updateCall(callId, {
+                offer: { type: offer.type, sdp: offer.sdp },
+                status: 'ringing'
+            });
+        }
+        this.callOfferSent = true;
+    }
+
+    async createAndSendAnswer(call) {
+        if (!call || !call.id || !this.callPeerConnection || this.callAnswerSent) return;
+        if (!(call.offer && call.offer.sdp)) return;
+
+        await this.callPeerConnection.setRemoteDescription(new RTCSessionDescription(call.offer));
+        this.callRemoteDescriptionSet = true;
+        await this.flushPendingCallCandidates();
+
+        const answer = await this.callPeerConnection.createAnswer();
+        await this.callPeerConnection.setLocalDescription(answer);
+        if (firebaseService && typeof firebaseService.updateCall === 'function') {
+            await firebaseService.updateCall(call.id, {
+                answer: { type: answer.type, sdp: answer.sdp },
+                status: 'active',
+                acceptedAt: call.acceptedAt || Date.now()
+            });
+        }
+        this.callAnswerSent = true;
+        this.updateCallStatusText('В звонке');
+    }
+
+    async handleCallSnapshot(call) {
+        if (!call) {
+            if (this.state.activeCallId) {
+                await this.endCurrentCall('ended', { skipRemoteUpdate: true, silent: true, sendEvent: false });
+            } else {
+                this.resetCallSession();
+            }
+            return;
+        }
+
+        const callId = String(call.id || '');
+        if (!callId) return;
+
+        if (this.pendingIncomingCall && String(this.pendingIncomingCall.id) === callId && String(call.status || '') !== 'ringing' && !this.activeCall) {
+            this.pendingIncomingCall = null;
+            this.hideCallModal();
+            return;
+        }
+
+        if (!this.state.activeCallId || String(this.state.activeCallId) !== callId) return;
+
+        const status = String(call.status || '');
+        if (status === 'declined' || status === 'missed' || status === 'ended' || status === 'cancelled') {
+            const toastText = status === 'declined'
+                ? 'Звонок отклонен'
+                : (status === 'missed' ? 'Пропущенный звонок' : 'Звонок завершен');
+            AdvancedViewRenderer.showToast(toastText, 'info');
+            await this.endCurrentCall(status, { skipRemoteUpdate: true, silent: true, sendEvent: false });
+            return;
+        }
+
+        this.updateCallStatusText(this.getCallStatusText(call));
+
+        if (!this.callPeerConnection) return;
+        if (this.activeCall?.role === 'caller') {
+            if (call.answer && call.answer.sdp && !this.callRemoteDescriptionSet) {
+                await this.callPeerConnection.setRemoteDescription(new RTCSessionDescription(call.answer));
+                this.callRemoteDescriptionSet = true;
+                await this.flushPendingCallCandidates();
+                if (firebaseService && typeof firebaseService.updateCall === 'function' && status !== 'active') {
+                    await firebaseService.updateCall(callId, { status: 'active' });
+                }
+                this.updateCallStatusText('В звонке');
+            }
+            return;
+        }
+
+        if (this.activeCall?.role === 'callee') {
+            if (call.offer && call.offer.sdp && !this.callRemoteDescriptionSet) {
+                await this.createAndSendAnswer(call);
+            }
+        }
+    }
+
+    async startVideoCall() {
+        if (this.callStarting) return;
+        if (!(firebaseService && firebaseService.isInitialized() && typeof firebaseService.createVideoCall === 'function')) {
+            AdvancedViewRenderer.showToast('Звонки доступны после подключения базы', 'warning');
+            return;
+        }
+        if (!this.state.currentChatId || !this.state.currentChatUser || !this.state.currentChatUid) {
+            AdvancedViewRenderer.showToast('Откройте чат с пользователем для звонка', 'warning');
+            return;
+        }
+        if (this.activeCall || this.pendingIncomingCall || this.state.activeCallId) {
+            AdvancedViewRenderer.showToast('У вас уже есть активный звонок', 'warning');
+            return;
+        }
+
+        const currentUser = this.dataService.getCurrentUser();
+        if (!currentUser) {
+            this.navigateTo('auth-view');
+            return;
+        }
+
+        this.callStarting = true;
+        try {
+            const call = await firebaseService.createVideoCall({
+                chatId: this.state.currentChatId,
+                toUid: this.state.currentChatUid,
+                toUser: this.state.currentChatUser
+            });
+
+            this.activeCall = {
+                id: call.id,
+                chatId: call.chatId || this.state.currentChatId,
+                role: 'caller',
+                peerUid: call.toUid || this.state.currentChatUid,
+                peerName: call.toUser || this.state.currentChatUser,
+                connected: false
+            };
+            this.state.activeCallId = call.id;
+
+            this.showActiveCallModal(call, 'Звоним...');
+            await this.ensureCallLocalMedia();
+            this.ensureCallPeerConnection(call.id);
+            this.subscribeToCurrentCall(call.id);
+            this.subscribeToCurrentCallCandidates(call.id);
+            await this.createAndSendOffer(call.id);
+            try {
+                await this.sendCallEventMessage('started', call.id);
+            } catch (eventError) {
+                console.warn('Не удалось записать событие звонка:', eventError);
+            }
+        } catch (error) {
+            console.error('Ошибка старта видеозвонка:', error);
+            AdvancedViewRenderer.showToast(error?.message || 'Не удалось начать звонок', 'error');
+            await this.endCurrentCall('ended', { skipRemoteUpdate: false, silent: true, sendEvent: false });
+        } finally {
+            this.callStarting = false;
+        }
+    }
+
+    async acceptIncomingVideoCall() {
+        const call = this.pendingIncomingCall;
+        if (!call || !call.id || this.callStarting) return;
+        if (!(firebaseService && firebaseService.isInitialized() && typeof firebaseService.updateCall === 'function')) {
+            AdvancedViewRenderer.showToast('Звонки недоступны', 'warning');
+            return;
+        }
+
+        this.callStarting = true;
+        try {
+            this.activeCall = {
+                id: call.id,
+                chatId: call.chatId || null,
+                role: 'callee',
+                peerUid: call.fromUid || null,
+                peerName: call.fromUser || 'user',
+                connected: false
+            };
+            this.state.activeCallId = call.id;
+            this.pendingIncomingCall = null;
+
+            this.showActiveCallModal(call, 'Подключение...');
+            await firebaseService.updateCall(call.id, { status: 'accepted', acceptedAt: Date.now() });
+            await this.ensureCallLocalMedia();
+            this.ensureCallPeerConnection(call.id);
+            this.subscribeToCurrentCall(call.id);
+            this.subscribeToCurrentCallCandidates(call.id);
+            await this.handleCallSnapshot(call);
+        } catch (error) {
+            console.error('Ошибка принятия звонка:', error);
+            AdvancedViewRenderer.showToast(error?.message || 'Не удалось принять звонок', 'error');
+            await this.endCurrentCall('declined', { skipRemoteUpdate: false, silent: true, sendEvent: false });
+        } finally {
+            this.callStarting = false;
+        }
+    }
+
+    async sendCallEventMessage(event = 'ended', callId = null) {
+        const currentUser = this.dataService.getCurrentUser();
+        if (!currentUser) return;
+
+        const active = this.activeCall || null;
+        const pending = this.pendingIncomingCall || null;
+        const chatId = this.state.currentChatId || active?.chatId || pending?.chatId || null;
+        const targetUid = this.state.currentChatUid || active?.peerUid || pending?.fromUid || null;
+        const targetName = this.state.currentChatUser || active?.peerName || pending?.fromUser || null;
+        if (!chatId || !targetName) return;
+
+        const options = {
+            fromUid: currentUser.uid || null,
+            toUid: targetUid,
+            delivered: !!this.state.currentChatOnline,
+            type: 'call-event',
+            call: {
+                mode: 'video',
+                event,
+                callId: callId || this.state.activeCallId || null
+            }
+        };
+
+        if (firebaseService && firebaseService.isInitialized() && typeof firebaseService.addMessage === 'function') {
+            await firebaseService.addMessage(
+                chatId,
+                currentUser.name,
+                targetName,
+                '',
+                targetUid,
+                options
+            );
+            return;
+        }
+
+        this.dataService.addMessage(
+            chatId,
+            currentUser.name,
+            targetName,
+            '',
+            options
+        );
+        await this.refreshCurrentChatMessages();
+    }
+
+    async endCurrentCall(status = 'ended', { skipRemoteUpdate = false, silent = false, sendEvent = true } = {}) {
+        const currentCallId = this.state.activeCallId
+            || this.activeCall?.id
+            || this.pendingIncomingCall?.id
+            || null;
+        if (!currentCallId) {
+            this.resetCallSession();
+            return;
+        }
+
+        const normalizedStatus = String(status || 'ended');
+        if (!skipRemoteUpdate && firebaseService && firebaseService.isInitialized() && typeof firebaseService.updateCall === 'function') {
+            try {
+                await firebaseService.updateCall(currentCallId, {
+                    status: normalizedStatus,
+                    endedBy: firebaseService.getCurrentUid ? firebaseService.getCurrentUid() : null,
+                    endedAt: Date.now()
+                });
+            } catch (error) {
+                console.error('Ошибка завершения звонка:', error);
+            }
+        }
+
+        if (sendEvent && this.state.currentChatId && this.state.currentChatUser) {
+            const eventType = normalizedStatus === 'declined'
+                ? 'declined'
+                : (normalizedStatus === 'missed' ? 'missed' : 'ended');
+            try {
+                await this.sendCallEventMessage(eventType, currentCallId);
+                await this.loadChats();
+            } catch (_) {}
+        }
+
+        this.resetCallSession();
+
+        if (!silent) {
+            const text = normalizedStatus === 'declined'
+                ? 'Звонок отклонен'
+                : (normalizedStatus === 'missed' ? 'Пропущенный звонок' : 'Звонок завершен');
+            AdvancedViewRenderer.showToast(text, 'info');
         }
     }
 
