@@ -76,6 +76,57 @@
 }
 
 /* =================================================================
+   SEASON THEMES
+   ================================================================= */
+:root {
+    --season-gradient-a: var(--accent-primary-rgb);
+    --season-gradient-b: var(--accent-secondary-rgb);
+    --season-banner-bg: linear-gradient(
+        125deg,
+        rgb(var(--accent-primary-rgb) / 0.28),
+        rgb(var(--accent-secondary-rgb) / 0.24)
+    );
+    --season-banner-border: rgb(255 255 255 / 0.2);
+    --season-ring-bg: linear-gradient(
+        135deg,
+        rgb(var(--accent-primary-rgb) / 0.95),
+        rgb(var(--accent-secondary-rgb) / 0.95)
+    );
+}
+
+body[data-season-theme="winter"] {
+    --season-gradient-a: 82 196 255;
+    --season-gradient-b: 129 140 248;
+    --season-banner-bg: linear-gradient(125deg, rgb(82 196 255 / 0.32), rgb(129 140 248 / 0.3));
+    --season-banner-border: rgb(164 199 255 / 0.48);
+    --season-ring-bg: linear-gradient(135deg, rgb(82 196 255 / 0.98), rgb(129 140 248 / 0.98));
+}
+
+body[data-season-theme="spring"] {
+    --season-gradient-a: 76 201 140;
+    --season-gradient-b: 94 234 212;
+    --season-banner-bg: linear-gradient(125deg, rgb(76 201 140 / 0.3), rgb(94 234 212 / 0.28));
+    --season-banner-border: rgb(134 238 197 / 0.45);
+    --season-ring-bg: linear-gradient(135deg, rgb(76 201 140 / 0.98), rgb(94 234 212 / 0.98));
+}
+
+body[data-season-theme="summer"] {
+    --season-gradient-a: 255 171 64;
+    --season-gradient-b: 255 99 132;
+    --season-banner-bg: linear-gradient(125deg, rgb(255 171 64 / 0.32), rgb(255 99 132 / 0.3));
+    --season-banner-border: rgb(255 183 120 / 0.46);
+    --season-ring-bg: linear-gradient(135deg, rgb(255 171 64 / 0.98), rgb(255 99 132 / 0.98));
+}
+
+body[data-season-theme="autumn"] {
+    --season-gradient-a: 255 140 66;
+    --season-gradient-b: 198 102 61;
+    --season-banner-bg: linear-gradient(125deg, rgb(255 140 66 / 0.32), rgb(198 102 61 / 0.3));
+    --season-banner-border: rgb(255 166 113 / 0.46);
+    --season-ring-bg: linear-gradient(135deg, rgb(255 140 66 / 0.98), rgb(198 102 61 / 0.98));
+}
+
+/* =================================================================
    CSS RESET & GLOBAL STYLES
    ================================================================= */
 

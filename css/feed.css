@@ -243,3 +243,198 @@
     max-width: 280px;
     line-height: 1.45;
 }
+
+/* =================================================================
+   STORIES STRIP + SEASONAL BANNER
+   ================================================================= */
+.stories-strip {
+    position: absolute;
+    top: calc(var(--safe-top) + 58px);
+    left: 0;
+    right: 0;
+    z-index: 1100;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 8px 12px 12px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    pointer-events: auto;
+    background:
+        linear-gradient(180deg, rgb(0 0 0 / 0.42) 0%, rgb(0 0 0 / 0) 100%);
+}
+
+[data-theme="light"] .stories-strip {
+    background:
+        linear-gradient(180deg, rgb(255 255 255 / 0.94) 0%, rgb(255 255 255 / 0.2) 100%);
+}
+
+.stories-strip::-webkit-scrollbar {
+    display: none;
+}
+
+.stories-loading,
+.stories-empty {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 62px;
+    padding: 10px 14px;
+    border-radius: 14px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    color: var(--text-color-secondary);
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.story-chip {
+    border: none;
+    background: transparent;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-color-primary);
+    cursor: pointer;
+    min-width: 68px;
+    flex: 0 0 auto;
+    padding: 0;
+    font: inherit;
+}
+
+.story-chip:active {
+    transform: scale(0.96);
+}
+
+.story-avatar-ring {
+    position: relative;
+    width: 62px;
+    height: 62px;
+    border-radius: 50%;
+    background: var(--season-ring-bg);
+    padding: 2.5px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 8px 20px rgb(0 0 0 / 0.22);
+}
+
+.story-chip.seen .story-avatar-ring {
+    background: linear-gradient(135deg, rgb(255 255 255 / 0.34), rgb(255 255 255 / 0.2));
+    opacity: 0.75;
+}
+
+.story-chip.own .story-avatar-ring {
+    box-shadow: 0 10px 22px rgb(var(--accent-primary-rgb) / 0.28);
+}
+
+.story-avatar {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid rgb(12 14 18 / 0.94);
+    background: rgb(0 0 0 / 0.4);
+}
+
+[data-theme="light"] .story-avatar {
+    border-color: rgb(255 255 255 / 0.95);
+}
+
+.story-name {
+    max-width: 72px;
+    font-size: 11px;
+    line-height: 1.2;
+    color: var(--text-color-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.story-chip.unseen .story-name {
+    color: var(--text-color-primary);
+}
+
+.story-add-btn {
+    position: relative;
+}
+
+.story-add-plus {
+    position: absolute;
+    right: -1px;
+    bottom: -1px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    font-weight: 700;
+    color: #fff;
+    background: linear-gradient(
+        135deg,
+        rgb(var(--accent-secondary-rgb) / 1),
+        rgb(var(--accent-primary-rgb) / 1)
+    );
+    border: 2px solid rgb(12 14 18 / 0.96);
+}
+
+[data-theme="light"] .story-add-plus {
+    border-color: #fff;
+}
+
+.seasonal-banner {
+    position: absolute;
+    top: calc(var(--safe-top) + 136px);
+    left: 12px;
+    right: 12px;
+    z-index: 1090;
+    pointer-events: none;
+    border-radius: 14px;
+    border: 1px solid var(--season-banner-border);
+    background: var(--season-banner-bg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    box-shadow: 0 10px 26px rgb(0 0 0 / 0.2);
+}
+
+.seasonal-banner-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-color-primary);
+}
+
+.seasonal-banner-sub {
+    font-size: 11px;
+    color: var(--text-color-secondary);
+    line-height: 1.25;
+}
+
+@media (max-width: 520px) {
+    .stories-strip {
+        gap: 8px;
+        padding: 6px 10px 10px;
+    }
+
+    .story-avatar-ring {
+        width: 58px;
+        height: 58px;
+    }
+
+    .story-name {
+        max-width: 64px;
+    }
+
+    .seasonal-banner {
+        top: calc(var(--safe-top) + 126px);
+        left: 10px;
+        right: 10px;
+    }
+}

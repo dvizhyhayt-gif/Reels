@@ -65,6 +65,20 @@
     animation: heartBeat 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
+.action-btn.gift-btn svg {
+    fill: rgb(var(--season-gradient-a) / 1);
+    filter: drop-shadow(0 0 9px rgb(var(--season-gradient-b) / 0.48));
+}
+
+.action-btn.gift-btn span {
+    font-weight: 700;
+    color: #ffe6b3;
+}
+
+.action-btn.gift-btn:hover svg {
+    transform: translateY(-1px) scale(1.08);
+}
+
 @keyframes heartBeat {
     0% { transform: scale(1); }
     50% { transform: scale(1.3); }

@@ -16,6 +16,14 @@ class FirebaseService {
             ? mediaStorageService
             : null;
         this.currentUser = null;
+        this.authReady = false;
+        this.authReadyResolve = null;
+        this.authReadyPromise = new Promise((resolve) => {
+            this.authReadyResolve = resolve;
+        });
+        this.sessionStorageKey = 'reelgram_session_id_v1';
+        this.cachedSessionId = null;
+        this.sessionStartedAt = null;
         this.setupAuthListener();
     }
 
@@ -23,58 +31,91 @@ class FirebaseService {
 
     setupAuthListener() {
         this.auth.onAuthStateChanged(async (user) => {
-            if (user) {
-                console.log('✅ Пользователь залогинен:', user.uid);
-                this.currentUser = await this.getUserProfile(user.uid);
-                await this.updatePresence(true);
-                await this.markIncomingAsDelivered();
-                if (window.app) {
-                    window.app.updateProfileUI();
-                    if (typeof window.app.loadChats === 'function') {
-                        window.app.loadChats();
+            try {
+                if (user) {
+                    console.log('✅ Пользователь залогинен:', user.uid);
+                    let profile = null;
+                    try {
+                        profile = await this.getUserProfile(user.uid);
+                    } catch (profileError) {
+                        console.error('❌ Не удалось загрузить профиль пользователя, используется fallback:', profileError?.message || profileError);
                     }
-                    if (typeof window.app.setupIncomingMessagesWatcher === 'function') {
-                        window.app.setupIncomingMessagesWatcher();
+                    this.currentUser = profile || this.buildFallbackProfileFromAuth(user);
+                    await this.updatePresence(true);
+                    try {
+                        await this.touchCurrentSession({ online: true, forceCreate: true });
+                    } catch (sessionError) {
+                        console.warn('⚠️ Не удалось обновить сессию устройства:', sessionError?.message || sessionError);
                     }
-                    if (typeof window.app.setupIncomingCallsWatcher === 'function') {
-                        window.app.setupIncomingCallsWatcher();
+                    await this.markIncomingAsDelivered();
+                    if (window.app) {
+                        window.app.updateProfileUI();
+                        if (typeof window.app.loadStories === 'function') {
+                            window.app.loadStories({ silent: true });
+                        }
+                        if (typeof window.app.loadChats === 'function') {
+                            window.app.loadChats();
+                        }
+                        if (typeof window.app.setupIncomingMessagesWatcher === 'function') {
+                            window.app.setupIncomingMessagesWatcher();
+                        }
+                        if (typeof window.app.setupIncomingCallsWatcher === 'function') {
+                            window.app.setupIncomingCallsWatcher();
+                        }
+                        if (typeof window.app.updateHamburgerVisibility === 'function') {
+                            window.app.updateHamburgerVisibility();
+                        }
+                        if (typeof window.app.updateAdminMenuVisibility === 'function') {
+                            window.app.updateAdminMenuVisibility();
+                        }
+                        if (typeof window.app.restoreModerationPreferences === 'function') {
+                            window.app.restoreModerationPreferences();
+                        }
+                        if (typeof window.app.updateNotificationBadge === 'function') {
+                            window.app.updateNotificationBadge();
+                        }
+                        if (typeof window.app.loadFeed === 'function' && window.app.state && window.app.state.feedMode === 'global') {
+                            window.app.loadFeed(true).catch((feedError) => {
+                                console.warn('⚠️ Не удалось обновить ленту после авторизации:', feedError?.message || feedError);
+                            });
+                        }
                     }
-                    if (typeof window.app.updateHamburgerVisibility === 'function') {
-                        window.app.updateHamburgerVisibility();
-                    }
-                    if (typeof window.app.updateAdminMenuVisibility === 'function') {
-                        window.app.updateAdminMenuVisibility();
-                    }
-                    if (typeof window.app.restoreModerationPreferences === 'function') {
-                        window.app.restoreModerationPreferences();
-                    }
-                    if (typeof window.app.updateNotificationBadge === 'function') {
-                        window.app.updateNotificationBadge();
+                } else {
+                    console.log('❌ Пользователь вышел');
+                    this.currentUser = null;
+                    if (window.app) {
+                        if (typeof window.app.loadStories === 'function') {
+                            window.app.loadStories({ silent: true });
+                        }
+                        if (typeof window.app.setupIncomingMessagesWatcher === 'function') {
+                            window.app.setupIncomingMessagesWatcher();
+                        }
+                        if (typeof window.app.setupIncomingCallsWatcher === 'function') {
+                            window.app.setupIncomingCallsWatcher();
+                        }
+                        if (typeof window.app.updateHamburgerVisibility === 'function') {
+                            window.app.updateHamburgerVisibility();
+                        }
+                        if (typeof window.app.updateAdminMenuVisibility === 'function') {
+                            window.app.updateAdminMenuVisibility();
+                        }
+                        if (typeof window.app.restoreModerationPreferences === 'function') {
+                            window.app.restoreModerationPreferences();
+                        }
+                        if (typeof window.app.updateNotificationBadge === 'function') {
+                            window.app.updateNotificationBadge();
+                        }
+                        if (typeof window.app.loadFeed === 'function' && window.app.state && window.app.state.feedMode === 'global') {
+                            window.app.loadFeed(true).catch((feedError) => {
+                                console.warn('⚠️ Не удалось обновить ленту после выхода:', feedError?.message || feedError);
+                            });
+                        }
                     }
                 }
-            } else {
-                console.log('❌ Пользователь вышел');
-                this.currentUser = null;
-                if (window.app) {
-                    if (typeof window.app.setupIncomingMessagesWatcher === 'function') {
-                        window.app.setupIncomingMessagesWatcher();
-                    }
-                    if (typeof window.app.setupIncomingCallsWatcher === 'function') {
-                        window.app.setupIncomingCallsWatcher();
-                    }
-                    if (typeof window.app.updateHamburgerVisibility === 'function') {
-                        window.app.updateHamburgerVisibility();
-                    }
-                    if (typeof window.app.updateAdminMenuVisibility === 'function') {
-                        window.app.updateAdminMenuVisibility();
-                    }
-                    if (typeof window.app.restoreModerationPreferences === 'function') {
-                        window.app.restoreModerationPreferences();
-                    }
-                    if (typeof window.app.updateNotificationBadge === 'function') {
-                        window.app.updateNotificationBadge();
-                    }
-                }
+            } catch (authStateError) {
+                console.error('❌ Ошибка обработки auth state:', authStateError);
+            } finally {
+                this.markAuthReady();
             }
         });
 
@@ -96,6 +137,30 @@ class FirebaseService {
         });
     }
 
+    markAuthReady() {
+        if (this.authReady) return;
+        this.authReady = true;
+        if (typeof this.authReadyResolve === 'function') {
+            this.authReadyResolve(true);
+        }
+        this.authReadyResolve = null;
+    }
+
+    async waitForAuthReady(timeout = 7000) {
+        if (this.authReady) return true;
+        const safeTimeout = Math.max(0, parseInt(timeout, 10) || 0);
+        if (safeTimeout === 0) {
+            await this.authReadyPromise;
+            return true;
+        }
+
+        const result = await Promise.race([
+            this.authReadyPromise.then(() => true),
+            new Promise(resolve => setTimeout(() => resolve(false), safeTimeout))
+        ]);
+        return !!result;
+    }
+
     async register(email, password, userName) {
         try {
             // Проверяем уникальность имени профиля
@@ -104,11 +169,11 @@ class FirebaseService {
         throw new Error('Имя профиля уже занято');
     }
     const { user } = await this.auth.createUserWithEmailAndPassword(email, password);
-    const userProfile = {
-        uid: user.uid,
-        email,
-        name: userName,
-        avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(userName)}&background=0D8ABC&color=fff&size=150`,
+            const userProfile = {
+                uid: user.uid,
+                email,
+                name: userName,
+                avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(userName)}&background=0D8ABC&color=fff&size=150`,
                 avatar_local: null,
                 bio: '',
                 location: '',
@@ -121,9 +186,22 @@ class FirebaseService {
                 isAdmin: false,
                 subscriptions: [],
                 subscribers: [],
+                followRequests: [],
+                privateAccount: false,
+                coins: 100,
+                allowAdultContent: false,
+                ageVerified: false,
+                liveStats: {
+                    started: 0,
+                    joined: 0
+                },
                 blockedUsers: [],
                 hiddenAuthors: [],
                 notifications: [],
+                giftsSentTotal: 0,
+                giftsReceivedTotal: 0,
+                giftsSentCount: 0,
+                giftsReceivedCount: 0,
                 online: false,
                 lastSeen: Date.now(),
                 lastActive: Date.now(),
@@ -184,6 +262,37 @@ class FirebaseService {
         return this.auth.currentUser?.uid || null;
     }
 
+    buildFallbackProfileFromAuth(authUser = null) {
+        const email = authUser && typeof authUser.email === 'string' ? authUser.email : '';
+        const displayName = authUser && typeof authUser.displayName === 'string' ? authUser.displayName.trim() : '';
+        const emailName = email && email.includes('@') ? email.split('@')[0] : '';
+        const name = displayName || emailName || 'user';
+        return {
+            uid: authUser && authUser.uid ? String(authUser.uid) : null,
+            email,
+            name,
+            avatar: this.buildUiAvatar(name),
+            bio: '',
+            location: '',
+            website: '',
+            interests: '',
+            verified: false,
+            isAdmin: false,
+            subscriptions: [],
+            subscribers: [],
+            followRequests: [],
+            privateAccount: false,
+            allowAdultContent: false,
+            ageVerified: false,
+            coins: 0,
+            liveStats: { started: 0, joined: 0 },
+            notifications: [],
+            online: false,
+            lastSeen: Date.now(),
+            lastActive: Date.now()
+        };
+    }
+
     buildUiAvatar(name = 'user') {
         return `https://ui-avatars.com/api/?name=${encodeURIComponent(name || 'user')}&background=random&size=64`;
     }
@@ -216,6 +325,7 @@ class FirebaseService {
             onboardingCompleted: source.onboardingCompleted === true,
             subscriptions: Array.isArray(source.subscriptions) ? source.subscriptions : [],
             subscribers: Array.isArray(source.subscribers) ? source.subscribers : [],
+            followRequests: Array.isArray(source.followRequests) ? source.followRequests.map(v => String(v)) : [],
             blockedUsers: Array.isArray(source.blockedUsers) ? source.blockedUsers : [],
             hiddenAuthors: Array.isArray(source.hiddenAuthors) ? source.hiddenAuthors : [],
             notifications: Array.isArray(source.notifications) ? source.notifications : [],
@@ -223,6 +333,18 @@ class FirebaseService {
             verified: !!source.verified,
             canVerify: source.canVerify === true,
             isAdmin: source.isAdmin === true,
+            privateAccount: source.privateAccount === true,
+            coins: Math.max(0, parseInt(source.coins, 10) || 0),
+            allowAdultContent: source.allowAdultContent === true,
+            ageVerified: source.ageVerified === true,
+            liveStats: {
+                started: Math.max(0, parseInt(source?.liveStats?.started, 10) || 0),
+                joined: Math.max(0, parseInt(source?.liveStats?.joined, 10) || 0)
+            },
+            giftsSentTotal: Math.max(0, parseInt(source.giftsSentTotal, 10) || 0),
+            giftsReceivedTotal: Math.max(0, parseInt(source.giftsReceivedTotal, 10) || 0),
+            giftsSentCount: Math.max(0, parseInt(source.giftsSentCount, 10) || 0),
+            giftsReceivedCount: Math.max(0, parseInt(source.giftsReceivedCount, 10) || 0),
             lastSeen: this.normalizeTimestamp(source.lastSeen),
             lastActive: this.normalizeTimestamp(source.lastActive)
         };
@@ -237,6 +359,17 @@ class FirebaseService {
         if (!this.isCurrentUserAdmin()) {
             throw new Error(`Доступ к ${actionLabel} разрешен только администратору`);
         }
+    }
+
+    isAdultContentAllowed(user = null) {
+        const target = user || this.getCurrentUser();
+        return !!(target && target.allowAdultContent === true && target.ageVerified === true);
+    }
+
+    normalizeCoverColor(value) {
+        const raw = String(value || '').trim();
+        if (/^#[0-9a-fA-F]{6}$/.test(raw)) return raw.toLowerCase();
+        return '#1cb8ff';
     }
 
     // ===================== USER PROFILE =====================
@@ -278,6 +411,11 @@ class FirebaseService {
                     lastSeen: payload.lastSeen ?? this.currentUser.lastSeen
                 };
             }
+            try {
+                await this.touchCurrentSession({ online: !!isOnline });
+            } catch (sessionError) {
+                console.warn('⚠️ Не удалось обновить сессию при обновлении presence:', sessionError?.message || sessionError);
+            }
             return true;
         } catch (error) {
             console.error('❌ Ошибка обновления presence:', error);
@@ -299,6 +437,9 @@ class FirebaseService {
                 'interests',
                 'gender',
                 'onboardingCompleted',
+                'privateAccount',
+                'allowAdultContent',
+                'ageVerified',
                 'blockedUsers',
                 'hiddenAuthors'
             ]);
@@ -338,7 +479,8 @@ class FirebaseService {
                 && after
                 && (before.name !== after.name
                     || before.avatar !== after.avatar
-                    || !!before.verified !== !!after.verified)
+                    || !!before.verified !== !!after.verified
+                    || !!before.privateAccount !== !!after.privateAccount)
             );
 
             if (shouldSyncVideos) {
@@ -347,7 +489,8 @@ class FirebaseService {
                     await this.syncUserVideosAuthorMeta(uid, {
                         author: after.name,
                         avatar: safeAvatar,
-                        authorVerified: !!after.verified
+                        authorVerified: !!after.verified,
+                        authorPrivate: !!after.privateAccount
                     });
                 } catch (syncError) {
                     console.warn('⚠️ Не удалось синхронизировать видео после обновления профиля:', syncError?.message || syncError);
@@ -362,13 +505,14 @@ class FirebaseService {
         }
     }
 
-    async syncUserVideosAuthorMeta(uid, { author = null, avatar = null, authorVerified = null } = {}) {
+    async syncUserVideosAuthorMeta(uid, { author = null, avatar = null, authorVerified = null, authorPrivate = null } = {}) {
         if (!uid) return 0;
 
         const payload = { updatedAt: new Date() };
         if (typeof author === 'string' && author.trim()) payload.author = author.trim();
         if (typeof avatar === 'string' && avatar.trim()) payload.avatar = avatar.trim();
         if (typeof authorVerified === 'boolean') payload.authorVerified = authorVerified;
+        if (typeof authorPrivate === 'boolean') payload.authorPrivate = authorPrivate;
 
         try {
             const snapshot = await this.db.collection('videos')
@@ -673,6 +817,7 @@ class FirebaseService {
                 author: safeAuthor,
                 avatar: safeAvatar,
                 authorVerified: !!userProfile.verified,
+                authorPrivate: !!userProfile.privateAccount,
                 url: uploaded.url,
                 storagePath: uploaded.storagePath,
                 storageProvider: uploaded.storageProvider,
@@ -687,6 +832,11 @@ class FirebaseService {
                 shares: 0,
                 allowComments: metadata.allowComments !== false,
                 private: metadata.private === true,
+                ageRestricted: metadata.ageRestricted === true,
+                videoTemplate: String(metadata.videoTemplate || 'none'),
+                coverText: String(metadata.coverText || '').trim().slice(0, 48),
+                coverSticker: String(metadata.coverSticker || '').trim().slice(0, 32),
+                coverColor: this.normalizeCoverColor(metadata.coverColor),
                 isLiked: false,
                 timestamp: new Date(),
                 updatedAt: new Date()
@@ -694,7 +844,15 @@ class FirebaseService {
 
             // Сохраняем видео в Firestore
             const videoRef = await this.db.collection('videos').add(videoDoc);
-            
+
+            try {
+                await this.awardCoins(uid, 5, 'video_published', {
+                    videoFirestoreId: videoRef.id
+                });
+            } catch (coinsError) {
+                console.warn('⚠️ Не удалось начислить монеты за публикацию видео:', coinsError?.message || coinsError);
+            }
+             
             console.log('✅ Видео загруженно:', videoRef.id);
             return { ...videoDoc, firestoreId: videoRef.id };
         } catch (error) {
@@ -705,6 +863,13 @@ class FirebaseService {
 
     async getFeed(limit = 10) {
         const uid = this.getCurrentUid();
+        const allowAdultContent = this.isAdultContentAllowed(this.currentUser);
+        const currentUid = uid ? String(uid) : null;
+        const viewerSubscriptions = new Set(
+            this.currentUser && Array.isArray(this.currentUser.subscriptions)
+                ? this.currentUser.subscriptions.map(v => String(v))
+                : []
+        );
         
         try {
             const mapVideoDoc = (doc) => {
@@ -719,8 +884,23 @@ class FirebaseService {
                     // Firestore возвращает Timestamp, UI ждёт number (ms)
                     timestamp: this.normalizeTimestamp(data.timestamp),
                     firestoreId: doc.id,
-                    isLiked: uid ? data.likedBy?.includes(uid) : false
+                    isLiked: uid ? data.likedBy?.includes(uid) : false,
+                    authorPrivate: data.authorPrivate === true,
+                    ageRestricted: data.ageRestricted === true,
+                    videoTemplate: typeof data.videoTemplate === 'string' ? data.videoTemplate : 'none',
+                    coverText: typeof data.coverText === 'string' ? data.coverText : '',
+                    coverSticker: typeof data.coverSticker === 'string' ? data.coverSticker : '',
+                    coverColor: this.normalizeCoverColor(data.coverColor)
                 };
+            };
+            const canViewVideo = (video) => {
+                if (!video) return false;
+                if (!allowAdultContent && video.ageRestricted === true) return false;
+                if (video.authorPrivate !== true) return true;
+                const authorUid = video.uid ? String(video.uid) : '';
+                if (!authorUid) return false;
+                if (currentUid && currentUid === authorUid) return true;
+                return viewerSubscriptions.has(authorUid);
             };
 
             try {
@@ -733,7 +913,7 @@ class FirebaseService {
 
                 const videos = snapshot.docs.map(mapVideoDoc);
                 console.log('✅ Лента загружена:', videos.length, 'видео');
-                return videos;
+                return videos.filter(canViewVideo);
             } catch (indexError) {
                 // Fallback без where+orderBy (чтобы не упираться в отсутствие индекса)
                 console.warn('⚠️ getFeed(): query with where+orderBy failed, using fallback query:', indexError?.message || indexError);
@@ -747,6 +927,7 @@ class FirebaseService {
                 const videos = snapshot.docs
                     .map(mapVideoDoc)
                     .filter(v => v.private !== true)
+                    .filter(canViewVideo)
                     .slice(0, limit);
 
                 console.log('✅ Лента загружена (fallback):', videos.length, 'видео');
@@ -772,7 +953,13 @@ class FirebaseService {
                     commentsCount,
                     timestamp: this.normalizeTimestamp(data.timestamp),
                     firestoreId: doc.id,
-                    isLiked: uid ? Array.isArray(data.likedBy) && data.likedBy.includes(uid) : false
+                    isLiked: uid ? Array.isArray(data.likedBy) && data.likedBy.includes(uid) : false,
+                    authorPrivate: data.authorPrivate === true,
+                    ageRestricted: data.ageRestricted === true,
+                    videoTemplate: typeof data.videoTemplate === 'string' ? data.videoTemplate : 'none',
+                    coverText: typeof data.coverText === 'string' ? data.coverText : '',
+                    coverSticker: typeof data.coverSticker === 'string' ? data.coverSticker : '',
+                    coverColor: this.normalizeCoverColor(data.coverColor)
                 };
             };
 
@@ -802,6 +989,8 @@ class FirebaseService {
         if (!uid) return [];
         try {
             const currentUid = this.getCurrentUid();
+            const isOwn = !!(currentUid && String(currentUid) === String(uid));
+            const allowAdultContent = this.isAdultContentAllowed(this.currentUser);
             const mapVideoDoc = (doc) => {
                 const data = doc.data() || {};
                 const commentsCount = Number.isFinite(parseInt(data.commentsCount, 10))
@@ -813,7 +1002,13 @@ class FirebaseService {
                     commentsCount,
                     timestamp: this.normalizeTimestamp(data.timestamp),
                     firestoreId: doc.id,
-                    isLiked: currentUid ? Array.isArray(data.likedBy) && data.likedBy.includes(currentUid) : false
+                    isLiked: currentUid ? Array.isArray(data.likedBy) && data.likedBy.includes(currentUid) : false,
+                    authorPrivate: data.authorPrivate === true,
+                    ageRestricted: data.ageRestricted === true,
+                    videoTemplate: typeof data.videoTemplate === 'string' ? data.videoTemplate : 'none',
+                    coverText: typeof data.coverText === 'string' ? data.coverText : '',
+                    coverSticker: typeof data.coverSticker === 'string' ? data.coverSticker : '',
+                    coverColor: this.normalizeCoverColor(data.coverColor)
                 };
             };
 
@@ -834,6 +1029,9 @@ class FirebaseService {
             videos.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
             if (!includePrivate) {
                 videos = videos.filter(v => v.private !== true);
+            }
+            if (!isOwn && !allowAdultContent) {
+                videos = videos.filter(v => v.ageRestricted !== true);
             }
             return videos;
         } catch (error) {
@@ -912,8 +1110,12 @@ class FirebaseService {
                             videoId: video?.id || firestoreId,
                             videoThumbnail: video?.thumbnail || ''
                         });
+                        await this.awardCoins(authorUid, 1, 'video_like_received', {
+                            videoFirestoreId: firestoreId,
+                            fromUid: uid
+                        });
                     } catch (notifError) {
-                        console.warn('⚠️ Не удалось отправить уведомление о лайке:', notifError?.message || notifError);
+                        console.warn('⚠️ Не удалось отправить уведомление/монеты за лайк:', notifError?.message || notifError);
                     }
                 }
 
@@ -987,9 +1189,13 @@ class FirebaseService {
                         videoThumbnail: video?.thumbnail || '',
                         text: safeText.length > 90 ? `${safeText.slice(0, 87)}...` : safeText
                     });
+                    await this.awardCoins(authorUid, 2, 'video_comment_received', {
+                        videoFirestoreId: firestoreId,
+                        fromUid: uid
+                    });
                 }
             } catch (notifError) {
-                console.warn('⚠️ Не удалось отправить уведомление о комментарии:', notifError?.message || notifError);
+                console.warn('⚠️ Не удалось отправить уведомление/монеты за комментарий:', notifError?.message || notifError);
             }
 
             console.log('✅ Комментарий добавлен');
@@ -1061,6 +1267,128 @@ class FirebaseService {
         } catch (error) {
             console.error('❌ Ошибка получения комментариев:', error);
             return [];
+        }
+    }
+
+    // ===================== STORIES (24H) =====================
+
+    async uploadStory(file, { caption = '' } = {}) {
+        const uid = this.getCurrentUid();
+        if (!uid) throw new Error('Необходимо авторизироваться');
+        if (!file) throw new Error('Файл истории не выбран');
+
+        const mime = String(file.type || '').toLowerCase();
+        const isImage = mime.startsWith('image/');
+        const isVideo = mime.startsWith('video/');
+        if (!isImage && !isVideo) {
+            throw new Error('Для истории поддерживаются только фото и видео');
+        }
+        if ((file.size || 0) > 20 * 1024 * 1024) {
+            throw new Error('Файл истории слишком большой (макс. 20MB)');
+        }
+
+        const profile = await this.getUserProfile(uid);
+        const author = profile?.name || 'user';
+        const avatar = this.sanitizeAvatarForPublicPayload(profile?.avatar, author);
+        const uploaded = await this.uploadMedia(file, `stories/${uid}`, {
+            uid,
+            purpose: 'story'
+        });
+
+        const now = Date.now();
+        const storyDoc = {
+            uid,
+            author,
+            avatar,
+            mediaUrl: uploaded.url,
+            mediaMime: file.type || '',
+            mediaName: file.name || 'story',
+            storagePath: uploaded.storagePath,
+            storageProvider: uploaded.storageProvider,
+            caption: String(caption || '').trim().slice(0, 180),
+            createdAt: now,
+            expiresAt: now + (24 * 60 * 60 * 1000),
+            viewsCount: 0,
+            active: true,
+            updatedAt: now
+        };
+
+        const ref = await this.db.collection('stories').add(storyDoc);
+        return { id: ref.id, ...storyDoc };
+    }
+
+    async getActiveStories(limit = 60) {
+        const safeLimit = Math.max(1, Math.min(parseInt(limit, 10) || 60, 200));
+        const now = Date.now();
+
+        const mapStoryDoc = (doc) => {
+            const data = doc.data() || {};
+            return {
+                id: doc.id,
+                ...data,
+                createdAt: this.normalizeTimestamp(data.createdAt),
+                expiresAt: this.normalizeTimestamp(data.expiresAt),
+                viewsCount: Math.max(0, parseInt(data.viewsCount, 10) || 0)
+            };
+        };
+
+        try {
+            let stories = [];
+            try {
+                const snapshot = await this.db.collection('stories')
+                    .where('expiresAt', '>', now)
+                    .orderBy('expiresAt', 'asc')
+                    .limit(safeLimit)
+                    .get();
+                stories = snapshot.docs.map(mapStoryDoc);
+            } catch (indexError) {
+                console.warn('⚠️ getActiveStories(): query with where+orderBy failed, using fallback query:', indexError?.message || indexError);
+                const fallbackLimit = Math.max(safeLimit * 3, safeLimit);
+                const snapshot = await this.db.collection('stories')
+                    .orderBy('createdAt', 'desc')
+                    .limit(fallbackLimit)
+                    .get();
+                stories = snapshot.docs
+                    .map(mapStoryDoc)
+                    .filter(story => (parseInt(story.expiresAt, 10) || 0) > now)
+                    .slice(0, safeLimit);
+            }
+
+            return stories
+                .filter(story => !!(story && story.uid && story.mediaUrl))
+                .sort((a, b) => (parseInt(a.createdAt, 10) || 0) - (parseInt(b.createdAt, 10) || 0));
+        } catch (error) {
+            console.error('❌ Ошибка загрузки активных историй:', error);
+            return [];
+        }
+    }
+
+    async markStorySeen(storyId) {
+        const uid = this.getCurrentUid();
+        if (!uid || !storyId) return false;
+
+        try {
+            const storyRef = this.db.collection('stories').doc(String(storyId));
+            const viewRef = storyRef.collection('views').doc(uid);
+            const viewDoc = await viewRef.get();
+            if (viewDoc.exists) return false;
+
+            const now = Date.now();
+            const batch = this.db.batch();
+            batch.set(viewRef, {
+                uid,
+                seenAt: now,
+                createdAt: now
+            });
+            batch.set(storyRef, {
+                viewsCount: firebase.firestore.FieldValue.increment(1),
+                updatedAt: now
+            }, { merge: true });
+            await batch.commit();
+            return true;
+        } catch (error) {
+            console.error('❌ Ошибка отметки просмотра истории:', error);
+            return false;
         }
     }
 
@@ -1631,6 +1959,367 @@ class FirebaseService {
             });
     }
 
+    // ===================== COINS =====================
+
+    async changeCoins(uid, delta, reason = 'manual', meta = {}) {
+        const safeUid = uid ? String(uid) : '';
+        if (!safeUid) throw new Error('Пользователь не найден');
+        const safeDelta = parseInt(delta, 10) || 0;
+
+        const userRef = this.db.collection('users').doc(safeUid);
+        const txRef = this.db.collection('coinTransactions').doc();
+
+        const summary = await this.db.runTransaction(async (transaction) => {
+            const snap = await transaction.get(userRef);
+            if (!snap.exists) throw new Error('Профиль пользователя не найден');
+
+            const data = snap.data() || {};
+            const previous = Math.max(0, parseInt(data.coins, 10) || 0);
+            const next = Math.max(0, previous + safeDelta);
+            const applied = next - previous;
+            if (applied === 0) {
+                return { previous, next, applied };
+            }
+
+            const now = Date.now();
+            transaction.set(userRef, {
+                coins: next,
+                updatedAt: new Date()
+            }, { merge: true });
+            transaction.set(txRef, {
+                uid: safeUid,
+                delta: applied,
+                reason: String(reason || 'manual'),
+                meta: meta && typeof meta === 'object' ? meta : {},
+                timestamp: now,
+                createdAt: now
+            });
+
+            return { previous, next, applied };
+        });
+
+        if (this.currentUser && String(this.currentUser.uid || '') === safeUid) {
+            this.currentUser.coins = summary.next;
+        }
+
+        return {
+            uid: safeUid,
+            previous: summary.previous,
+            coins: summary.next,
+            delta: summary.applied,
+            reason: String(reason || 'manual')
+        };
+    }
+
+    async awardCoins(uid, amount = 1, reason = 'award', meta = {}) {
+        const safeAmount = Math.max(1, parseInt(amount, 10) || 0);
+        return this.changeCoins(uid, safeAmount, reason, meta);
+    }
+
+    async spendCoins(uid, amount = 1, reason = 'spend', meta = {}) {
+        const safeUid = uid ? String(uid) : '';
+        if (!safeUid) throw new Error('Пользователь не найден');
+        const safeAmount = Math.max(1, parseInt(amount, 10) || 0);
+
+        const userRef = this.db.collection('users').doc(safeUid);
+        const txRef = this.db.collection('coinTransactions').doc();
+
+        const summary = await this.db.runTransaction(async (transaction) => {
+            const snap = await transaction.get(userRef);
+            if (!snap.exists) throw new Error('Профиль пользователя не найден');
+
+            const data = snap.data() || {};
+            const previous = Math.max(0, parseInt(data.coins, 10) || 0);
+            if (previous < safeAmount) {
+                throw new Error('Недостаточно монет');
+            }
+            const next = previous - safeAmount;
+            const now = Date.now();
+
+            transaction.set(userRef, {
+                coins: next,
+                updatedAt: new Date()
+            }, { merge: true });
+            transaction.set(txRef, {
+                uid: safeUid,
+                delta: -safeAmount,
+                reason: String(reason || 'spend'),
+                meta: meta && typeof meta === 'object' ? meta : {},
+                timestamp: now,
+                createdAt: now
+            });
+
+            return { previous, next };
+        });
+
+        if (this.currentUser && String(this.currentUser.uid || '') === safeUid) {
+            this.currentUser.coins = summary.next;
+        }
+
+        return {
+            uid: safeUid,
+            previous: summary.previous,
+            coins: summary.next,
+            delta: -safeAmount,
+            reason: String(reason || 'spend')
+        };
+    }
+
+    // ===================== LIVE SESSIONS =====================
+
+    normalizeLiveSessionRecord(data = {}, id = null) {
+        const source = data || {};
+        const coHosts = Array.isArray(source.coHosts)
+            ? Array.from(new Set(source.coHosts.map(v => String(v)).filter(Boolean))).slice(0, 2)
+            : [];
+        const participants = Array.isArray(source.participants)
+            ? Array.from(new Set(source.participants.map(v => String(v)).filter(Boolean)))
+            : [];
+        return {
+            id: id || source.id || null,
+            ownerUid: source.ownerUid ? String(source.ownerUid) : null,
+            ownerName: source.ownerName || source.owner || 'user',
+            ownerAvatar: source.ownerAvatar || this.buildUiAvatar(source.ownerName || 'user'),
+            title: String(source.title || '').trim() || 'Прямой эфир',
+            status: source.status === 'ended' ? 'ended' : 'live',
+            coHosts,
+            participants,
+            viewersCount: Math.max(0, parseInt(source.viewersCount, 10) || participants.length),
+            maxCoHosts: Math.max(1, Math.min(2, parseInt(source.maxCoHosts, 10) || 2)),
+            createdAt: this.normalizeTimestamp(source.createdAt),
+            updatedAt: this.normalizeTimestamp(source.updatedAt),
+            endedAt: this.normalizeTimestamp(source.endedAt)
+        };
+    }
+
+    async createLiveSession({ title = '' } = {}) {
+        const uid = this.getCurrentUid();
+        if (!uid) throw new Error('Необходимо авторизироваться');
+
+        const existing = await this.db.collection('liveSessions')
+            .where('ownerUid', '==', uid)
+            .where('status', '==', 'live')
+            .limit(1)
+            .get();
+        if (!existing.empty) {
+            throw new Error('У вас уже идет прямой эфир');
+        }
+
+        const ownerProfile = (this.currentUser && this.currentUser.uid === uid)
+            ? this.currentUser
+            : await this.getUserProfile(uid);
+        const ownerName = ownerProfile?.name || 'user';
+        const ownerAvatar = this.sanitizeAvatarForPublicPayload(ownerProfile?.avatar, ownerName);
+        const safeTitle = String(title || '').trim().slice(0, 80) || `Эфир @${ownerName}`;
+        const now = Date.now();
+        const payload = {
+            ownerUid: uid,
+            ownerName,
+            ownerAvatar,
+            title: safeTitle,
+            status: 'live',
+            coHosts: [],
+            participants: [uid],
+            viewersCount: 1,
+            maxCoHosts: 2,
+            createdAt: now,
+            updatedAt: now,
+            endedAt: null
+        };
+
+        const ref = await this.db.collection('liveSessions').add(payload);
+
+        try {
+            await this.db.collection('users').doc(uid).set({
+                'liveStats.started': firebase.firestore.FieldValue.increment(1),
+                updatedAt: new Date()
+            }, { merge: true });
+            if (this.currentUser && this.currentUser.uid === uid) {
+                const stats = this.currentUser.liveStats || {};
+                this.currentUser.liveStats = {
+                    ...stats,
+                    started: (parseInt(stats.started, 10) || 0) + 1
+                };
+            }
+        } catch (statsError) {
+            console.warn('⚠️ Не удалось обновить liveStats.started:', statsError?.message || statsError);
+        }
+
+        return this.normalizeLiveSessionRecord(payload, ref.id);
+    }
+
+    async listLiveSessions(limit = 20) {
+        const safeLimit = Math.max(1, Math.min(parseInt(limit, 10) || 20, 80));
+        try {
+            let sessions = [];
+            try {
+                const snapshot = await this.db.collection('liveSessions')
+                    .where('status', '==', 'live')
+                    .orderBy('createdAt', 'desc')
+                    .limit(safeLimit)
+                    .get();
+                sessions = snapshot.docs.map(doc => this.normalizeLiveSessionRecord(doc.data(), doc.id));
+            } catch (indexError) {
+                console.warn('⚠️ listLiveSessions(): fallback query:', indexError?.message || indexError);
+                const snapshot = await this.db.collection('liveSessions')
+                    .orderBy('createdAt', 'desc')
+                    .limit(Math.max(safeLimit * 3, 24))
+                    .get();
+                sessions = snapshot.docs
+                    .map(doc => this.normalizeLiveSessionRecord(doc.data(), doc.id))
+                    .filter(session => session.status === 'live')
+                    .slice(0, safeLimit);
+            }
+            return sessions;
+        } catch (error) {
+            console.error('❌ Ошибка загрузки live-сессий:', error);
+            return [];
+        }
+    }
+
+    async joinLiveSession(sessionId, { asCoHost = false } = {}) {
+        const uid = this.getCurrentUid();
+        if (!uid) throw new Error('Необходимо авторизироваться');
+        if (!sessionId) throw new Error('Эфир не найден');
+
+        const ref = this.db.collection('liveSessions').doc(String(sessionId));
+        const summary = await this.db.runTransaction(async (transaction) => {
+            const snap = await transaction.get(ref);
+            if (!snap.exists) throw new Error('Эфир не найден');
+
+            const session = this.normalizeLiveSessionRecord(snap.data(), snap.id);
+            if (session.status !== 'live') throw new Error('Эфир уже завершен');
+
+            const participantsSet = new Set(session.participants || []);
+            const wasParticipant = participantsSet.has(uid);
+            participantsSet.add(uid);
+
+            const coHostsSet = new Set(session.coHosts || []);
+            if (asCoHost && uid !== session.ownerUid) {
+                if (!coHostsSet.has(uid) && coHostsSet.size >= 2) {
+                    throw new Error('Слоты со-ведущих заняты');
+                }
+                coHostsSet.add(uid);
+            }
+
+            const nextParticipants = Array.from(participantsSet);
+            const nextCoHosts = Array.from(coHostsSet).slice(0, 2);
+            transaction.set(ref, {
+                participants: nextParticipants,
+                coHosts: nextCoHosts,
+                viewersCount: nextParticipants.length,
+                updatedAt: Date.now()
+            }, { merge: true });
+
+            return {
+                ownerUid: session.ownerUid,
+                wasParticipant,
+                joinedAsCoHost: nextCoHosts.includes(uid)
+            };
+        });
+
+        if (!summary.wasParticipant) {
+            try {
+                await this.db.collection('users').doc(uid).set({
+                    'liveStats.joined': firebase.firestore.FieldValue.increment(1),
+                    updatedAt: new Date()
+                }, { merge: true });
+                if (this.currentUser && this.currentUser.uid === uid) {
+                    const stats = this.currentUser.liveStats || {};
+                    this.currentUser.liveStats = {
+                        ...stats,
+                        joined: (parseInt(stats.joined, 10) || 0) + 1
+                    };
+                }
+            } catch (statsError) {
+                console.warn('⚠️ Не удалось обновить liveStats.joined:', statsError?.message || statsError);
+            }
+        }
+
+        const updated = await ref.get();
+        return this.normalizeLiveSessionRecord(updated.data(), updated.id);
+    }
+
+    async leaveLiveSession(sessionId) {
+        const uid = this.getCurrentUid();
+        if (!uid) throw new Error('Необходимо авторизироваться');
+        if (!sessionId) throw new Error('Эфир не найден');
+
+        const ref = this.db.collection('liveSessions').doc(String(sessionId));
+        await this.db.runTransaction(async (transaction) => {
+            const snap = await transaction.get(ref);
+            if (!snap.exists) return;
+            const session = this.normalizeLiveSessionRecord(snap.data(), snap.id);
+            if (session.status !== 'live') return;
+
+            if (session.ownerUid === uid) {
+                transaction.set(ref, {
+                    status: 'ended',
+                    endedAt: Date.now(),
+                    updatedAt: Date.now(),
+                    participants: [],
+                    coHosts: [],
+                    viewersCount: 0
+                }, { merge: true });
+                return;
+            }
+
+            const nextParticipants = (session.participants || []).filter(v => String(v) !== String(uid));
+            const nextCoHosts = (session.coHosts || []).filter(v => String(v) !== String(uid));
+            transaction.set(ref, {
+                participants: nextParticipants,
+                coHosts: nextCoHosts,
+                viewersCount: nextParticipants.length,
+                updatedAt: Date.now()
+            }, { merge: true });
+        });
+
+        const updated = await ref.get();
+        return updated.exists ? this.normalizeLiveSessionRecord(updated.data(), updated.id) : null;
+    }
+
+    async endLiveSession(sessionId) {
+        const uid = this.getCurrentUid();
+        if (!uid) throw new Error('Необходимо авторизироваться');
+        if (!sessionId) throw new Error('Эфир не найден');
+
+        const ref = this.db.collection('liveSessions').doc(String(sessionId));
+        const snap = await ref.get();
+        if (!snap.exists) throw new Error('Эфир не найден');
+        const session = this.normalizeLiveSessionRecord(snap.data(), snap.id);
+        const canEnd = String(session.ownerUid || '') === String(uid) || this.isCurrentUserAdmin();
+        if (!canEnd) throw new Error('Только владелец может завершить эфир');
+
+        await ref.set({
+            status: 'ended',
+            endedAt: Date.now(),
+            updatedAt: Date.now(),
+            participants: [],
+            coHosts: [],
+            viewersCount: 0
+        }, { merge: true });
+
+        const updated = await ref.get();
+        return this.normalizeLiveSessionRecord(updated.data(), updated.id);
+    }
+
+    subscribeToLiveSessions(callback, { limit = 20 } = {}) {
+        if (typeof callback !== 'function') return () => {};
+        const safeLimit = Math.max(1, Math.min(parseInt(limit, 10) || 20, 80));
+
+        return this.db.collection('liveSessions')
+            .orderBy('createdAt', 'desc')
+            .limit(safeLimit)
+            .onSnapshot((snapshot) => {
+                const sessions = snapshot.docs
+                    .map(doc => this.normalizeLiveSessionRecord(doc.data(), doc.id))
+                    .filter(session => session.status === 'live');
+                callback(sessions);
+            }, (error) => {
+                console.error('Ошибка подписки на live-сессии:', error);
+            });
+    }
+
     // ===================== SUBSCRIPTIONS =====================
 
     async subscribe(targetUid) {
@@ -1641,6 +2330,44 @@ class FirebaseService {
         try {
             const currentUserRef = this.db.collection('users').doc(currentUid);
             const targetUserRef = this.db.collection('users').doc(targetUid);
+            const [currentSnap, targetSnap] = await Promise.all([
+                currentUserRef.get(),
+                targetUserRef.get()
+            ]);
+            if (!currentSnap.exists) throw new Error('Текущий профиль не найден');
+            if (!targetSnap.exists) throw new Error('Пользователь не найден');
+
+            const currentData = this.normalizeUserRecord(currentSnap.data(), currentUid);
+            const targetData = this.normalizeUserRecord(targetSnap.data(), targetUid);
+
+            if (Array.isArray(currentData.subscriptions) && currentData.subscriptions.includes(targetUid)) {
+                return { status: 'already_subscribed' };
+            }
+
+            const targetSubscribers = Array.isArray(targetData.subscribers) ? targetData.subscribers.map(String) : [];
+            const targetRequests = Array.isArray(targetData.followRequests) ? targetData.followRequests.map(String) : [];
+            const targetIsPrivate = targetData.privateAccount === true;
+            const alreadyApproved = targetSubscribers.includes(String(currentUid));
+
+            if (targetIsPrivate && !alreadyApproved) {
+                if (!targetRequests.includes(String(currentUid))) {
+                    await targetUserRef.set({
+                        followRequests: firebase.firestore.FieldValue.arrayUnion(String(currentUid)),
+                        updatedAt: new Date()
+                    }, { merge: true });
+
+                    try {
+                        const actor = this.currentUser || await this.getUserProfile(currentUid);
+                        await this.addNotification(targetUid, 'follow_request', {
+                            fromUid: currentUid,
+                            fromUser: actor?.name || 'user'
+                        });
+                    } catch (notifError) {
+                        console.warn('⚠️ Не удалось отправить уведомление о заявке на подписку:', notifError?.message || notifError);
+                    }
+                }
+                return { status: 'requested' };
+            }
 
             // Добавляем в подписки текущего пользователя
             await currentUserRef.update({
@@ -1660,7 +2387,7 @@ class FirebaseService {
             }
 
             console.log('✅ Подписка добавлена');
-            return true;
+            return { status: 'subscribed' };
         } catch (error) {
             console.error('❌ Ошибка подписки:', error);
             throw error;
@@ -1685,6 +2412,12 @@ class FirebaseService {
                 subscribers: firebase.firestore.FieldValue.arrayRemove(currentUid)
             });
 
+            // Если была заявка в приватный аккаунт, тоже удаляем.
+            await targetUserRef.set({
+                followRequests: firebase.firestore.FieldValue.arrayRemove(String(currentUid)),
+                updatedAt: new Date()
+            }, { merge: true });
+
             if (this.currentUser && this.currentUser.uid === currentUid) {
                 this.currentUser.subscriptions = Array.isArray(this.currentUser.subscriptions) ? this.currentUser.subscriptions : [];
                 this.currentUser.subscriptions = this.currentUser.subscriptions.filter(x => x !== targetUid);
@@ -1696,6 +2429,89 @@ class FirebaseService {
             console.error('❌ Ошибка отписки:', error);
             throw error;
         }
+    }
+
+    async requestFollow(targetUid) {
+        return this.subscribe(targetUid);
+    }
+
+    async approveFollowRequest(requestUid) {
+        const currentUid = this.getCurrentUid();
+        if (!currentUid) throw new Error('Необходимо авторизироваться');
+        if (!requestUid) throw new Error('Пользователь не найден');
+        if (String(requestUid) === String(currentUid)) throw new Error('Нельзя одобрить заявку самого себя');
+
+        const currentRef = this.db.collection('users').doc(currentUid);
+        const requestRef = this.db.collection('users').doc(String(requestUid));
+        const [currentSnap, requestSnap] = await Promise.all([
+            currentRef.get(),
+            requestRef.get()
+        ]);
+        if (!currentSnap.exists) throw new Error('Ваш профиль не найден');
+        if (!requestSnap.exists) throw new Error('Профиль подписчика не найден');
+
+        const currentData = this.normalizeUserRecord(currentSnap.data(), currentUid);
+        const requests = Array.isArray(currentData.followRequests) ? currentData.followRequests.map(String) : [];
+        if (!requests.includes(String(requestUid))) return false;
+
+        const batch = this.db.batch();
+        batch.set(currentRef, {
+            followRequests: firebase.firestore.FieldValue.arrayRemove(String(requestUid)),
+            subscribers: firebase.firestore.FieldValue.arrayUnion(String(requestUid)),
+            updatedAt: new Date()
+        }, { merge: true });
+        batch.set(requestRef, {
+            subscriptions: firebase.firestore.FieldValue.arrayUnion(String(currentUid)),
+            updatedAt: new Date()
+        }, { merge: true });
+        await batch.commit();
+
+        if (this.currentUser && this.currentUser.uid === currentUid) {
+            this.currentUser.followRequests = Array.isArray(this.currentUser.followRequests)
+                ? this.currentUser.followRequests.filter(v => String(v) !== String(requestUid))
+                : [];
+        }
+
+        try {
+            const actor = this.currentUser || await this.getUserProfile(currentUid);
+            await this.addNotification(String(requestUid), 'follow_approved', {
+                fromUid: currentUid,
+                fromUser: actor?.name || 'user'
+            });
+        } catch (notifError) {
+            console.warn('⚠️ Не удалось отправить уведомление о принятии заявки:', notifError?.message || notifError);
+        }
+
+        return true;
+    }
+
+    async rejectFollowRequest(requestUid) {
+        const currentUid = this.getCurrentUid();
+        if (!currentUid) throw new Error('Необходимо авторизироваться');
+        if (!requestUid) throw new Error('Пользователь не найден');
+
+        await this.db.collection('users').doc(currentUid).set({
+            followRequests: firebase.firestore.FieldValue.arrayRemove(String(requestUid)),
+            updatedAt: new Date()
+        }, { merge: true });
+
+        if (this.currentUser && this.currentUser.uid === currentUid) {
+            this.currentUser.followRequests = Array.isArray(this.currentUser.followRequests)
+                ? this.currentUser.followRequests.filter(v => String(v) !== String(requestUid))
+                : [];
+        }
+
+        try {
+            const actor = this.currentUser || await this.getUserProfile(currentUid);
+            await this.addNotification(String(requestUid), 'follow_rejected', {
+                fromUid: currentUid,
+                fromUser: actor?.name || 'user'
+            });
+        } catch (notifError) {
+            console.warn('⚠️ Не удалось отправить уведомление об отклонении заявки:', notifError?.message || notifError);
+        }
+
+        return true;
     }
 
     async isSubscribed(targetUid) {
@@ -1710,6 +2526,86 @@ class FirebaseService {
             console.error('❌ Ошибка проверки подписки:', error);
             return false;
         }
+    }
+
+    // ===================== GIFTS / DONATIONS =====================
+
+    async sendGift({
+        toUid,
+        toUser = '',
+        amount = 50,
+        message = '',
+        sourceVideoId = null,
+        sourceVideoFirestoreId = null,
+        context = 'video'
+    } = {}) {
+        const fromUid = this.getCurrentUid();
+        if (!fromUid) throw new Error('Необходимо авторизироваться');
+        if (!toUid) throw new Error('Получатель не найден');
+        if (String(fromUid) === String(toUid)) {
+            throw new Error('Нельзя отправить подарок самому себе');
+        }
+
+        const safeAmount = Math.max(1, Math.min(100000, parseInt(amount, 10) || 0));
+        if (!safeAmount) throw new Error('Некорректная сумма подарка');
+
+        const safeMessage = String(message || '').trim().slice(0, 160);
+        const now = Date.now();
+        const fromProfile = this.currentUser && this.currentUser.uid === fromUid
+            ? this.currentUser
+            : await this.getUserProfile(fromUid);
+        const targetProfile = await this.getUserProfile(toUid);
+
+        const payload = {
+            fromUid,
+            fromUser: fromProfile?.name || 'user',
+            toUid: String(toUid),
+            toUser: targetProfile?.name || String(toUser || 'user'),
+            amount: safeAmount,
+            message: safeMessage,
+            context: String(context || 'video'),
+            sourceVideoId: sourceVideoId || null,
+            sourceVideoFirestoreId: sourceVideoFirestoreId || null,
+            timestamp: now,
+            createdAt: now
+        };
+
+        const giftRef = await this.db.collection('gifts').add(payload);
+
+        const senderRef = this.db.collection('users').doc(fromUid);
+        const targetRef = this.db.collection('users').doc(String(toUid));
+        const batch = this.db.batch();
+        batch.set(senderRef, {
+            giftsSentTotal: firebase.firestore.FieldValue.increment(safeAmount),
+            giftsSentCount: firebase.firestore.FieldValue.increment(1),
+            updatedAt: new Date()
+        }, { merge: true });
+        batch.set(targetRef, {
+            giftsReceivedTotal: firebase.firestore.FieldValue.increment(safeAmount),
+            giftsReceivedCount: firebase.firestore.FieldValue.increment(1),
+            updatedAt: new Date()
+        }, { merge: true });
+        await batch.commit();
+
+        if (this.currentUser && this.currentUser.uid === fromUid) {
+            this.currentUser.giftsSentTotal = (parseInt(this.currentUser.giftsSentTotal, 10) || 0) + safeAmount;
+            this.currentUser.giftsSentCount = (parseInt(this.currentUser.giftsSentCount, 10) || 0) + 1;
+        }
+
+        try {
+            await this.addNotification(String(toUid), 'gift', {
+                fromUid,
+                fromUser: fromProfile?.name || 'user',
+                amount: safeAmount,
+                message: safeMessage,
+                context: payload.context,
+                videoId: sourceVideoId || null
+            });
+        } catch (notifError) {
+            console.warn('⚠️ Не удалось отправить уведомление о подарке:', notifError?.message || notifError);
+        }
+
+        return { id: giftRef.id, ...payload };
     }
 
     // ===================== NOTIFICATIONS =====================
@@ -1788,6 +2684,212 @@ class FirebaseService {
         return true;
     }
 
+    // ===================== SECURITY SESSIONS =====================
+
+    generateSessionId() {
+        const random = Math.random().toString(36).slice(2, 10);
+        return `sess_${Date.now().toString(36)}_${random}`;
+    }
+
+    getCurrentSessionId({ createIfMissing = true } = {}) {
+        if (this.cachedSessionId) return this.cachedSessionId;
+
+        let stored = null;
+        try {
+            const raw = localStorage.getItem(this.sessionStorageKey);
+            if (raw) {
+                if (raw.trim().startsWith('{')) {
+                    const parsed = JSON.parse(raw);
+                    stored = parsed && parsed.id ? parsed : null;
+                } else {
+                    stored = { id: String(raw), startedAt: Date.now() };
+                }
+            }
+        } catch (_) {}
+
+        if (stored && stored.id) {
+            this.cachedSessionId = String(stored.id);
+            this.sessionStartedAt = parseInt(stored.startedAt, 10) || Date.now();
+            return this.cachedSessionId;
+        }
+
+        if (!createIfMissing) return null;
+
+        this.cachedSessionId = this.generateSessionId();
+        this.sessionStartedAt = Date.now();
+        try {
+            localStorage.setItem(this.sessionStorageKey, JSON.stringify({
+                id: this.cachedSessionId,
+                startedAt: this.sessionStartedAt
+            }));
+        } catch (_) {}
+        return this.cachedSessionId;
+    }
+
+    buildDeviceInfo() {
+        const ua = (typeof navigator !== 'undefined' && navigator.userAgent) ? navigator.userAgent : '';
+        const platform = (typeof navigator !== 'undefined' && navigator.platform) ? navigator.platform : '';
+        const language = (typeof navigator !== 'undefined' && navigator.language) ? navigator.language : '';
+
+        let browser = 'Браузер';
+        if (/edg/i.test(ua)) browser = 'Edge';
+        else if (/opr|opera/i.test(ua)) browser = 'Opera';
+        else if (/chrome/i.test(ua)) browser = 'Chrome';
+        else if (/firefox/i.test(ua)) browser = 'Firefox';
+        else if (/safari/i.test(ua)) browser = 'Safari';
+
+        let os = 'Неизвестная ОС';
+        if (/android/i.test(ua)) os = 'Android';
+        else if (/iphone|ipad|ipod/i.test(ua)) os = 'iOS';
+        else if (/windows nt/i.test(ua)) os = 'Windows';
+        else if (/mac os x/i.test(ua)) os = 'macOS';
+        else if (/linux/i.test(ua)) os = 'Linux';
+
+        const deviceType = /mobile|iphone|android/i.test(ua) ? 'Телефон' : 'ПК';
+        return {
+            userAgent: ua,
+            platform,
+            language,
+            deviceName: `${deviceType}: ${browser} • ${os}`
+        };
+    }
+
+    async touchCurrentSession({ online = true, forceCreate = false } = {}) {
+        const uid = this.getCurrentUid();
+        if (!uid) return null;
+
+        const sessionId = this.getCurrentSessionId({ createIfMissing: true });
+        if (!sessionId) return null;
+
+        const now = Date.now();
+        const device = this.buildDeviceInfo();
+        const docId = `${uid}_${sessionId}`;
+        const payload = {
+            uid,
+            sessionId,
+            online: !!online,
+            revoked: false,
+            deviceName: device.deviceName,
+            platform: device.platform || '',
+            language: device.language || '',
+            userAgent: device.userAgent || '',
+            createdAt: this.sessionStartedAt || now,
+            lastActive: now,
+            updatedAt: now
+        };
+        if (!online) payload.lastSeen = now;
+        if (forceCreate) payload.createdAt = this.sessionStartedAt || now;
+
+        await this.db.collection('userSessions').doc(docId).set(payload, { merge: true });
+        return { id: docId, ...payload };
+    }
+
+    async getUserSessions(limit = 40) {
+        const uid = this.getCurrentUid();
+        if (!uid) return [];
+
+        const safeLimit = Math.max(1, Math.min(parseInt(limit, 10) || 40, 200));
+        const currentSessionId = this.getCurrentSessionId({ createIfMissing: true });
+        const mapDoc = (doc) => {
+            const data = doc.data() || {};
+            const sessionId = data.sessionId || String(doc.id || '').replace(`${uid}_`, '');
+            const lastActive = this.normalizeTimestamp(data.lastActive || data.updatedAt || data.createdAt);
+            return {
+                id: doc.id,
+                ...data,
+                sessionId,
+                createdAt: this.normalizeTimestamp(data.createdAt),
+                updatedAt: this.normalizeTimestamp(data.updatedAt),
+                lastActive,
+                lastSeen: this.normalizeTimestamp(data.lastSeen),
+                isCurrent: !!(currentSessionId && sessionId && String(currentSessionId) === String(sessionId))
+            };
+        };
+
+        try {
+            let sessions = [];
+            try {
+                const snapshot = await this.db.collection('userSessions')
+                    .where('uid', '==', uid)
+                    .orderBy('lastActive', 'desc')
+                    .limit(safeLimit)
+                    .get();
+                sessions = snapshot.docs.map(mapDoc);
+            } catch (indexError) {
+                console.warn('⚠️ getUserSessions(): query with where+orderBy failed, using fallback query:', indexError?.message || indexError);
+                const snapshot = await this.db.collection('userSessions')
+                    .where('uid', '==', uid)
+                    .limit(Math.max(safeLimit * 2, safeLimit))
+                    .get();
+                sessions = snapshot.docs.map(mapDoc);
+            }
+
+            sessions.sort((a, b) => (parseInt(b.lastActive, 10) || 0) - (parseInt(a.lastActive, 10) || 0));
+            return sessions.slice(0, safeLimit);
+        } catch (error) {
+            console.error('❌ Ошибка загрузки сессий пользователя:', error);
+            return [];
+        }
+    }
+
+    async revokeSession(sessionId) {
+        const uid = this.getCurrentUid();
+        if (!uid || !sessionId) throw new Error('Сессия не найдена');
+
+        const currentSessionId = this.getCurrentSessionId({ createIfMissing: true });
+        if (currentSessionId && String(currentSessionId) === String(sessionId)) {
+            throw new Error('Текущую сессию нельзя завершить здесь');
+        }
+
+        const docId = `${uid}_${sessionId}`;
+        await this.db.collection('userSessions').doc(docId).set({
+            online: false,
+            revoked: true,
+            revokedAt: Date.now(),
+            updatedAt: Date.now()
+        }, { merge: true });
+        return true;
+    }
+
+    async revokeOtherSessions() {
+        const uid = this.getCurrentUid();
+        if (!uid) throw new Error('Необходимо авторизироваться');
+
+        const currentSessionId = this.getCurrentSessionId({ createIfMissing: true });
+        const sessions = await this.getUserSessions(200);
+        const targets = sessions.filter(row => String(row.sessionId || '') !== String(currentSessionId || ''));
+        if (!targets.length) return 0;
+
+        let updated = 0;
+        let batch = this.db.batch();
+        let ops = 0;
+        const now = Date.now();
+
+        for (const row of targets) {
+            if (!row || !row.id) continue;
+            batch.set(this.db.collection('userSessions').doc(row.id), {
+                online: false,
+                revoked: true,
+                revokedAt: now,
+                updatedAt: now
+            }, { merge: true });
+            updated += 1;
+            ops += 1;
+
+            if (ops >= 400) {
+                await batch.commit();
+                batch = this.db.batch();
+                ops = 0;
+            }
+        }
+
+        if (ops > 0) {
+            await batch.commit();
+        }
+
+        return updated;
+    }
+
     // ===================== HELPERS =====================
 
     getFirebaseErrorMessage(code) {
@@ -1849,6 +2951,11 @@ async function initializeFirebaseService() {
             firebaseService = new FirebaseService();
             firebaseReady = true;
             console.log('✅ Firebase Service инициализирован успешно!');
+            if (window.app && typeof window.app.handleFirebaseReady === 'function') {
+                window.app.handleFirebaseReady({ forceReloadFeed: true }).catch((readyError) => {
+                    console.warn('⚠️ Не удалось синхронизировать UI после инициализации Firebase:', readyError?.message || readyError);
+                });
+            }
             resolve(true);
         } catch (error) {
             console.error('❌ Ошибка создания Firebase Service:', error.message);

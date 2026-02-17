@@ -20,16 +20,52 @@ class AdvancedViewRenderer {
         const commentsCount = Number.isFinite(parseInt(video.commentsCount, 10))
             ? (parseInt(video.commentsCount, 10) || 0)
             : (Array.isArray(video.comments) ? video.comments.length : 0);
-        
+
+        const escapeHtml = (value) => String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+
         // Определяем текст кнопки подписки
         const isSubscribed = options.isSubscribed ? true : false;
+        const isFollowRequested = options.isFollowRequested ? true : false;
         const showFollow = options.showFollow !== false;
-        const followButtonText = isSubscribed ? '✓' : '+';
-        const followButtonStyle = isSubscribed ? 'var(--accent-secondary)' : 'var(--accent-color)';
+        const followButtonText = isSubscribed ? '✓' : (isFollowRequested ? '…' : '+');
+        const followButtonStyle = isSubscribed
+            ? 'var(--accent-secondary)'
+            : (isFollowRequested ? 'rgba(126, 148, 182, 0.95)' : 'var(--accent-color)');
         const followPlusHtml = showFollow
             ? `<div class="follow-plus" style="background: ${followButtonStyle}">${followButtonText}</div>`
             : '';
         const verifiedBadge = this.getVerifiedBadge(video.authorVerified || video.verified);
+
+        const templateLabels = {
+            none: '',
+            'intro-pop': 'Intro Pop',
+            'clean-title': 'Clean Title',
+            cinema: 'Cinema',
+            minimal: 'Minimal',
+            trend: 'Trend'
+        };
+        const templateId = String(video.videoTemplate || 'none');
+        const templateLabel = templateLabels[templateId] || templateId;
+        const safeCoverText = escapeHtml(String(video.coverText || '').trim().slice(0, 48));
+        const safeCoverSticker = escapeHtml(String(video.coverSticker || '').trim().slice(0, 16));
+        const safeCoverColor = /^#[0-9a-fA-F]{6}$/.test(String(video.coverColor || ''))
+            ? String(video.coverColor)
+            : '#1cb8ff';
+        const ageBadge = video.ageRestricted === true
+            ? '<span class="video-meta-chip video-meta-chip-age">18+</span>'
+            : '';
+        const templateBadge = templateLabel
+            ? `<span class="video-meta-chip video-meta-chip-template">${escapeHtml(templateLabel)}</span>`
+            : '';
+        const coverBadge = (safeCoverText || safeCoverSticker)
+            ? `<div class="video-cover-badge" style="--cover-color: ${safeCoverColor};">${safeCoverSticker ? `<span class="video-cover-sticker">${safeCoverSticker}</span>` : ''}${safeCoverText ? `<span class="video-cover-text">${safeCoverText}</span>` : ''}</div>`
+            : '';
+        const metaBadges = `${ageBadge}${templateBadge}`;
         
         const posterAttr = video.thumbnail ? ` poster="${video.thumbnail}"` : '';
 
@@ -45,6 +81,7 @@ class AdvancedViewRenderer {
                 ${this.formatNumber(video.views || 0)}
             </div>
              <div class="video-overlay">
+                 ${coverBadge}
                  <div class="side-bar">
                      <div class="avatar-container" data-action="subscribe">
                          <img src="${video.avatar}" alt="${video.author}" data-author="${video.author}">
@@ -61,6 +98,12 @@ class AdvancedViewRenderer {
                             <path d="M21.99 4c0-1.1-.89-2-1.99-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14l4 4-.01-18zM18 14H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"/>
                         </svg>
                         <span class="comment-count" data-count="${commentsCount}">${this.formatNumber(commentsCount)}</span>
+                    </div>
+                    <div class="action-btn gift-btn" data-id="${video.id}" title="Поддержать автора">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M12 2l2.4 4.86L20 8l-4 3.9.94 5.5L12 14.8 7.06 17.4 8 11.9 4 8l5.6-1.14L12 2zm0 9.3a2.7 2.7 0 1 0 0 5.4 2.7 2.7 0 0 0 0-5.4z"/>
+                        </svg>
+                        <span>₽</span>
                     </div>
                     <div class="action-btn share-btn" data-id="${video.id}" title="Поделиться">
                         <svg viewBox="0 0 24 24">
@@ -82,6 +125,7 @@ class AdvancedViewRenderer {
                         </svg>
                         <span>Оригинальный звук - ${video.author}</span>
                     </div>
+                    ${metaBadges ? `<div class="video-meta-badges">${metaBadges}</div>` : ''}
                     <div style="font-size: 11px; color: rgba(255,255,255,0.6); margin-top: 5px;">${timeAgo}</div>
                 </div>
             </div>

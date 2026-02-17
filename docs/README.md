@@ -162,3 +162,11 @@ Reelgram
 ---
 
 **Если у вас есть вопросы или предложения** - добро пожаловать в обсуждение! Спасибо за использование Reelgram! 🎉
+
+---
+
+## Maintenance docs (new)
+
+- docs/PROJECT_REVISION_2026-02-17.md - current audit snapshot and refactor priorities
+- docs/SUPPORT_RUNBOOK.md - support and incident response checklist
+- docs/scripts/revision-audit.ps1 - automated project audit script
