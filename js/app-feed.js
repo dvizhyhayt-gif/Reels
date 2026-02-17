@@ -290,6 +290,9 @@
 
         try {
             if (this.state.feedSource === 'live') {
+                if (typeof this.stopLiveFeedPreview === 'function') {
+                    this.stopLiveFeedPreview({ keepObserver: false });
+                }
                 this.state.currentPage = 0;
                 this.state.hasMore = false;
 
@@ -310,6 +313,9 @@
                 }
                 perfCount = Array.isArray(this.liveSessions) ? this.liveSessions.length : 0;
             } else {
+                if (typeof this.stopLiveFeedPreview === 'function') {
+                    this.stopLiveFeedPreview({ keepObserver: false });
+                }
                 const pageSize = this.state.feedSource === 'following' ? 15 : 8;
                 const { videos, hasMore } = await this.dataService.getFeed(this.state.currentPage, pageSize);
                 const preparedVideos = this.prepareGlobalFeedVideos(videos);
