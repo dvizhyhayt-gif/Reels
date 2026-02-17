@@ -8,6 +8,75 @@
         return;
     }
 
+    function getWebRtcCompat() {
+        const compat = global.ReelgramWebRTC || {};
+        const getPeerConnectionCtor = typeof compat.getPeerConnectionCtor === 'function'
+            ? compat.getPeerConnectionCtor.bind(compat)
+            : (() => global.RTCPeerConnection || global.webkitRTCPeerConnection || global.mozRTCPeerConnection || null);
+        const getIceServers = typeof compat.getIceServers === 'function'
+            ? compat.getIceServers.bind(compat)
+            : (() => [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }]);
+        const toIceCandidate = typeof compat.toIceCandidate === 'function'
+            ? compat.toIceCandidate.bind(compat)
+            : ((candidate) => candidate);
+        const toSessionDescription = typeof compat.toSessionDescription === 'function'
+            ? compat.toSessionDescription.bind(compat)
+            : ((description) => description);
+        const getRecommendedConstraints = typeof compat.getRecommendedConstraints === 'function'
+            ? compat.getRecommendedConstraints.bind(compat)
+            : (() => ({ video: true, audio: true }));
+        const hasTurnServerFor = typeof compat.hasTurnServerFor === 'function'
+            ? compat.hasTurnServerFor.bind(compat)
+            : (() => false);
+        const getSupportErrorMessage = typeof compat.getSupportErrorMessage === 'function'
+            ? compat.getSupportErrorMessage.bind(compat)
+            : (() => {
+                const Ctor = getPeerConnectionCtor();
+                return Ctor ? '' : 'WebRTC is unavailable in this browser.';
+            });
+        const getUserMedia = typeof compat.getUserMedia === 'function'
+            ? compat.getUserMedia.bind(compat)
+            : async (constraints) => {
+                const nav = global.navigator || {};
+                if (nav.mediaDevices && typeof nav.mediaDevices.getUserMedia === 'function') {
+                    return nav.mediaDevices.getUserMedia(constraints);
+                }
+                const legacy = nav.getUserMedia || nav.webkitGetUserMedia || nav.mozGetUserMedia;
+                if (!legacy) throw new Error('getUserMedia is unavailable');
+                return new Promise((resolve, reject) => {
+                    legacy.call(nav, constraints, resolve, reject);
+                });
+            };
+
+        return {
+            getPeerConnectionCtor,
+            getIceServers,
+            toIceCandidate,
+            toSessionDescription,
+            getRecommendedConstraints,
+            hasTurnServerFor,
+            getSupportErrorMessage,
+            getUserMedia
+        };
+    }
+
+    function getCallConstraintsQueue(compat) {
+        const recommended = compat.getRecommendedConstraints();
+        return [
+            recommended,
+            { video: { facingMode: 'user' }, audio: true },
+            { video: true, audio: true },
+            { video: { width: { ideal: 320 }, height: { ideal: 480 } }, audio: true },
+            { video: false, audio: true }
+        ];
+    }
+
+    function normalizeMediaError(error, fallbackMessage) {
+        const err = error && error.message ? String(error.message) : '';
+        if (err) return new Error(err);
+        return new Error(fallbackMessage || 'Cannot access camera/microphone.');
+    }
+
     AdvancedApp.prototype.setupNotificationsEvents = function() {
         if (this.notificationTabs && this.notificationTabs.length) {
             this.notificationTabs.forEach(tab => {
@@ -1334,10 +1403,27 @@
             throw new Error('Ваше устройство не поддерживает видеозвонки');
         }
 
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        this.callLocalStream = stream;
-        if (this.callLocalVideo) this.callLocalVideo.srcObject = stream;
-        return stream;
+        const constraintsQueue = getCallConstraintsQueue(getWebRtcCompat());
+        let lastError = null;
+        for (const constraints of constraintsQueue) {
+            try {
+                const stream = await getWebRtcCompat().getUserMedia(constraints);
+                if (!stream) continue;
+                this.callLocalStream = stream;
+                if (this.callLocalVideo) {
+                    this.callLocalVideo.srcObject = stream;
+                    if (typeof this.callLocalVideo.play === 'function') {
+                        this.callLocalVideo.play().catch(() => {});
+                    }
+                }
+                return stream;
+            } catch (error) {
+                lastError = error;
+                const code = String(error && error.name ? error.name : '').toLowerCase();
+                if (code === 'notallowederror' || code === 'securityerror') break;
+            }
+        }
+        throw normalizeMediaError(lastError, 'Cannot access camera/microphone. Check permissions and HTTPS.');
     };
 
     AdvancedApp.prototype.ensureCallPeerConnection = function(callId) {
@@ -1414,7 +1500,9 @@
         this.pendingCallCandidates = [];
         for (const candidate of queue) {
             try {
-                await this.callPeerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+                const rtcCandidate = getWebRtcCompat().toIceCandidate(candidate);
+                if (!rtcCandidate) continue;
+                await this.callPeerConnection.addIceCandidate(rtcCandidate);
             } catch (error) {
                 console.warn('Не удалось применить ICE candidate:', error);
             }
@@ -1462,7 +1550,9 @@
                 }
 
                 try {
-                    await this.callPeerConnection.addIceCandidate(new RTCIceCandidate(row.candidate));
+                    const rtcCandidate = getWebRtcCompat().toIceCandidate(row.candidate);
+                    if (!rtcCandidate) continue;
+                    await this.callPeerConnection.addIceCandidate(rtcCandidate);
                 } catch (error) {
                     console.warn('Не удалось добавить ICE candidate:', error);
                 }
@@ -1490,7 +1580,8 @@
         if (!call || !call.id || !this.callPeerConnection || this.callAnswerSent) return;
         if (!(call.offer && call.offer.sdp)) return;
 
-        await this.callPeerConnection.setRemoteDescription(new RTCSessionDescription(call.offer));
+        const offerDescription = getWebRtcCompat().toSessionDescription(call.offer);
+        await this.callPeerConnection.setRemoteDescription(offerDescription);
         this.callRemoteDescriptionSet = true;
         await this.flushPendingCallCandidates();
 
@@ -1543,7 +1634,8 @@
         if (!this.callPeerConnection) return;
         if (this.activeCall?.role === 'caller') {
             if (call.answer && call.answer.sdp && !this.callRemoteDescriptionSet) {
-                await this.callPeerConnection.setRemoteDescription(new RTCSessionDescription(call.answer));
+                const answerDescription = getWebRtcCompat().toSessionDescription(call.answer);
+                await this.callPeerConnection.setRemoteDescription(answerDescription);
                 this.callRemoteDescriptionSet = true;
                 await this.flushPendingCallCandidates();
                 if (firebaseService && typeof firebaseService.updateCall === 'function' && status !== 'active') {
@@ -1700,6 +1792,145 @@
             options
         );
         await this.refreshCurrentChatMessages();
+    };
+
+    // Override call RTC internals with compatibility-aware implementation.
+    AdvancedApp.prototype.ensureCallLocalMedia = async function() {
+        if (this.callLocalStream) return this.callLocalStream;
+
+        const compat = getWebRtcCompat();
+        const supportError = compat.getSupportErrorMessage();
+        if (supportError) {
+            throw new Error(supportError);
+        }
+
+        const constraintsQueue = getCallConstraintsQueue(compat);
+        let lastError = null;
+
+        for (const constraints of constraintsQueue) {
+            try {
+                const stream = await compat.getUserMedia(constraints);
+                if (!stream) continue;
+                this.callLocalStream = stream;
+                if (this.callLocalVideo) {
+                    this.callLocalVideo.srcObject = stream;
+                    if (typeof this.callLocalVideo.play === 'function') {
+                        this.callLocalVideo.play().catch(() => {});
+                    }
+                }
+                return stream;
+            } catch (error) {
+                lastError = error;
+                const code = String(error && error.name ? error.name : '').toLowerCase();
+                if (code === 'notallowederror' || code === 'securityerror') break;
+            }
+        }
+
+        throw normalizeMediaError(lastError, 'Cannot access camera/microphone. Check permissions and HTTPS.');
+    };
+
+    AdvancedApp.prototype.ensureCallPeerConnection = function(callId) {
+        if (this.callPeerConnection) return this.callPeerConnection;
+
+        const compat = getWebRtcCompat();
+        const PeerConnectionCtor = compat.getPeerConnectionCtor();
+        if (typeof PeerConnectionCtor !== 'function') {
+            throw new Error(compat.getSupportErrorMessage() || 'WebRTC is unavailable in this browser.');
+        }
+
+        const configuredIce = compat.getIceServers();
+        const safeIceServers = Array.isArray(configuredIce) && configuredIce.length
+            ? configuredIce
+            : [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
+
+        if (!this.callWarnedAboutTurn && typeof compat.hasTurnServerFor === 'function' && !compat.hasTurnServerFor(safeIceServers)) {
+            this.callWarnedAboutTurn = true;
+            console.warn('[rtc] TURN is not configured. Some networks may fail with STUN-only.');
+        }
+
+        const pc = new PeerConnectionCtor({ iceServers: safeIceServers });
+        this.callPeerConnection = pc;
+        this.callRemoteStream = new MediaStream();
+
+        if (this.callRemoteVideo) {
+            this.callRemoteVideo.srcObject = this.callRemoteStream;
+            if (typeof this.callRemoteVideo.play === 'function') {
+                this.callRemoteVideo.play().catch(() => {});
+            }
+        }
+
+        if (this.callLocalStream) {
+            const existingTrackIds = new Set(
+                pc.getSenders().map((sender) => sender.track && sender.track.id).filter(Boolean)
+            );
+            this.callLocalStream.getTracks().forEach((track) => {
+                if (!existingTrackIds.has(track.id)) {
+                    pc.addTrack(track, this.callLocalStream);
+                }
+            });
+        }
+
+        pc.ontrack = (event) => {
+            if (!this.callRemoteStream) {
+                this.callRemoteStream = new MediaStream();
+                if (this.callRemoteVideo) this.callRemoteVideo.srcObject = this.callRemoteStream;
+            }
+
+            const incomingStream = event && event.streams && event.streams[0] ? event.streams[0] : null;
+            if (incomingStream) {
+                incomingStream.getTracks().forEach((track) => {
+                    if (!this.callRemoteStream.getTracks().some((t) => t.id === track.id)) {
+                        this.callRemoteStream.addTrack(track);
+                    }
+                });
+            } else if (event && event.track && !this.callRemoteStream.getTracks().some((t) => t.id === event.track.id)) {
+                this.callRemoteStream.addTrack(event.track);
+            }
+
+            if (this.callRemoteVideo && typeof this.callRemoteVideo.play === 'function') {
+                this.callRemoteVideo.play().catch(() => {});
+            }
+            if (this.callVideoPlaceholder) this.callVideoPlaceholder.style.display = 'none';
+        };
+
+        pc.onicecandidate = (event) => {
+            if (!event || !event.candidate) return;
+            if (!(firebaseService && firebaseService.isInitialized() && typeof firebaseService.addCallCandidate === 'function')) {
+                return;
+            }
+            firebaseService.addCallCandidate(callId, event.candidate).catch((error) => {
+                console.error('ICE candidate send failed:', error);
+            });
+        };
+
+        pc.onconnectionstatechange = () => {
+            const state = String(pc.connectionState || '');
+            if (state === 'connected') {
+                if (this.activeCall) this.activeCall.connected = true;
+                this.updateCallStatusText('\u0412 \u0437\u0432\u043e\u043d\u043a\u0435');
+                if (this.callVideoPlaceholder) this.callVideoPlaceholder.style.display = 'none';
+                return;
+            }
+            if (state === 'failed') {
+                this.updateCallStatusText('\u0421\u0432\u044f\u0437\u044c \u043f\u043e\u0442\u0435\u0440\u044f\u043d\u0430');
+                this.endCurrentCall('ended');
+                return;
+            }
+            if (state === 'disconnected') {
+                this.updateCallStatusText('\u041f\u0435\u0440\u0435\u043f\u043e\u0434\u043a\u043b\u044e\u0447\u0435\u043d\u0438\u0435...');
+            }
+        };
+
+        pc.oniceconnectionstatechange = () => {
+            const iceState = String(pc.iceConnectionState || '').toLowerCase();
+            if (iceState === 'failed' && typeof pc.restartIce === 'function' && !pc.__reelgramIceRestarted) {
+                pc.__reelgramIceRestarted = true;
+                this.updateCallStatusText('\u041f\u0435\u0440\u0435\u043f\u043e\u0434\u043a\u043b\u044e\u0447\u0435\u043d\u0438\u0435...');
+                try { pc.restartIce(); } catch (_) {}
+            }
+        };
+
+        return pc;
     };
 
     AdvancedApp.prototype.endCurrentCall = async function(status = 'ended', { skipRemoteUpdate = false, silent = false, sendEvent = true } = {}) {

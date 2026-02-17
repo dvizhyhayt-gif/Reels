@@ -38,6 +38,21 @@
                 'chats.load': 2500
             }),
             maxSamples: 200
+        }),
+        webrtc: Object.freeze({
+            // You can override in runtime:
+            // window.REELGRAM_WEBRTC_ICE_SERVERS = [{ urls: 'turn:turn.example.com:3478', username: 'user', credential: 'pass' }]
+            iceServers: Object.freeze([
+                Object.freeze({
+                    urls: Object.freeze([
+                        'stun:stun.l.google.com:19302',
+                        'stun:stun1.l.google.com:19302',
+                        'stun:stun2.l.google.com:19302',
+                        'stun:stun3.l.google.com:19302',
+                        'stun:stun4.l.google.com:19302'
+                    ])
+                })
+            ])
         })
     };
 
