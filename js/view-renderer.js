@@ -66,6 +66,10 @@ class AdvancedViewRenderer {
             ? `<div class="video-cover-badge" style="--cover-color: ${safeCoverColor};">${safeCoverSticker ? `<span class="video-cover-sticker">${safeCoverSticker}</span>` : ''}${safeCoverText ? `<span class="video-cover-text">${safeCoverText}</span>` : ''}</div>`
             : '';
         const metaBadges = `${ageBadge}${templateBadge}`;
+        const metaFooter = [
+            metaBadges,
+            timeAgo ? `<span class="video-timeago">${escapeHtml(timeAgo)}</span>` : ''
+        ].filter(Boolean).join('');
         const likeIconDefault = 'assets/feed-like.svg';
         const likeIconActive = 'assets/feed-like-active.svg';
         const commentIcon = 'assets/feed-comment.png';
@@ -117,8 +121,7 @@ class AdvancedViewRenderer {
                         </svg>
                         <span>РћСЂРёРіРёРЅР°Р»СЊРЅС‹Р№ Р·РІСѓРє - ${video.author}</span>
                     </div>
-                    ${metaBadges ? `<div class="video-meta-badges">${metaBadges}</div>` : ''}
-                    <div style="font-size: 11px; color: rgba(255,255,255,0.6); margin-top: 5px;">${timeAgo}</div>
+                    ${metaFooter ? `<div class="video-meta-footer">${metaFooter}</div>` : ''}
                 </div>
             </div>
         `;

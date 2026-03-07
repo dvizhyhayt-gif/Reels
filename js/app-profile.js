@@ -59,11 +59,18 @@
 
         // quick skeleton
         document.getElementById('profile-name').textContent = '@\u0437\u0430\u0433\u0440\u0443\u0437\u043a\u0430...';
+        document.getElementById('profile-avatar-img').src = 'assets/default-avatar.svg';
         if (typeof this.updateProfileDisplayNameUi === 'function') {
             this.updateProfileDisplayNameUi('\u0437\u0430\u0433\u0440\u0443\u0437\u043a\u0430...', false);
         }
         if (typeof this.setProfileTopHandle === 'function') {
             this.setProfileTopHandle('\u0437\u0430\u0433\u0440\u0443\u0437\u043a\u0430...');
+        }
+        if (typeof this.syncProfileAvatarStoryState === 'function') {
+            this.syncProfileAvatarStoryState({ clear: true });
+        }
+        if (typeof this.resetProfileStoryCollectionsUi === 'function') {
+            this.resetProfileStoryCollectionsUi();
         }
         document.getElementById('profile-bio').textContent = '';
         this.profileViewContext = {
@@ -158,10 +165,14 @@
                 const el = document.getElementById(id);
                 if (!el) return;
                 if (value) {
-                    el.style.display = 'block';
+                    if (typeof this.setElementHidden === 'function') {
+                        this.setElementHidden(el, false);
+                    }
                     cb(value);
                 } else {
-                    el.style.display = 'none';
+                    if (typeof this.setElementHidden === 'function') {
+                        this.setElementHidden(el, true);
+                    }
                 }
             };
 
@@ -197,6 +208,16 @@
                 baseVideos: Array.isArray(videos) ? videos : [],
                 loading: false
             };
+            if (typeof this.syncProfileAvatarStoryState === 'function') {
+                this.syncProfileAvatarStoryState();
+            }
+            if (typeof this.refreshProfileStoryCollections === 'function') {
+                this.refreshProfileStoryCollections({
+                    profileUid: uid,
+                    isOwn: !!isOwn,
+                    force: true
+                }).catch(() => {});
+            }
             if (typeof this.applyProfileMediaTabsVisibility === 'function') {
                 this.applyProfileMediaTabsVisibility({ isOwn: !!isOwn });
             }

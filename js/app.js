@@ -32,6 +32,7 @@ class AdvancedApp {
             currentChatId: null,
             currentChatUser: null,
             currentChatUid: null,
+            currentChatVerified: false,
             activeCallId: null,
             activeLiveSessionId: null,
             profileGridTab: 'videos' // 'videos' | 'saved' | 'liked' | 'drafts'
@@ -141,6 +142,17 @@ class AdvancedApp {
         this.storyViewerSurface = null;
         this.storyViewerProgressTrack = null;
         this.activeStoryVideoEl = null;
+        this.activeStoryContext = null;
+        this.storyArchiveCache = {};
+        this.profileStoryCollectionsRequestId = 0;
+        this.storyArchiveSheetRequestId = 0;
+        this.profileAvatarPressState = null;
+        this.profileAvatarPreviewEscapeBound = false;
+        this.profileAvatarPreviewModal = null;
+        this.profileAvatarPreviewImage = null;
+        this.profileAvatarPreviewTitle = null;
+        this.profileAvatarPreviewHandle = null;
+        this.profileAvatarPreviewCloseBtn = null;
         this.liveSessions = [];
         this.liveSessionsUnsubscribe = null;
         this.firebaseRecoveryTimer = null;
@@ -431,14 +443,36 @@ class AdvancedApp {
         if (!this.storyViewerProgressTrack && this.storyViewerProgressFill && this.storyViewerProgressFill.parentNode) {
             this.storyViewerProgressTrack = this.storyViewerProgressFill.parentNode;
         }
+        this.storyViewerOwnerActions = document.getElementById('story-viewer-owner-actions');
+        this.storyViewerHighlightBtn = document.getElementById('story-viewer-highlight-btn');
+        this.storyViewerDeleteBtn = document.getElementById('story-viewer-delete-btn');
+        this.storyViewerReplyBar = document.getElementById('story-viewer-reply-bar');
+        this.storyViewerReplyInput = document.getElementById('story-viewer-reply-input');
+        this.storyViewerReplySendBtn = document.getElementById('story-viewer-reply-send');
         this.storyViewerCloseBtn = document.getElementById('story-viewer-close');
         this.storyViewerPrevBtn = document.getElementById('story-viewer-prev');
         this.storyViewerNextBtn = document.getElementById('story-viewer-next');
         this.storyViewerSurface = this.storyViewerModal && this.storyViewerModal.querySelector
             ? this.storyViewerModal.querySelector('.story-viewer-surface')
             : null;
+        this.storyArchiveSheet = document.getElementById('story-archive-sheet');
+        this.storyArchiveSheetTitle = document.getElementById('story-archive-sheet-title');
+        this.storyArchiveSheetSubtitle = document.getElementById('story-archive-sheet-subtitle');
+        this.storyArchiveSheetList = document.getElementById('story-archive-sheet-list');
+        this.storyArchiveSheetCloseBtn = document.getElementById('story-archive-sheet-close');
         this.addStoryBtn = document.getElementById('add-story-btn');
         this.storyFileInput = document.getElementById('story-file-input');
+        this.profileHighlightsSection = document.getElementById('profile-highlights-section');
+        this.profileHighlightsList = document.getElementById('profile-highlights-list');
+        this.profileHighlightsEmpty = document.getElementById('profile-highlights-empty');
+        this.profileStoryArchiveBtn = document.getElementById('profile-story-archive-btn');
+        this.profileAvatarWrap = document.querySelector('#profile-view .profile-avatar-wrap');
+        this.profileAvatarImg = document.getElementById('profile-avatar-img');
+        this.profileAvatarPreviewModal = document.getElementById('profile-avatar-preview-modal');
+        this.profileAvatarPreviewImage = document.getElementById('profile-avatar-preview-image');
+        this.profileAvatarPreviewTitle = document.getElementById('profile-avatar-preview-title');
+        this.profileAvatarPreviewHandle = document.getElementById('profile-avatar-preview-handle');
+        this.profileAvatarPreviewCloseBtn = document.getElementById('profile-avatar-preview-close');
 
         this.securityMenu = document.getElementById('security-menu');
         this.securityView = document.getElementById('security-view');
@@ -550,9 +584,8 @@ class AdvancedApp {
         if (menuDropdown) {
             if (!document.getElementById('profile-requests-menu')) {
                 const requestsItem = document.createElement('div');
-                requestsItem.className = 'menu-item';
+                requestsItem.className = 'menu-item is-hidden-default';
                 requestsItem.id = 'profile-requests-menu';
-                requestsItem.style.display = 'none';
                 requestsItem.innerHTML = `
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                         <path d="M12 3c4.97 0 9 3.58 9 8 0 4.42-4.03 8-9 8a10.6 10.6 0 0 1-3.73-.67L3 21l1.49-3.58A7.2 7.2 0 0 1 3 11c0-4.42 4.03-8 9-8zm0 2c-3.86 0-7 2.69-7 6 0 1.7.85 3.24 2.22 4.33l.58.46-.84 2 2.43-1.24.49.18c.71.26 1.4.39 2.12.39 3.86 0 7-2.69 7-6s-3.14-6-7-6zm-3 5h6v2H9v-2zm0 3h4v2H9v-2z"/>
@@ -648,13 +681,29 @@ class AdvancedApp {
                         </svg>
                     </button>
                     <div class="story-viewer-meta">
-                        <img id="story-viewer-avatar" class="story-viewer-avatar" src="assets/default-avatar.svg" alt="@user">
-                        <div class="story-viewer-meta-text">
-                            <div class="story-viewer-author" id="story-viewer-author">@user</div>
-                            <div class="story-viewer-time" id="story-viewer-time">\u0442\u043e\u043b\u044c\u043a\u043e \u0447\u0442\u043e</div>
+                        <div class="story-viewer-meta-main">
+                            <img id="story-viewer-avatar" class="story-viewer-avatar" src="assets/default-avatar.svg" alt="@user">
+                            <div class="story-viewer-meta-text">
+                                <div class="story-viewer-author" id="story-viewer-author">@user</div>
+                                <div class="story-viewer-time" id="story-viewer-time">\u0442\u043e\u043b\u044c\u043a\u043e \u0447\u0442\u043e</div>
+                            </div>
+                        </div>
+                        <div class="story-viewer-meta-actions is-hidden-default" id="story-viewer-owner-actions" data-no-story-nav="1">
+                            <button class="story-viewer-action-btn" id="story-viewer-highlight-btn" type="button">\u0412 \u0430\u043a\u0442\u0443\u0430\u043b\u044c\u043d\u043e\u0435</button>
+                            <button class="story-viewer-action-btn danger" id="story-viewer-delete-btn" type="button">\u0423\u0434\u0430\u043b\u0438\u0442\u044c</button>
                         </div>
                     </div>
                     <div class="story-viewer-stage" id="story-viewer-stage"></div>
+                    <div class="story-viewer-reply-bar is-hidden-default" id="story-viewer-reply-bar" data-no-story-nav="1">
+                        <input
+                            type="text"
+                            class="story-viewer-reply-input"
+                            id="story-viewer-reply-input"
+                            maxlength="240"
+                            placeholder="\u041e\u0442\u0432\u0435\u0442\u0438\u0442\u044c \u043d\u0430 \u0438\u0441\u0442\u043e\u0440\u0438\u044e"
+                        >
+                        <button class="story-viewer-reply-send" id="story-viewer-reply-send" type="button">\u041e\u0442\u043f\u0440\u0430\u0432\u0438\u0442\u044c</button>
+                    </div>
                     <button class="story-nav-btn prev" id="story-viewer-prev" type="button" aria-label="Previous story">
                         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                             <path d="M15 18l-6-6 6-6"></path>
@@ -668,6 +717,57 @@ class AdvancedApp {
                 </div>
             `;
             appRoot.appendChild(storyModal);
+        }
+
+        if (!document.getElementById('story-archive-sheet')) {
+            const archiveSheet = document.createElement('div');
+            archiveSheet.id = 'story-archive-sheet';
+            archiveSheet.className = 'story-archive-sheet';
+            archiveSheet.innerHTML = `
+                <div class="story-archive-sheet-backdrop" data-close-story-archive="1"></div>
+                <div class="story-archive-sheet-panel">
+                    <div class="story-archive-sheet-handle" aria-hidden="true"></div>
+                    <div class="story-archive-sheet-header">
+                        <div class="story-archive-sheet-heading">
+                            <div class="story-archive-sheet-title" id="story-archive-sheet-title">\u0410\u0440\u0445\u0438\u0432 \u0438\u0441\u0442\u043e\u0440\u0438\u0439</div>
+                            <div class="story-archive-sheet-subtitle" id="story-archive-sheet-subtitle">\u0412\u0441\u0435 \u0432\u0430\u0448\u0438 \u0438\u0441\u0442\u043e\u0440\u0438\u0438</div>
+                        </div>
+                        <button class="story-archive-sheet-close" id="story-archive-sheet-close" type="button" aria-label="\u0417\u0430\u043a\u0440\u044b\u0442\u044c">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                <path d="M18 6L6 18"></path>
+                                <path d="M6 6l12 12"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="story-archive-sheet-list" id="story-archive-sheet-list"></div>
+                </div>
+            `;
+            appRoot.appendChild(archiveSheet);
+        }
+
+        if (!document.getElementById('profile-avatar-preview-modal')) {
+            const avatarPreviewModal = document.createElement('div');
+            avatarPreviewModal.id = 'profile-avatar-preview-modal';
+            avatarPreviewModal.className = 'profile-avatar-preview-modal';
+            avatarPreviewModal.innerHTML = `
+                <div class="profile-avatar-preview-backdrop" data-close-avatar-preview="1"></div>
+                <div class="profile-avatar-preview-card" role="dialog" aria-modal="true" aria-labelledby="profile-avatar-preview-title">
+                    <button class="profile-avatar-preview-close" id="profile-avatar-preview-close" type="button" aria-label="Закрыть" data-close-avatar-preview="1">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                            <path d="M18 6L6 18"></path>
+                            <path d="M6 6l12 12"></path>
+                        </svg>
+                    </button>
+                    <div class="profile-avatar-preview-frame">
+                        <img id="profile-avatar-preview-image" src="assets/default-avatar.svg" alt="Фото профиля">
+                    </div>
+                    <div class="profile-avatar-preview-meta">
+                        <div class="profile-avatar-preview-title" id="profile-avatar-preview-title">Профиль</div>
+                        <div class="profile-avatar-preview-handle" id="profile-avatar-preview-handle">@user</div>
+                    </div>
+                </div>
+            `;
+            appRoot.appendChild(avatarPreviewModal);
         }
 
         if (!document.getElementById('live-sheet')) {
@@ -740,6 +840,35 @@ class AdvancedApp {
             .replace(/'/g, '&#39;');
     }
 
+    setElementHidden(target, hidden = true) {
+        const element = typeof target === 'string' ? document.getElementById(target) : target;
+        if (!element || !element.classList) return null;
+        element.classList.toggle('is-hidden-default', !!hidden);
+        return element;
+    }
+
+    isElementHidden(target) {
+        const element = typeof target === 'string' ? document.getElementById(target) : target;
+        if (!element || !element.classList) return true;
+        return element.classList.contains('is-hidden-default');
+    }
+
+    setAuthFormMode(mode = 'login') {
+        this.setElementHidden('login-form', mode !== 'login');
+        this.setElementHidden('register-form', mode !== 'register');
+    }
+
+    setSearchEmptyMessage(message = 'Начните печатать для поиска') {
+        if (!this.searchEmpty) return;
+        this.searchEmpty.innerHTML = `
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity="0.5">
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="m21 21-4.35-4.35"></path>
+            </svg>
+            <p class="search-empty-text">${this.escapeHtml(message)}</p>
+        `;
+    }
+
     renderUserLabel(name, verified = false) {
         const safeName = this.escapeHtml(name || 'user');
         const badge = AdvancedViewRenderer.getVerifiedBadge(verified);
@@ -772,6 +901,295 @@ class AdvancedApp {
         const profileView = document.getElementById('profile-view');
         if (!profileView) return;
         profileView.dataset.profileMode = mode || 'guest';
+    }
+
+    getCurrentProfileIdentity() {
+        const current = (typeof firebaseService !== 'undefined'
+            && firebaseService
+            && typeof firebaseService.getCurrentUser === 'function')
+            ? firebaseService.getCurrentUser()
+            : (this.dataService && typeof this.dataService.getCurrentUser === 'function'
+                ? this.dataService.getCurrentUser()
+                : null);
+        const profileUid = this.state && this.state.viewingProfileUid
+            ? String(this.state.viewingProfileUid)
+            : (current && current.uid ? String(current.uid) : '');
+        const handleSource = this.state && this.state.viewingProfileUid
+            ? (document.getElementById('profile-name')?.textContent || '')
+            : ((current && current.name) || (document.getElementById('profile-name')?.textContent || ''));
+        const handle = String(handleSource || '').replace(/^@+/, '').trim() || 'user';
+        const displayName = String(document.getElementById('profile-display-name')?.textContent || '').trim() || handle;
+        return { profileUid, handle, displayName };
+    }
+
+    getCurrentProfileStoryGroup(profileUid = '') {
+        const targetUid = String(profileUid || '').trim();
+        if (!targetUid) return null;
+        return (Array.isArray(this.storiesByAuthor) ? this.storiesByAuthor : [])
+            .find((group) => String(group && group.uid ? group.uid : '') === targetUid) || null;
+    }
+
+    getCurrentUidSafe() {
+        if (typeof firebaseService !== 'undefined'
+            && firebaseService
+            && typeof firebaseService.getCurrentUid === 'function') {
+            return firebaseService.getCurrentUid();
+        }
+
+        const current = this.dataService && typeof this.dataService.getCurrentUser === 'function'
+            ? this.dataService.getCurrentUser()
+            : null;
+        return current && current.uid ? String(current.uid) : null;
+    }
+
+    resetProfileStoryCollectionsUi() {
+        if (this.profileHighlightsList) {
+            this.profileHighlightsList.innerHTML = '';
+        }
+        if (this.profileHighlightsEmpty) {
+            this.profileHighlightsEmpty.textContent = '';
+            this.setElementHidden(this.profileHighlightsEmpty, true);
+        }
+        if (this.profileStoryArchiveBtn) {
+            this.setElementHidden(this.profileStoryArchiveBtn, true);
+        }
+        if (this.profileHighlightsSection) {
+            this.setElementHidden(this.profileHighlightsSection, true);
+            this.profileHighlightsSection.dataset.profileUid = '';
+        }
+    }
+
+    async getStoryArchive(uid, { force = false, limit = 60 } = {}) {
+        const targetUid = String(uid || '').trim();
+        if (!targetUid) return [];
+
+        if (!force && Array.isArray(this.storyArchiveCache[targetUid])) {
+            return this.storyArchiveCache[targetUid].slice();
+        }
+
+        if (!(firebaseService
+            && typeof firebaseService.isInitialized === 'function'
+            && firebaseService.isInitialized()
+            && typeof firebaseService.getUserStoryArchive === 'function')) {
+            return [];
+        }
+
+        const archive = await firebaseService.getUserStoryArchive(targetUid, limit);
+        this.storyArchiveCache[targetUid] = Array.isArray(archive) ? archive.slice() : [];
+        return this.storyArchiveCache[targetUid].slice();
+    }
+
+    invalidateStoryArchive(uid = '') {
+        const targetUid = String(uid || '').trim();
+        if (!targetUid) return;
+        delete this.storyArchiveCache[targetUid];
+    }
+
+    buildStoryPreviewMedia(story = {}, { className = '', muted = false } = {}) {
+        const safeUrl = this.escapeHtml(story.mediaUrl || '');
+        if (!safeUrl) {
+            return `<div class="${className} is-fallback">\u0418\u0441\u0442\u043e\u0440\u0438\u044f</div>`;
+        }
+
+        const mime = String(story.mediaMime || '').toLowerCase();
+        if (mime.startsWith('video/')) {
+            return `<video class="${className}" src="${safeUrl}" preload="metadata" playsinline ${muted ? 'muted' : ''}></video>`;
+        }
+
+        return `<img class="${className}" src="${safeUrl}" alt="\u0418\u0441\u0442\u043e\u0440\u0438\u044f" loading="lazy">`;
+    }
+
+    renderProfileHighlights(highlights = [], { isOwn = false, profileUid = '' } = {}) {
+        if (!this.profileHighlightsSection || !this.profileHighlightsList) return;
+
+        const list = Array.isArray(highlights) ? highlights.filter(Boolean) : [];
+        this.profileHighlightsSection.dataset.profileUid = String(profileUid || '');
+        this.profileHighlightsSection.dataset.isOwn = isOwn ? '1' : '0';
+        this.profileHighlightsList.innerHTML = '';
+
+        if (this.profileStoryArchiveBtn) {
+            this.setElementHidden(this.profileStoryArchiveBtn, !isOwn);
+        }
+
+        if (!list.length) {
+            if (isOwn) {
+                if (this.profileHighlightsEmpty) {
+                    this.profileHighlightsEmpty.textContent = '\u0410\u0440\u0445\u0438\u0432 \u0438\u0441\u0442\u043e\u0440\u0438\u0439 \u0433\u043e\u0442\u043e\u0432. \u0414\u043e\u0431\u0430\u0432\u043b\u044f\u0439\u0442\u0435 \u043b\u0443\u0447\u0448\u0438\u0435 \u0438\u0441\u0442\u043e\u0440\u0438\u0438 \u0432 \u0430\u043a\u0442\u0443\u0430\u043b\u044c\u043d\u043e\u0435.';
+                    this.setElementHidden(this.profileHighlightsEmpty, false);
+                }
+                this.setElementHidden(this.profileHighlightsSection, false);
+                return;
+            }
+
+            if (this.profileHighlightsEmpty) {
+                this.setElementHidden(this.profileHighlightsEmpty, true);
+            }
+            this.setElementHidden(this.profileHighlightsSection, true);
+            return;
+        }
+
+        const fragment = document.createDocumentFragment();
+        list.forEach((story) => {
+            const chip = document.createElement('button');
+            chip.type = 'button';
+            chip.className = 'profile-highlight-chip';
+            chip.dataset.storyId = String(story.id || '');
+            chip.innerHTML = `
+                <span class="profile-highlight-thumb">
+                    ${this.buildStoryPreviewMedia(story, { className: 'profile-highlight-media', muted: true })}
+                </span>
+                <span class="profile-highlight-label">${this.escapeHtml(String(story.caption || '\u0418\u0441\u0442\u043e\u0440\u0438\u044f').slice(0, 24))}</span>
+            `;
+            fragment.appendChild(chip);
+        });
+
+        this.profileHighlightsList.appendChild(fragment);
+        if (this.profileHighlightsEmpty) {
+            this.setElementHidden(this.profileHighlightsEmpty, true);
+        }
+        this.setElementHidden(this.profileHighlightsSection, false);
+    }
+
+    async refreshProfileStoryCollections({ force = false, profileUid = null, isOwn = null } = {}) {
+        const resolvedUid = String(profileUid || this.getCurrentProfileIdentity().profileUid || '').trim();
+        const resolvedOwn = typeof isOwn === 'boolean'
+            ? isOwn
+            : !!(this.profileViewContext && this.profileViewContext.isOwn && String(this.profileViewContext.profileUid || '') === resolvedUid);
+
+        if (!resolvedUid) {
+            this.resetProfileStoryCollectionsUi();
+            return;
+        }
+
+        this.profileStoryCollectionsRequestId = (this.profileStoryCollectionsRequestId || 0) + 1;
+        const requestId = this.profileStoryCollectionsRequestId;
+
+        let archive = [];
+        try {
+            archive = await this.getStoryArchive(resolvedUid, { force, limit: 80 });
+        } catch (error) {
+            console.error('\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043a\u0438 \u0430\u0440\u0445\u0438\u0432\u0430 \u0438\u0441\u0442\u043e\u0440\u0438\u0439:', error);
+            archive = [];
+        }
+
+        if (this.profileStoryCollectionsRequestId !== requestId) return;
+
+        const highlights = archive
+            .filter((story) => story && story.highlighted === true)
+            .sort((a, b) => {
+                const left = parseInt(a.highlightedAt || a.createdAt, 10) || 0;
+                const right = parseInt(b.highlightedAt || b.createdAt, 10) || 0;
+                return right - left;
+            })
+            .slice(0, 12);
+
+        this.renderProfileHighlights(highlights, {
+            isOwn: resolvedOwn,
+            profileUid: resolvedUid
+        });
+    }
+
+    syncProfileAvatarStoryState({ clear = false } = {}) {
+        const avatarWrap = this.profileAvatarWrap || document.querySelector('#profile-view .profile-avatar-wrap');
+        const avatarImg = this.profileAvatarImg || document.getElementById('profile-avatar-img');
+        if (!avatarWrap || !avatarImg) return;
+
+        const identity = clear
+            ? { profileUid: '', handle: 'user', displayName: 'Профиль' }
+            : this.getCurrentProfileIdentity();
+        const storyGroup = !clear ? this.getCurrentProfileStoryGroup(identity.profileUid) : null;
+        const activeStories = Array.isArray(storyGroup && storyGroup.stories) ? storyGroup.stories : [];
+        const hasStory = activeStories.length > 0;
+        const hasUnseen = hasStory && activeStories.some((story) => !this.hasStorySeen(story && story.id ? story.id : ''));
+        const previewSrc = clear ? '' : (avatarImg.currentSrc || avatarImg.src || '');
+
+        avatarWrap.classList.toggle('has-story', hasStory);
+        avatarWrap.classList.toggle('has-unseen-story', hasUnseen);
+        avatarWrap.classList.toggle('has-seen-story', hasStory && !hasUnseen);
+        avatarWrap.dataset.storyUid = hasStory ? identity.profileUid : '';
+        avatarWrap.dataset.profileHandle = identity.handle || 'user';
+        avatarWrap.dataset.profileDisplayName = identity.displayName || identity.handle || 'Профиль';
+        avatarWrap.dataset.previewSrc = previewSrc;
+        avatarWrap.dataset.canPreview = previewSrc ? '1' : '0';
+        avatarWrap.dataset.suppressClick = '0';
+        avatarWrap.tabIndex = hasStory ? 0 : -1;
+        avatarWrap.setAttribute('role', hasStory ? 'button' : 'img');
+        avatarWrap.setAttribute(
+            'aria-label',
+            hasStory
+                ? `Открыть историю ${identity.displayName || identity.handle || 'профиля'}`
+                : 'Фото профиля'
+        );
+    }
+
+    ensureProfileAvatarPreviewModal() {
+        if (!this.profileAvatarPreviewModal) {
+            this.profileAvatarPreviewModal = document.getElementById('profile-avatar-preview-modal');
+            this.profileAvatarPreviewImage = document.getElementById('profile-avatar-preview-image');
+            this.profileAvatarPreviewTitle = document.getElementById('profile-avatar-preview-title');
+            this.profileAvatarPreviewHandle = document.getElementById('profile-avatar-preview-handle');
+            this.profileAvatarPreviewCloseBtn = document.getElementById('profile-avatar-preview-close');
+        }
+
+        const modal = this.profileAvatarPreviewModal;
+        if (!modal) return null;
+
+        if (modal.dataset.bound !== '1') {
+            modal.dataset.bound = '1';
+            modal.addEventListener('click', (event) => {
+                const shouldClose = event.target === modal
+                    || (event.target && event.target.closest
+                        ? event.target.closest('[data-close-avatar-preview="1"]')
+                        : null);
+                if (shouldClose) {
+                    this.closeProfileAvatarPreview();
+                }
+            });
+        }
+
+        if (!this.profileAvatarPreviewEscapeBound) {
+            this.profileAvatarPreviewEscapeBound = true;
+            document.addEventListener('keydown', (event) => {
+                if (event.key !== 'Escape') return;
+                if (!this.profileAvatarPreviewModal || !this.profileAvatarPreviewModal.classList.contains('open')) return;
+                this.closeProfileAvatarPreview();
+            });
+        }
+
+        return modal;
+    }
+
+    openProfileAvatarPreview() {
+        const avatarWrap = this.profileAvatarWrap || document.querySelector('#profile-view .profile-avatar-wrap');
+        const modal = this.ensureProfileAvatarPreviewModal();
+        if (!avatarWrap || !modal) return;
+
+        const src = String(avatarWrap.dataset.previewSrc || this.profileAvatarImg?.currentSrc || this.profileAvatarImg?.src || '').trim();
+        if (!src) return;
+
+        const title = String(avatarWrap.dataset.profileDisplayName || 'Профиль').trim() || 'Профиль';
+        const handle = String(avatarWrap.dataset.profileHandle || '').replace(/^@+/, '').trim();
+
+        if (this.profileAvatarPreviewImage) {
+            this.profileAvatarPreviewImage.src = src;
+            this.profileAvatarPreviewImage.alt = title;
+        }
+        if (this.profileAvatarPreviewTitle) {
+            this.profileAvatarPreviewTitle.textContent = title;
+        }
+        if (this.profileAvatarPreviewHandle) {
+            this.profileAvatarPreviewHandle.textContent = handle ? `@${handle}` : '';
+        }
+
+        modal.classList.add('open');
+        document.body.classList.add('profile-avatar-preview-open');
+    }
+
+    closeProfileAvatarPreview() {
+        const modal = this.profileAvatarPreviewModal || document.getElementById('profile-avatar-preview-modal');
+        if (!modal) return;
+        modal.classList.remove('open');
+        document.body.classList.remove('profile-avatar-preview-open');
     }
 
     renderProfileGridPlaceholders(gridEl) {
@@ -1189,7 +1607,7 @@ class AdvancedApp {
             const emptyText = isOwn ? 'У вас пока нет публикаций' : 'У пользователя пока нет видео';
             this.renderProfileVideoGrid(context.baseVideos || [], {
                 allowDelete: isOwn,
-                usePlaceholders: true,
+                usePlaceholders: isOwn,
                 emptyText
             });
             return;
@@ -1463,15 +1881,13 @@ class AdvancedApp {
         if (switchToReg) {
             switchToReg.onclick = (e) => {
                 if (e && typeof e.preventDefault === 'function') e.preventDefault();
-                document.getElementById('login-form').style.display = 'none';
-                document.getElementById('register-form').style.display = 'block';
+                this.setAuthFormMode('register');
             };
         }
         if (switchToLogin) {
             switchToLogin.onclick = (e) => {
                 if (e && typeof e.preventDefault === 'function') e.preventDefault();
-                document.getElementById('login-form').style.display = 'block';
-                document.getElementById('register-form').style.display = 'none';
+                this.setAuthFormMode('login');
             };
         }
     }
@@ -1765,6 +2181,32 @@ class AdvancedApp {
             });
         }
 
+        if (this.profileHighlightsList && this.profileHighlightsList.dataset.bound !== '1') {
+            this.profileHighlightsList.dataset.bound = '1';
+            this.profileHighlightsList.addEventListener('click', async (event) => {
+                const chip = event.target && event.target.closest
+                    ? event.target.closest('.profile-highlight-chip[data-story-id]')
+                    : null;
+                if (!chip) return;
+                const storyId = String(chip.dataset.storyId || '').trim();
+                const profileUid = this.profileHighlightsSection
+                    ? String(this.profileHighlightsSection.dataset.profileUid || '').trim()
+                    : '';
+                if (!storyId || !profileUid) return;
+                await this.openProfileHighlightStory(profileUid, storyId);
+            });
+        }
+
+        if (this.profileStoryArchiveBtn && this.profileStoryArchiveBtn.dataset.bound !== '1') {
+            this.profileStoryArchiveBtn.dataset.bound = '1';
+            this.profileStoryArchiveBtn.addEventListener('click', async () => {
+                const identity = this.getCurrentProfileIdentity();
+                const profileUid = String(identity.profileUid || '').trim();
+                if (!profileUid) return;
+                await this.openStoryArchiveSheet(profileUid, { force: true });
+            });
+        }
+
         if (this.storyViewerCloseBtn && this.storyViewerCloseBtn.dataset.bound !== '1') {
             this.storyViewerCloseBtn.dataset.bound = '1';
             this.storyViewerCloseBtn.addEventListener('click', () => this.closeStoryViewer());
@@ -1783,6 +2225,65 @@ class AdvancedApp {
                 if (e.target === this.storyViewerModal) {
                     this.closeStoryViewer();
                 }
+            });
+        }
+
+        if (this.storyViewerHighlightBtn && this.storyViewerHighlightBtn.dataset.bound !== '1') {
+            this.storyViewerHighlightBtn.dataset.bound = '1';
+            this.storyViewerHighlightBtn.addEventListener('click', async () => {
+                await this.toggleCurrentStoryHighlight();
+            });
+        }
+
+        if (this.storyViewerDeleteBtn && this.storyViewerDeleteBtn.dataset.bound !== '1') {
+            this.storyViewerDeleteBtn.dataset.bound = '1';
+            this.storyViewerDeleteBtn.addEventListener('click', async () => {
+                await this.deleteCurrentStory();
+            });
+        }
+
+        if (this.storyViewerReplySendBtn && this.storyViewerReplySendBtn.dataset.bound !== '1') {
+            this.storyViewerReplySendBtn.dataset.bound = '1';
+            this.storyViewerReplySendBtn.addEventListener('click', async () => {
+                await this.sendStoryReplyFromViewer();
+            });
+        }
+
+        if (this.storyViewerReplyInput && this.storyViewerReplyInput.dataset.bound !== '1') {
+            this.storyViewerReplyInput.dataset.bound = '1';
+            this.storyViewerReplyInput.addEventListener('keydown', async (event) => {
+                if (event.key !== 'Enter') return;
+                event.preventDefault();
+                await this.sendStoryReplyFromViewer();
+            });
+            this.storyViewerReplyInput.addEventListener('focus', () => this.pauseStoryAutoplay());
+            this.storyViewerReplyInput.addEventListener('blur', () => {
+                if (this.storyViewerModal && this.storyViewerModal.classList.contains('open')) {
+                    this.resumeStoryAutoplay();
+                }
+            });
+        }
+
+        if (this.storyArchiveSheet && this.storyArchiveSheet.dataset.bound !== '1') {
+            this.storyArchiveSheet.dataset.bound = '1';
+            this.storyArchiveSheet.addEventListener('click', async (event) => {
+                const closeTrigger = event.target && event.target.closest
+                    ? event.target.closest('[data-close-story-archive="1"], #story-archive-sheet-close')
+                    : null;
+                if (closeTrigger || event.target === this.storyArchiveSheet) {
+                    this.closeStoryArchiveSheet();
+                    return;
+                }
+
+                const item = event.target && event.target.closest
+                    ? event.target.closest('.story-archive-item[data-story-id]')
+                    : null;
+                if (!item) return;
+                const storyId = String(item.dataset.storyId || '').trim();
+                const profileUid = String(item.dataset.storyUid || '').trim();
+                if (!storyId || !profileUid) return;
+                this.closeStoryArchiveSheet();
+                await this.openStoryArchive(profileUid, { startStoryId: storyId, force: true });
             });
         }
 
@@ -1843,6 +2344,10 @@ class AdvancedApp {
         if (!this.storyViewerKeyBound) {
             this.storyViewerKeyBound = true;
             document.addEventListener('keydown', (e) => {
+                if (this.storyArchiveSheet && this.storyArchiveSheet.classList.contains('open') && e.key === 'Escape') {
+                    this.closeStoryArchiveSheet();
+                    return;
+                }
                 if (!this.storyViewerModal || !this.storyViewerModal.classList.contains('open')) return;
                 if (e.key === 'Escape') {
                     this.closeStoryViewer();
@@ -1969,11 +2474,358 @@ class AdvancedApp {
 
         this.storiesByAuthor = this.groupStoriesByAuthor(stories);
         this.renderStoriesStrip();
+        this.syncProfileAvatarStoryState();
+        this.refreshProfileStoryCollections().catch(() => {});
         this.endPerf(perfToken, {
             status: perfStatus,
             totalStories: Array.isArray(stories) ? stories.length : 0,
             authors: Array.isArray(this.storiesByAuthor) ? this.storiesByAuthor.length : 0
         });
+    }
+
+    getActiveStory() {
+        if (!Array.isArray(this.activeStoryQueue) || this.activeStoryIndex < 0) return null;
+        return this.activeStoryQueue[this.activeStoryIndex] || null;
+    }
+
+    updateStoryViewerChrome(story = {}) {
+        const currentUid = this.getCurrentUidSafe();
+        const storyUid = String(story && story.uid ? story.uid : '').trim();
+        const isOwnStory = !!(currentUid && storyUid && currentUid === storyUid);
+        const canReply = !!(currentUid && storyUid && currentUid !== storyUid);
+
+        if (this.storyViewerOwnerActions) {
+            this.setElementHidden(this.storyViewerOwnerActions, !isOwnStory);
+        }
+        if (this.storyViewerHighlightBtn) {
+            this.storyViewerHighlightBtn.textContent = story && story.highlighted
+                ? '\u0423\u0431\u0440\u0430\u0442\u044c'
+                : '\u0412 \u0430\u043a\u0442\u0443\u0430\u043b\u044c\u043d\u043e\u0435';
+        }
+        if (this.storyViewerDeleteBtn) {
+            this.storyViewerDeleteBtn.disabled = !isOwnStory;
+        }
+
+        if (this.storyViewerReplyBar) {
+            this.setElementHidden(this.storyViewerReplyBar, !canReply);
+        }
+        if (this.storyViewerReplyInput) {
+            this.storyViewerReplyInput.placeholder = canReply
+                ? `\u041e\u0442\u0432\u0435\u0442\u0438\u0442\u044c @${String(story.author || 'user').replace(/^@+/, '').trim() || 'user'}`
+                : '\u041e\u0442\u0432\u0435\u0442 \u043d\u0430 \u0438\u0441\u0442\u043e\u0440\u0438\u044e';
+        }
+
+        if (this.storyViewerSurface) {
+            this.storyViewerSurface.classList.toggle('has-owner-actions', isOwnStory);
+            this.storyViewerSurface.classList.toggle('has-reply-bar', canReply);
+        }
+    }
+
+    async openProfileHighlightStory(profileUid, storyId) {
+        await this.openStoryArchive(profileUid, {
+            startStoryId: storyId,
+            highlightedOnly: true
+        });
+    }
+
+    async openStoryArchive(profileUid, { startStoryId = '', force = false, highlightedOnly = false } = {}) {
+        const targetUid = String(profileUid || '').trim();
+        if (!targetUid) return;
+
+        const archive = await this.getStoryArchive(targetUid, {
+            force,
+            limit: 80
+        });
+        const filtered = archive
+            .filter((story) => highlightedOnly ? story && story.highlighted : true)
+            .sort((a, b) => {
+                if (highlightedOnly) {
+                    const left = parseInt(a.highlightedAt || a.createdAt, 10) || 0;
+                    const right = parseInt(b.highlightedAt || b.createdAt, 10) || 0;
+                    return right - left;
+                }
+                return (parseInt(b.createdAt, 10) || 0) - (parseInt(a.createdAt, 10) || 0);
+            });
+        if (!filtered.length) {
+            AdvancedViewRenderer.showToast(
+                highlightedOnly
+                    ? '\u0412 \u0430\u043a\u0442\u0443\u0430\u043b\u044c\u043d\u043e\u043c \u043f\u043e\u043a\u0430 \u043f\u0443\u0441\u0442\u043e'
+                    : '\u0410\u0440\u0445\u0438\u0432 \u0438\u0441\u0442\u043e\u0440\u0438\u0439 \u043f\u043e\u043a\u0430 \u043f\u0443\u0441\u0442',
+                'info'
+            );
+            return;
+        }
+
+        const targetId = String(startStoryId || '').trim();
+        const startIndex = targetId
+            ? Math.max(0, filtered.findIndex((story) => String(story && story.id ? story.id : '') === targetId))
+            : 0;
+
+        this.openStoryQueue(filtered, startIndex, {
+            source: highlightedOnly ? 'highlights' : 'archive',
+            ownerUid: targetUid
+        });
+    }
+
+    renderStoryArchiveSheet(stories = [], { profileUid = '', isOwn = false } = {}) {
+        if (!this.storyArchiveSheetList) return;
+
+        const list = Array.isArray(stories) ? stories.filter(Boolean) : [];
+        this.storyArchiveSheet.dataset.profileUid = String(profileUid || '');
+        this.storyArchiveSheet.dataset.isOwn = isOwn ? '1' : '0';
+
+        if (!list.length) {
+            this.storyArchiveSheetList.innerHTML = `
+                <div class="story-archive-empty">
+                    <div class="story-archive-empty-title">\u0418\u0441\u0442\u043e\u0440\u0438\u0439 \u043f\u043e\u043a\u0430 \u043d\u0435\u0442</div>
+                    <div class="story-archive-empty-text">\u041e\u043f\u0443\u0431\u043b\u0438\u043a\u0443\u0439\u0442\u0435 \u0438\u0441\u0442\u043e\u0440\u0438\u044e, \u0438 \u043e\u043d\u0430 \u043f\u043e\u044f\u0432\u0438\u0442\u0441\u044f \u0437\u0434\u0435\u0441\u044c.</div>
+                </div>
+            `;
+            return;
+        }
+
+        this.storyArchiveSheetList.innerHTML = list.map((story) => {
+            const statusBadges = [];
+            if (story.highlighted) statusBadges.push('<span class="story-archive-badge">\u0410\u043a\u0442\u0443\u0430\u043b\u044c\u043d\u043e\u0435</span>');
+            if (story.active) statusBadges.push('<span class="story-archive-badge is-live">\u0410\u043a\u0442\u0438\u0432\u043d\u0430</span>');
+            return `
+                <button class="story-archive-item" type="button" data-story-id="${this.escapeHtml(String(story.id || ''))}" data-story-uid="${this.escapeHtml(String(story.uid || profileUid || ''))}">
+                    <span class="story-archive-item-thumb">
+                        ${this.buildStoryPreviewMedia(story, { className: 'story-archive-item-media', muted: true })}
+                    </span>
+                    <span class="story-archive-item-body">
+                        <span class="story-archive-item-title">${this.escapeHtml(String(story.caption || '\u0418\u0441\u0442\u043e\u0440\u0438\u044f').slice(0, 44))}</span>
+                        <span class="story-archive-item-time">${this.escapeHtml(this.formatRelativeTime(story.createdAt))}</span>
+                        <span class="story-archive-item-badges">${statusBadges.join('')}</span>
+                    </span>
+                </button>
+            `;
+        }).join('');
+    }
+
+    async openStoryArchiveSheet(profileUid, { force = false } = {}) {
+        if (!this.storyArchiveSheet) return;
+
+        const targetUid = String(profileUid || '').trim();
+        const currentUid = this.getCurrentUidSafe();
+        if (!targetUid || !currentUid || currentUid !== targetUid) return;
+
+        this.storyArchiveSheet.classList.add('open');
+        document.body.classList.add('story-archive-open');
+        this.storyArchiveSheetRequestId = (this.storyArchiveSheetRequestId || 0) + 1;
+        const requestId = this.storyArchiveSheetRequestId;
+
+        if (this.storyArchiveSheetTitle) {
+            this.storyArchiveSheetTitle.textContent = '\u0410\u0440\u0445\u0438\u0432 \u0438\u0441\u0442\u043e\u0440\u0438\u0439';
+        }
+        if (this.storyArchiveSheetSubtitle) {
+            this.storyArchiveSheetSubtitle.textContent = '\u0412\u0441\u0435 \u0432\u0430\u0448\u0438 \u0438\u0441\u0442\u043e\u0440\u0438\u0438 \u0438 \u0430\u043a\u0442\u0443\u0430\u043b\u044c\u043d\u043e\u0435';
+        }
+        if (this.storyArchiveSheetList) {
+            this.storyArchiveSheetList.innerHTML = '<div class="story-archive-loading">\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430 \u0430\u0440\u0445\u0438\u0432\u0430...</div>';
+        }
+
+        let archive = [];
+        try {
+            archive = await this.getStoryArchive(targetUid, { force, limit: 80 });
+        } catch (error) {
+            console.error('\u041e\u0448\u0438\u0431\u043a\u0430 \u0437\u0430\u0433\u0440\u0443\u0437\u043a\u0438 \u0430\u0440\u0445\u0438\u0432\u0430 \u0438\u0441\u0442\u043e\u0440\u0438\u0439:', error);
+            archive = [];
+        }
+
+        if (this.storyArchiveSheetRequestId !== requestId) return;
+        this.renderStoryArchiveSheet(archive, {
+            profileUid: targetUid,
+            isOwn: true
+        });
+    }
+
+    closeStoryArchiveSheet() {
+        if (!this.storyArchiveSheet) return;
+        this.storyArchiveSheet.classList.remove('open');
+        document.body.classList.remove('story-archive-open');
+    }
+
+    syncStoryQueueAfterMutation({ removedStoryId = '', replaceStory = null } = {}) {
+        const removedId = String(removedStoryId || '').trim();
+        if (!Array.isArray(this.activeStoryQueue) || !this.activeStoryQueue.length) return;
+
+        if (removedId) {
+            const nextQueue = this.activeStoryQueue.filter((story) => String(story && story.id ? story.id : '') !== removedId);
+            if (!nextQueue.length) {
+                this.closeStoryViewer();
+                return;
+            }
+
+            this.activeStoryQueue = nextQueue;
+            if (this.activeStoryIndex >= nextQueue.length) {
+                this.activeStoryIndex = nextQueue.length - 1;
+            }
+            this.renderStoryProgressSegments();
+            this.renderActiveStory();
+            return;
+        }
+
+        if (replaceStory) {
+            this.activeStoryQueue[this.activeStoryIndex] = replaceStory;
+            this.updateStoryViewerChrome(replaceStory);
+        }
+    }
+
+    async toggleCurrentStoryHighlight() {
+        const story = this.getActiveStory();
+        const currentUid = this.getCurrentUidSafe();
+        if (!story || !currentUid || String(story.uid || '') !== currentUid) return;
+
+        if (!(firebaseService
+            && typeof firebaseService.isInitialized === 'function'
+            && firebaseService.isInitialized()
+            && typeof firebaseService.setStoryHighlight === 'function')) {
+            AdvancedViewRenderer.showToast('\u0410\u043a\u0442\u0443\u0430\u043b\u044c\u043d\u043e\u0435 \u043f\u043e\u043a\u0430 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e', 'warning');
+            return;
+        }
+
+        const nextValue = !story.highlighted;
+        try {
+            const updatedStory = await firebaseService.setStoryHighlight(story.id, nextValue);
+            this.invalidateStoryArchive(currentUid);
+            await this.refreshProfileStoryCollections({
+                force: true,
+                profileUid: currentUid,
+                isOwn: true
+            });
+
+            if (this.activeStoryContext && this.activeStoryContext.source === 'highlights' && !nextValue) {
+                this.syncStoryQueueAfterMutation({ removedStoryId: story.id });
+            } else {
+                this.syncStoryQueueAfterMutation({
+                    replaceStory: {
+                        ...story,
+                        ...updatedStory,
+                        highlighted: nextValue
+                    }
+                });
+            }
+
+            AdvancedViewRenderer.showToast(
+                nextValue
+                    ? '\u0418\u0441\u0442\u043e\u0440\u0438\u044f \u0434\u043e\u0431\u0430\u0432\u043b\u0435\u043d\u0430 \u0432 \u0430\u043a\u0442\u0443\u0430\u043b\u044c\u043d\u043e\u0435'
+                    : '\u0418\u0441\u0442\u043e\u0440\u0438\u044f \u0443\u0431\u0440\u0430\u043d\u0430 \u0438\u0437 \u0430\u043a\u0442\u0443\u0430\u043b\u044c\u043d\u043e\u0433\u043e',
+                'success'
+            );
+        } catch (error) {
+            console.error('\u041e\u0448\u0438\u0431\u043a\u0430 \u0438\u0437\u043c\u0435\u043d\u0435\u043d\u0438\u044f \u0430\u043a\u0442\u0443\u0430\u043b\u044c\u043d\u043e\u0433\u043e:', error);
+            AdvancedViewRenderer.showToast(error?.message || '\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043e\u0431\u043d\u043e\u0432\u0438\u0442\u044c \u0430\u043a\u0442\u0443\u0430\u043b\u044c\u043d\u043e\u0435', 'error');
+        }
+    }
+
+    async deleteCurrentStory() {
+        const story = this.getActiveStory();
+        const currentUid = this.getCurrentUidSafe();
+        if (!story || !currentUid || String(story.uid || '') !== currentUid) return;
+        if (!window.confirm('\u0423\u0434\u0430\u043b\u0438\u0442\u044c \u044d\u0442\u0443 \u0438\u0441\u0442\u043e\u0440\u0438\u044e?')) return;
+
+        if (!(firebaseService
+            && typeof firebaseService.isInitialized === 'function'
+            && firebaseService.isInitialized()
+            && typeof firebaseService.deleteStory === 'function')) {
+            AdvancedViewRenderer.showToast('\u0423\u0434\u0430\u043b\u0435\u043d\u0438\u0435 \u0438\u0441\u0442\u043e\u0440\u0438\u0439 \u043f\u043e\u043a\u0430 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e', 'warning');
+            return;
+        }
+
+        try {
+            await firebaseService.deleteStory(story.id);
+            this.invalidateStoryArchive(currentUid);
+            this.syncStoryQueueAfterMutation({ removedStoryId: story.id });
+            await this.loadStories({ silent: true });
+            await this.refreshProfileStoryCollections({
+                force: true,
+                profileUid: currentUid,
+                isOwn: true
+            });
+            AdvancedViewRenderer.showToast('\u0418\u0441\u0442\u043e\u0440\u0438\u044f \u0443\u0434\u0430\u043b\u0435\u043d\u0430', 'success');
+        } catch (error) {
+            console.error('\u041e\u0448\u0438\u0431\u043a\u0430 \u0443\u0434\u0430\u043b\u0435\u043d\u0438\u044f \u0438\u0441\u0442\u043e\u0440\u0438\u0438:', error);
+            AdvancedViewRenderer.showToast(error?.message || '\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0443\u0434\u0430\u043b\u0438\u0442\u044c \u0438\u0441\u0442\u043e\u0440\u0438\u044e', 'error');
+        }
+    }
+
+    async sendStoryReplyFromViewer() {
+        const story = this.getActiveStory();
+        if (!story) return;
+
+        const text = String(this.storyViewerReplyInput && this.storyViewerReplyInput.value
+            ? this.storyViewerReplyInput.value
+            : '').trim();
+        if (!text) {
+            AdvancedViewRenderer.showToast('\u041d\u0430\u043f\u0438\u0448\u0438\u0442\u0435 \u043e\u0442\u0432\u0435\u0442', 'warning');
+            return;
+        }
+
+        const currentUser = this.dataService.getCurrentUser();
+        if (!currentUser) {
+            this.navigateTo('auth-view');
+            return;
+        }
+
+        const currentUid = currentUser.uid ? String(currentUser.uid) : null;
+        const targetUid = String(story.uid || '').trim();
+        const targetName = String(story.author || 'user').replace(/^@+/, '').trim() || 'user';
+        if (!targetUid || !currentUid || targetUid === currentUid) return;
+
+        const chatId = currentUid && targetUid
+            ? [currentUid, targetUid].sort().join('_')
+            : [currentUser.name || 'user', targetName].sort().join('_');
+
+        const options = {
+            fromUid: currentUid,
+            toUid: targetUid,
+            delivered: !!(this.state.currentChatUid && String(this.state.currentChatUid) === targetUid && this.state.currentChatOnline),
+            type: 'story-reply',
+            storyReply: {
+                storyId: String(story.id || ''),
+                authorUid: targetUid,
+                authorName: targetName,
+                mediaUrl: String(story.mediaUrl || ''),
+                mediaMime: String(story.mediaMime || ''),
+                caption: String(story.caption || '').slice(0, 180),
+                createdAt: parseInt(story.createdAt, 10) || Date.now()
+            }
+        };
+
+        try {
+            if (firebaseService && firebaseService.isInitialized() && typeof firebaseService.addMessage === 'function') {
+                await firebaseService.addMessage(
+                    chatId,
+                    currentUser.name || 'user',
+                    targetName,
+                    text,
+                    targetUid,
+                    options
+                );
+            } else {
+                this.dataService.addMessage(
+                    chatId,
+                    currentUser.name || 'user',
+                    targetName,
+                    text,
+                    options
+                );
+            }
+
+            if (this.storyViewerReplyInput) {
+                this.storyViewerReplyInput.value = '';
+                this.storyViewerReplyInput.blur();
+            }
+            if (this.state.currentChatId && String(this.state.currentChatId) === String(chatId)) {
+                await this.refreshCurrentChatMessages();
+            }
+            await this.loadChats();
+            AdvancedViewRenderer.showToast('\u041e\u0442\u0432\u0435\u0442 \u043e\u0442\u043f\u0440\u0430\u0432\u043b\u0435\u043d \u0432 \u043b\u0438\u0447\u043a\u0443', 'success');
+        } catch (error) {
+            console.error('\u041e\u0448\u0438\u0431\u043a\u0430 \u043e\u0442\u0432\u0435\u0442\u0430 \u043d\u0430 \u0438\u0441\u0442\u043e\u0440\u0438\u044e:', error);
+            AdvancedViewRenderer.showToast(error?.message || '\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043e\u0442\u043f\u0440\u0430\u0432\u0438\u0442\u044c \u043e\u0442\u0432\u0435\u0442', 'error');
+        }
     }
 
     openStoryGroup(uid) {
@@ -1984,16 +2836,28 @@ class AdvancedApp {
 
         const firstUnseen = group.stories.findIndex(story => !this.hasStorySeen(story.id));
         const startIndex = firstUnseen >= 0 ? firstUnseen : Math.max(group.stories.length - 1, 0);
-        this.openStoryQueue(group.stories, startIndex);
+        this.openStoryQueue(group.stories, startIndex, {
+            source: 'active',
+            ownerUid: targetUid
+        });
     }
 
-    openStoryQueue(queue = [], startIndex = 0) {
+    openStoryQueue(queue = [], startIndex = 0, options = {}) {
         const list = Array.isArray(queue) ? queue.filter(Boolean) : [];
         if (!list.length || !this.storyViewerModal) return;
 
-        this.activeStoryQueue = list;
         const safeIndex = Math.max(0, Math.min(parseInt(startIndex, 10) || 0, list.length - 1));
+        this.activeStoryQueue = list;
         this.activeStoryIndex = safeIndex;
+        this.activeStoryContext = {
+            source: options.source || 'active',
+            ownerUid: String(options.ownerUid || list[safeIndex]?.uid || '').trim(),
+            isHighlights: options.source === 'highlights'
+        };
+        if (this.storyViewerReplyInput) {
+            this.storyViewerReplyInput.value = '';
+            this.storyViewerReplyInput.blur();
+        }
         this.storyViewerModal.classList.add('open');
         document.body.classList.add('story-viewer-open');
         this.renderStoryProgressSegments();
@@ -2067,6 +2931,7 @@ class AdvancedApp {
         if (this.storyViewerAvatar) this.storyViewerAvatar.src = avatar;
         if (this.storyViewerTime) this.storyViewerTime.textContent = this.formatRelativeTime(story.createdAt);
         this.updateStoryProgressUi(0);
+        this.updateStoryViewerChrome(story);
 
         const mime = String(story.mediaMime || '').toLowerCase();
         const isVideo = mime.startsWith('video/');
@@ -2249,9 +3114,22 @@ class AdvancedApp {
         this.storyPressState = null;
         this.activeStoryQueue = [];
         this.activeStoryIndex = -1;
+        this.activeStoryContext = null;
         this.storyProgressSegments = [];
         if (this.storyViewerStage) this.storyViewerStage.innerHTML = '';
         if (this.storyViewerProgressTrack) this.storyViewerProgressTrack.innerHTML = '';
+        if (this.storyViewerSurface) {
+            this.storyViewerSurface.classList.remove('has-owner-actions', 'has-reply-bar');
+        }
+        if (this.storyViewerReplyInput) {
+            this.storyViewerReplyInput.value = '';
+        }
+        if (this.storyViewerReplyBar) {
+            this.setElementHidden(this.storyViewerReplyBar, true);
+        }
+        if (this.storyViewerOwnerActions) {
+            this.setElementHidden(this.storyViewerOwnerActions, true);
+        }
     }
 
     async uploadStoryFromFile(file) {
@@ -2285,7 +3163,16 @@ class AdvancedApp {
 
         try {
             await firebaseService.uploadStory(file, { caption: String(caption || '').trim() });
+            const currentUid = this.getCurrentUidSafe();
+            if (currentUid) {
+                this.invalidateStoryArchive(currentUid);
+            }
             await this.loadStories({ silent: true });
+            await this.refreshProfileStoryCollections({
+                force: true,
+                profileUid: currentUid,
+                isOwn: true
+            });
             AdvancedViewRenderer.showToast('\u0418\u0441\u0442\u043e\u0440\u0438\u044f \u043e\u043f\u0443\u0431\u043b\u0438\u043a\u043e\u0432\u0430\u043d\u0430', 'success');
         } catch (error) {
             console.error('\u041e\u0448\u0438\u0431\u043a\u0430 \u043f\u0443\u0431\u043b\u0438\u043a\u0430\u0446\u0438\u0438 \u0438\u0441\u0442\u043e\u0440\u0438\u0438:', error);
@@ -2311,7 +3198,7 @@ class AdvancedApp {
     updateAdminMenuVisibility() {
         if (!this.adminMenu) return;
         const canAccessAdmin = this.isCurrentUserAdmin();
-        this.adminMenu.style.display = canAccessAdmin ? 'flex' : 'none';
+        this.setElementHidden(this.adminMenu, !canAccessAdmin);
 
         if (!canAccessAdmin && this.state.activeViewId === 'admin-view') {
             this.navigateTo('profile-view');
@@ -2891,8 +3778,7 @@ class AdvancedApp {
                 });
                 AdvancedViewRenderer.showToast('рџ”Ґ Р РµРіРёСЃС‚СЂР°С†РёСЏ С‡РµСЂРµР· Firebase СѓСЃРїРµС€РЅР°!', 'success');
                 
-                document.getElementById('register-form').style.display = 'none';
-                document.getElementById('login-form').style.display = 'block';
+                this.setAuthFormMode('login');
                 document.getElementById('login-email').value = email;
                 document.getElementById('login-pass').value = password;
                 
@@ -3117,7 +4003,8 @@ class AdvancedApp {
                     this.performSearch(query);
                 }, 300);
             } else {
-                this.searchEmpty.style.display = 'flex';
+                this.setSearchEmptyMessage('Начните печатать для поиска');
+                this.setElementHidden(this.searchEmpty, false);
                 this.searchResults.style.display = 'flex';
                 this.searchResults.innerHTML = '';
             }
@@ -3126,7 +4013,8 @@ class AdvancedApp {
         this.searchViewClear.addEventListener('click', () => {
             this.searchViewInput.value = '';
             this.searchViewClear.style.display = 'none';
-            this.searchEmpty.style.display = 'flex';
+            this.setSearchEmptyMessage('Начните печатать для поиска');
+            this.setElementHidden(this.searchEmpty, false);
             this.searchResults.innerHTML = '';
         });
     }
@@ -3233,6 +4121,91 @@ class AdvancedApp {
                 this.navigateTo('search-view');
             });
         }
+
+        if (this.profileAvatarWrap && this.profileAvatarWrap.dataset.bound !== '1') {
+            this.profileAvatarWrap.dataset.bound = '1';
+
+            const cancelAvatarPress = ({ suppressClick = false } = {}) => {
+                const press = this.profileAvatarPressState;
+                if (press && press.timer) {
+                    clearTimeout(press.timer);
+                }
+                if (suppressClick && this.profileAvatarWrap) {
+                    this.profileAvatarWrap.dataset.suppressClick = '1';
+                }
+                this.profileAvatarPressState = null;
+            };
+
+            this.profileAvatarWrap.addEventListener('pointerdown', (event) => {
+                if (event.button && event.button !== 0) return;
+                if (!this.profileAvatarWrap || this.profileAvatarWrap.dataset.canPreview !== '1') return;
+                if (event.pointerType && event.pointerType !== 'touch' && event.pointerType !== 'pen') return;
+
+                cancelAvatarPress();
+                this.profileAvatarPressState = {
+                    x: event.clientX,
+                    y: event.clientY,
+                    longPressTriggered: false,
+                    timer: window.setTimeout(() => {
+                        if (!this.profileAvatarPressState) return;
+                        this.profileAvatarPressState.longPressTriggered = true;
+                        if (this.profileAvatarWrap) {
+                            this.profileAvatarWrap.dataset.suppressClick = '1';
+                        }
+                        this.openProfileAvatarPreview();
+                    }, 420)
+                };
+            });
+
+            this.profileAvatarWrap.addEventListener('pointermove', (event) => {
+                const press = this.profileAvatarPressState;
+                if (!press) return;
+                const distanceX = Math.abs((event.clientX || 0) - press.x);
+                const distanceY = Math.abs((event.clientY || 0) - press.y);
+                if (distanceX > 8 || distanceY > 8) {
+                    cancelAvatarPress();
+                }
+            });
+
+            this.profileAvatarWrap.addEventListener('pointerup', () => {
+                cancelAvatarPress({
+                    suppressClick: !!(this.profileAvatarPressState && this.profileAvatarPressState.longPressTriggered)
+                });
+            });
+            this.profileAvatarWrap.addEventListener('pointercancel', () => cancelAvatarPress());
+            this.profileAvatarWrap.addEventListener('pointerleave', () => cancelAvatarPress());
+
+            this.profileAvatarWrap.addEventListener('click', (event) => {
+                if (!this.profileAvatarWrap) return;
+                if (this.profileAvatarWrap.dataset.suppressClick === '1') {
+                    this.profileAvatarWrap.dataset.suppressClick = '0';
+                    event.preventDefault();
+                    event.stopPropagation();
+                    return;
+                }
+
+                const storyUid = String(this.profileAvatarWrap.dataset.storyUid || '').trim();
+                if (!storyUid) return;
+                event.preventDefault();
+                this.openStoryGroup(storyUid);
+            });
+
+            this.profileAvatarWrap.addEventListener('contextmenu', (event) => {
+                if (!this.profileAvatarWrap || this.profileAvatarWrap.dataset.canPreview !== '1') return;
+                event.preventDefault();
+                this.openProfileAvatarPreview();
+            });
+
+            this.profileAvatarWrap.addEventListener('keydown', (event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') return;
+                const storyUid = this.profileAvatarWrap ? String(this.profileAvatarWrap.dataset.storyUid || '').trim() : '';
+                if (!storyUid) return;
+                event.preventDefault();
+                this.openStoryGroup(storyUid);
+            });
+        }
+
+        this.ensureProfileAvatarPreviewModal();
 
         if (this.profileMediaTabs && this.profileMediaTabs.dataset.bound !== '1') {
             this.profileMediaTabs.dataset.bound = '1';
@@ -4621,7 +5594,7 @@ class AdvancedApp {
         }
 
         if (this.uploadDraftNote) {
-            this.uploadDraftNote.style.display = 'none';
+            this.setElementHidden(this.uploadDraftNote, true);
             this.uploadDraftNote.textContent = '';
         }
         if (this.state.activeViewId === 'profile-view' && this.state.profileGridTab === 'drafts') {
@@ -4635,12 +5608,12 @@ class AdvancedApp {
     showUploadDraftNote(text = '') {
         if (!this.uploadDraftNote) return;
         this.uploadDraftNote.textContent = text;
-        this.uploadDraftNote.style.display = text ? 'block' : 'none';
+        this.setElementHidden(this.uploadDraftNote, !text);
         clearTimeout(this.uploadDraftNoteTimer);
         if (text) {
             this.uploadDraftNoteTimer = setTimeout(() => {
                 if (!this.uploadDraftNote) return;
-                this.uploadDraftNote.style.display = 'none';
+                this.setElementHidden(this.uploadDraftNote, true);
             }, 2600);
         }
     }
@@ -5356,6 +6329,7 @@ class AdvancedApp {
 
         document.querySelectorAll('video').forEach(v => v.pause());
         if (viewId !== 'feed-view') this.closeStoryViewer();
+        if (viewId !== 'profile-view') this.closeProfileAvatarPreview();
         this.state.activeViewId = viewId;
         if (viewId !== 'messages-view') {
             this.teardownChatRealtime();
@@ -5363,6 +6337,7 @@ class AdvancedApp {
             this.hideStickerPicker();
             this.updateTypingStatus(false);
             if (this.chatDialog) this.chatDialog.style.setProperty('--keyboard-offset', '0px');
+            if (typeof this.setMessagesPanelMode === 'function') this.setMessagesPanelMode('list');
         }
         this.views.forEach(v => v.classList.remove('active'));
         
@@ -5375,8 +6350,7 @@ class AdvancedApp {
             });
             
             if (viewId === 'auth-view') {
-                document.getElementById('login-form').style.display = 'block';
-                document.getElementById('register-form').style.display = 'none';
+                this.setAuthFormMode('login');
                 this.setupAuthSwitchListeners();
             }
             
@@ -5402,10 +6376,7 @@ class AdvancedApp {
                 this.restoreUploadDraft();
             }
             if (viewId === 'messages-view') {
-                if (this.chatDialog && this.messagesListSection) {
-                    this.chatDialog.style.display = 'none';
-                    this.messagesListSection.style.display = 'flex';
-                }
+                if (typeof this.setMessagesPanelMode === 'function') this.setMessagesPanelMode('list');
                 this.loadChats();
             }
             if (viewId === 'notifications-view') {
@@ -5438,7 +6409,7 @@ class AdvancedApp {
 
         body.classList.toggle('show-profile-menu', !!isOwnProfileView);
         if (this.accountSwitchMenu) {
-            this.accountSwitchMenu.style.display = isOwnProfileView ? 'flex' : 'none';
+            this.setElementHidden(this.accountSwitchMenu, !isOwnProfileView);
         }
 
         if (!isOwnProfileView) {
@@ -5565,18 +6536,21 @@ class AdvancedApp {
         const n = Math.max(0, parseInt(count, 10) || 0);
         if (n > 0) {
             this.messagesBadge.textContent = n > 99 ? '99+' : String(n);
-            this.messagesBadge.style.display = 'flex';
+            this.setElementHidden(this.messagesBadge, false);
         } else {
-            this.messagesBadge.style.display = 'none';
+            this.setElementHidden(this.messagesBadge, true);
         }
     }
 
     getMessagePreviewText(message = {}) {
         const msg = message || {};
+        const mime = String(msg.file?.mime || '').toLowerCase();
+        if (msg.type === 'voice' || (msg.type === 'file' && mime.startsWith('audio/'))) return '🎤 Голосовое';
         if (msg.type === 'file') return `рџ“Ћ ${msg.file?.name || 'Р¤Р°Р№Р»'}`;
         if (msg.type === 'sticker') return 'рџЄ„ РЎС‚РёРєРµСЂ';
         if (msg.type === 'video-circle') return 'рџЋҐ Р’РёРґРµРѕРєСЂСѓР¶РѕРє';
         if (msg.type === 'call-event') return 'рџ“№ Р’РёРґРµРѕР·РІРѕРЅРѕРє';
+        if (msg.type === 'story-reply') return '↪ История';
         return String(msg.content || '').trim();
     }
 
@@ -5586,8 +6560,8 @@ class AdvancedApp {
 
         // If user is already inside this chat, don't spam a toast.
         if (this.state.activeViewId === 'messages-view'
-            && this.chatDialog
-            && this.chatDialog.style.display !== 'none'
+            && typeof this.isMessagesChatOpen === 'function'
+            && this.isMessagesChatOpen()
             && this.state.currentChatId
             && chatId
             && String(this.state.currentChatId) === String(chatId)) {
@@ -6016,7 +6990,8 @@ class AdvancedApp {
 
     async performSearch(query) {
         if (!query.trim()) {
-            this.searchEmpty.style.display = 'flex';
+            this.setSearchEmptyMessage('Начните печатать для поиска');
+            this.setElementHidden(this.searchEmpty, false);
             this.searchResults.innerHTML = '';
             return;
         }
@@ -6030,17 +7005,11 @@ class AdvancedApp {
         const verifiedByName = new Map(profileResults.map(u => [u.name, !!u.verified]));
 
         this.searchResults.innerHTML = '';
-        this.searchEmpty.style.display = 'none';
+        this.setElementHidden(this.searchEmpty, true);
 
         if (videoResults.length === 0 && profileResults.length === 0) {
-            this.searchEmpty.style.display = 'flex';
-            this.searchEmpty.innerHTML = `
-                <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity="0.5">
-                    <circle cx="11" cy="11" r="8"></circle>
-                    <path d="m21 21-4.35-4.35"></path>
-                </svg>
-                <p style="color: var(--secondary-text); margin-top: 15px;">РќРёС‡РµРіРѕ РЅРµ РЅР°Р№РґРµРЅРѕ</p>
-            `;
+            this.setSearchEmptyMessage('Ничего не найдено');
+            this.setElementHidden(this.searchEmpty, false);
             return;
         }
 
@@ -6114,7 +7083,7 @@ class AdvancedApp {
             if (this.profilePrivateToggle) this.profilePrivateToggle.checked = false;
             if (this.profileAdultToggle) this.profileAdultToggle.checked = false;
             if (this.profileFollowRequestsBtn) this.profileFollowRequestsBtn.textContent = '\u0417\u0430\u044f\u0432\u043a\u0438: 0';
-            if (this.profileRequestsMenu) this.profileRequestsMenu.style.display = 'none';
+            this.setElementHidden(this.profileRequestsMenu, true);
             if (this.profileRequestsMenuText) this.profileRequestsMenuText.textContent = '\u0417\u0430\u044f\u0432\u043a\u0438: 0';
 
             this.profileViewContext = {
@@ -6125,6 +7094,8 @@ class AdvancedApp {
             };
             this.applyProfileMediaTabsVisibility({ isOwn: false });
             this.setProfileGridTab('videos', { rerender: false });
+            this.syncProfileAvatarStoryState({ clear: true });
+            this.resetProfileStoryCollectionsUi();
             this.renderProfileGridMessage(document.getElementById('profile-grid'), 'Войдите, чтобы увидеть свой профиль');
             return;
         }
@@ -6148,37 +7119,37 @@ class AdvancedApp {
         if (this.profileFollowRequestsBtn) {
             this.profileFollowRequestsBtn.textContent = `\u0417\u0430\u044f\u0432\u043a\u0438: ${requestsCount}`;
         }
-        if (this.profileRequestsMenu) this.profileRequestsMenu.style.display = 'flex';
+        this.setElementHidden(this.profileRequestsMenu, false);
         if (this.profileRequestsMenuText) this.profileRequestsMenuText.textContent = `\u0417\u0430\u044f\u0432\u043a\u0438: ${requestsCount}`;
         
         if (userProfile.location) {
-            document.getElementById('profile-location').style.display = 'block';
+            this.setElementHidden('profile-location', false);
             document.getElementById('location-text').textContent = userProfile.location;
         } else {
-            document.getElementById('profile-location').style.display = 'none';
+            this.setElementHidden('profile-location', true);
         }
         
         if (userProfile.website) {
-            document.getElementById('profile-website').style.display = 'block';
+            this.setElementHidden('profile-website', false);
             document.getElementById('website-link').textContent = userProfile.website;
             document.getElementById('website-link').href = userProfile.website.startsWith('http') ? userProfile.website : 'https://' + userProfile.website;
         } else {
-            document.getElementById('profile-website').style.display = 'none';
+            this.setElementHidden('profile-website', true);
         }
         
         if (userProfile.interests) {
-            document.getElementById('profile-interests').style.display = 'block';
+            this.setElementHidden('profile-interests', false);
             document.getElementById('interests-text').textContent = userProfile.interests;
         } else {
-            document.getElementById('profile-interests').style.display = 'none';
+            this.setElementHidden('profile-interests', true);
         }
         
         if (userProfile.gender && userProfile.gender !== 'other') {
-            document.getElementById('profile-gender').style.display = 'block';
+            this.setElementHidden('profile-gender', false);
             const genderLabels = { male: 'РњСѓР¶С‡РёРЅР°', female: 'Р–РµРЅС‰РёРЅР°', other: 'РќРµ СѓРєР°Р·Р°РЅРѕ' };
             document.getElementById('gender-text').textContent = genderLabels[userProfile.gender] || userProfile.gender;
         } else {
-            document.getElementById('profile-gender').style.display = 'none';
+            this.setElementHidden('profile-gender', true);
         }
         
         document.getElementById('following-stat').querySelector('.stat-num').textContent = AdvancedViewRenderer.formatNumber(userProfile.stats.following);
@@ -6193,6 +7164,11 @@ class AdvancedApp {
         };
         this.applyProfileMediaTabsVisibility({ isOwn: true });
         this.setProfileGridTab(this.state.profileGridTab || 'videos', { rerender: false });
+        this.syncProfileAvatarStoryState();
+        this.refreshProfileStoryCollections({
+            profileUid: userProfile.uid || null,
+            isOwn: true
+        }).catch(() => {});
 
         // If Firebase is available, load videos from Firestore so they persist after reload.
         if (typeof firebaseService !== 'undefined'

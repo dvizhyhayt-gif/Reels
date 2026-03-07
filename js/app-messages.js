@@ -199,7 +199,7 @@
         if (!this.notificationsBadge) return;
         const user = this.dataService && this.dataService.getCurrentUser ? this.dataService.getCurrentUser() : null;
         if (!user) {
-            this.notificationsBadge.style.display = 'none';
+            if (typeof this.setElementHidden === 'function') this.setElementHidden(this.notificationsBadge, true);
             return;
         }
         let unreadCount = 0;
@@ -216,9 +216,9 @@
         }
         if (unreadCount > 0) {
             this.notificationsBadge.textContent = unreadCount > 99 ? '99+' : String(unreadCount);
-            this.notificationsBadge.style.display = 'flex';
+            if (typeof this.setElementHidden === 'function') this.setElementHidden(this.notificationsBadge, false);
         } else {
-            this.notificationsBadge.style.display = 'none';
+            if (typeof this.setElementHidden === 'function') this.setElementHidden(this.notificationsBadge, true);
         }
     };
 
@@ -265,6 +265,39 @@
         return `был(а) ${new Date(normalizedTs).toLocaleDateString('ru-RU')}`;
     };
 
+    AdvancedApp.prototype.setMessagesPanelMode = function(mode = 'list') {
+        const messagesView = document.getElementById('messages-view');
+        if (!messagesView) return;
+        const isChatMode = mode === 'chat';
+        messagesView.classList.toggle('chat-open', isChatMode);
+        if (!isChatMode && this.chatDialog) {
+            this.chatDialog.style.setProperty('--keyboard-offset', '0px');
+        }
+    };
+
+    AdvancedApp.prototype.isMessagesChatOpen = function() {
+        const messagesView = document.getElementById('messages-view');
+        return !!(messagesView && messagesView.classList.contains('chat-open'));
+    };
+
+    AdvancedApp.prototype.renderChatHeaderUserLabel = function(name = '', verified = false) {
+        const normalizedName = String(name || '').replace(/^@+/, '').trim() || 'user';
+        const safeName = this.escapeHtml(normalizedName);
+        const badge = AdvancedViewRenderer.getVerifiedBadge(!!verified);
+        return `<span class="chat-user-label"><span class="chat-user-label-text">${safeName}</span>${badge}</span>`;
+    };
+
+    AdvancedApp.prototype.updateChatHeaderUser = function(name = '', verified = false) {
+        const normalizedName = String(name || '').replace(/^@+/, '').trim() || 'user';
+        if (this.chatUserName) {
+            this.chatUserName.innerHTML = this.renderChatHeaderUserLabel(normalizedName, verified);
+            this.chatUserName.setAttribute('title', normalizedName);
+        }
+        if (this.typingText) {
+            this.typingText.textContent = `${normalizedName} печатает...`;
+        }
+    };
+
     AdvancedApp.prototype.setupMessagesEvents = function() {
         if (this.backToListBtn) {
             this.backToListBtn.addEventListener('click', async () => {
@@ -272,12 +305,11 @@
                 this.teardownChatRealtime();
                 this.hideEmojiPicker();
                 this.hideStickerPicker();
-                this.chatDialog.style.display = 'none';
-                this.chatDialog.style.setProperty('--keyboard-offset', '0px');
-                this.messagesListSection.style.display = 'flex';
+                this.setMessagesPanelMode('list');
                 this.state.currentChatId = null;
                 this.state.currentChatUser = null;
                 this.state.currentChatUid = null;
+                this.state.currentChatVerified = false;
                 this.state.currentChatOnline = false;
                 this.state.currentChatLastSeen = null;
                 await this.loadChats();
@@ -577,11 +609,11 @@
         const avatar = targetProfile?.avatar || 'assets/default-avatar.svg';
         const online = !!targetProfile?.online;
         const lastSeen = targetProfile?.lastSeen || targetProfile?.lastActive || targetProfile?.updatedAt || null;
+        const verified = !!targetProfile?.verified;
 
-        if (this.chatUserName) this.chatUserName.textContent = `@${username}`;
+        this.updateChatHeaderUser(username, verified);
         if (this.chatUserAvatar) this.chatUserAvatar.src = avatar;
         if (this.chatUserStatus) this.chatUserStatus.textContent = this.formatLastSeen(online, lastSeen);
-        if (this.typingText) this.typingText.textContent = `@${username} печатает...`;
 
         try {
             if (firebaseService && firebaseService.isInitialized() && typeof firebaseService.markIncomingAsDelivered === 'function') {
@@ -598,8 +630,7 @@
             console.error('Ошибка отметки сообщений прочитанными:', error);
         }
 
-        this.messagesListSection.style.display = 'none';
-        this.chatDialog.style.display = 'flex';
+        this.setMessagesPanelMode('chat');
         if (this.messageInput) {
             this.messageInput.focus();
             this.onMessageInputChanged();
@@ -608,6 +639,7 @@
         this.state.currentChatId = chatId;
         this.state.currentChatUser = username;
         this.state.currentChatUid = resolvedTargetUid;
+        this.state.currentChatVerified = verified;
         this.state.currentChatAvatar = avatar;
         this.state.currentChatOnline = online;
         this.state.currentChatLastSeen = this.normalizeTimestampValue(lastSeen);
@@ -703,8 +735,8 @@
             id: preset?.id || 'party',
             title: rawSticker.title || preset?.title || 'Sticker',
             emoji: rawSticker.emoji || preset?.emoji || '✨',
-            style: preset?.style || 'sticker-style-party',
-            motion: preset?.motion || 'sticker-motion-pop'
+            style: rawSticker.style || preset?.style || 'sticker-style-party',
+            motion: rawSticker.motion || preset?.motion || 'sticker-motion-pop'
         };
 
         const safeTitle = this.escapeHtml(sticker.title);
@@ -823,7 +855,16 @@
 
     AdvancedApp.prototype.renderStickerPicker = function() {
         if (!this.stickerPicker) return;
-        this.stickerPicker.innerHTML = this.stickerPack.map(sticker => `
+        const stickers = Array.isArray(this.stickerPack) ? this.stickerPack : [];
+        this.stickerPicker.innerHTML = `
+            <div class="sticker-picker-header">
+                <div class="sticker-picker-heading">
+                    <div class="sticker-picker-title">Trend Pack</div>
+                    <div class="sticker-picker-subtitle">Новые реакции для чатов</div>
+                </div>
+                <div class="sticker-picker-badge">${stickers.length}</div>
+            </div>
+        ` + stickers.map(sticker => `
             <button class="sticker-btn ${sticker.style}" type="button" data-sticker-id="${sticker.id}">
                 <span class="sticker-btn-glyph ${sticker.motion}">${sticker.emoji}</span>
                 <span class="sticker-btn-title">${this.escapeHtml(sticker.title)}</span>
@@ -868,7 +909,7 @@
 
         const syncOffset = () => {
             if (!this.chatDialog) return;
-            if (this.chatDialog.style.display === 'none') {
+            if (!this.isMessagesChatOpen()) {
                 this.chatDialog.style.setProperty('--keyboard-offset', '0px');
                 return;
             }
@@ -2236,9 +2277,7 @@
     AdvancedApp.prototype.openChat = async function(...args) {
         await originalOpenChat.apply(this, args);
 
-        if (this.chatUserName) {
-            this.chatUserName.textContent = String(this.state.currentChatUser || this.chatUserName.textContent || '').replace(/^@+/, '');
-        }
+        this.updateChatHeaderUser(this.state.currentChatUser || this.chatUserName?.textContent || '', !!this.state.currentChatVerified);
         const onlineDot = document.getElementById('chat-user-online-dot');
         if (onlineDot) {
             onlineDot.classList.toggle('is-online', !!this.state.currentChatOnline);
@@ -2335,11 +2374,13 @@
         const mime = String(msg.file && msg.file.mime ? msg.file.mime : '').toLowerCase();
 
         if (msg.type === 'video-circle') return 'message-video-note';
+        if (msg.type === 'voice') return 'message-voice-note';
         if (msg.type === 'file' && mime.startsWith('image/')) return 'message-image-note';
         if (msg.type === 'file' && mime.startsWith('audio/')) return 'message-voice-note';
         if (msg.type === 'file') return 'message-file-note';
         if (msg.type === 'sticker') return 'message-sticker-note';
         if (msg.type === 'call-event') return 'message-call-note';
+        if (msg.type === 'story-reply') return 'message-story-reply-note';
         return 'message-text-note';
     };
 
@@ -2414,12 +2455,14 @@
         const msg = message || {};
         const mime = String(msg.file && msg.file.mime ? msg.file.mime : '').toLowerCase();
 
+        if (msg.type === 'voice') return this.renderVoiceMessageBody(msg, context);
         if (msg.type === 'file' && mime.startsWith('image/')) return this.renderImageMessageBody(msg);
         if (msg.type === 'file' && mime.startsWith('audio/')) return this.renderVoiceMessageBody(msg, context);
         if (msg.type === 'file') return this.renderFileMessageBody(msg);
         if (msg.type === 'sticker') return this.renderStickerMessageBody(msg);
         if (msg.type === 'video-circle') return this.renderVideoCircleMessageBody(msg);
         if (msg.type === 'call-event') return this.renderCallEventMessageBody(msg);
+        if (msg.type === 'story-reply') return this.renderStoryReplyMessageBody(msg);
         return this.renderTextMessageBody(msg, context);
     };
 
@@ -2437,6 +2480,42 @@
         return `
             <div class="message-shell message-text-shell">
                 <div class="message-bubble message-text-bubble">${safeText}${inlineMeta}</div>
+            </div>
+        `;
+    };
+
+    AdvancedApp.prototype.renderStoryReplyMessageBody = function(message = {}) {
+        const story = message.storyReply || {};
+        const safeUrl = this.escapeHtml(story.mediaUrl || '');
+        const safeAuthor = this.escapeHtml(String(story.authorName || message.toUser || 'user').replace(/^@+/, '').trim() || 'user');
+        const safeCaption = this.escapeHtml(String(story.caption || '').trim());
+        const safeText = this.escapeHtml(String(message.content || '').trim()).replace(/\n/g, '<br>');
+        const mime = String(story.mediaMime || '').toLowerCase();
+        const previewMedia = safeUrl
+            ? (mime.startsWith('video/')
+                ? `<video class="story-reply-preview-media" src="${safeUrl}" preload="metadata" playsinline muted></video>`
+                : `<img class="story-reply-preview-media" src="${safeUrl}" alt="@${safeAuthor}" loading="lazy">`)
+            : `<div class="story-reply-preview-fallback">Story</div>`;
+        const captionHtml = safeCaption
+            ? `<div class="story-reply-preview-caption">${safeCaption}</div>`
+            : '';
+        const textHtml = safeText
+            ? `<div class="story-reply-text">${safeText}</div>`
+            : '';
+
+        return `
+            <div class="message-shell message-story-reply-shell">
+                <div class="message-bubble story-reply-card">
+                    <div class="story-reply-kicker">Ответ на историю</div>
+                    <div class="story-reply-preview">
+                        <div class="story-reply-preview-thumb">${previewMedia}</div>
+                        <div class="story-reply-preview-body">
+                            <div class="story-reply-preview-author">@${safeAuthor}</div>
+                            ${captionHtml}
+                        </div>
+                    </div>
+                    ${textHtml}
+                </div>
             </div>
         `;
     };
@@ -2462,7 +2541,8 @@
     AdvancedApp.prototype.renderVoiceMessageBody = function(message = {}, context = {}) {
         const file = message.file || {};
         const safeUrl = file.url ? this.escapeHtml(file.url) : '';
-        const durationText = this.escapeHtml(this.formatVoiceDuration(file.duration || 0));
+        const durationSeconds = Number(file.duration) || Math.round((Number(file.durationMs) || 0) / 1000) || 0;
+        const durationText = this.escapeHtml(this.formatVoiceDuration(durationSeconds));
         const timeText = this.escapeHtml(this.formatClockTime(message.timestamp) || '');
         const statusClass = message.read ? 'read' : (message.delivered ? 'delivered' : 'sent');
         const doubleTick = '&#10003;&#10003;';
@@ -2472,8 +2552,9 @@
             ? `<span class="voice-message-inline-status ${statusClass}">${statusIcon}</span>`
             : '';
         const waveform = this.buildVoiceMessageWaveform((file.name || safeUrl || String(message.timestamp || 'voice')).slice(0, 48));
+        const safeDurationAttr = this.escapeHtml(String(durationSeconds || 0));
         const audioHtml = safeUrl
-            ? `<audio class="voice-message-audio" src="${safeUrl}" preload="metadata"></audio>`
+            ? `<audio class="voice-message-audio" src="${safeUrl}" preload="metadata" data-duration="${safeDurationAttr}"></audio>`
             : '';
 
         return `

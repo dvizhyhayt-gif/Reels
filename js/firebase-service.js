@@ -342,10 +342,13 @@ class FirebaseService {
 
     getMessagePreviewText(message = {}) {
         const msg = message || {};
+        const mime = String(msg.file?.mime || '').toLowerCase();
+        if (msg.type === 'voice' || (msg.type === 'file' && mime.startsWith('audio/'))) return '🎤 Голосовое';
         if (msg.type === 'file') return `📎 ${msg.file?.name || 'Файл'}`;
         if (msg.type === 'sticker') return '🪄 Стикер';
         if (msg.type === 'video-circle') return '🎥 Видеокружок';
         if (msg.type === 'call-event') return '📹 Видеозвонок';
+        if (msg.type === 'story-reply') return '↪ История';
         return String(msg.content || '');
     }
 
@@ -1534,24 +1537,35 @@ class FirebaseService {
         return { id: ref.id, ...storyDoc };
     }
 
+    mapStoryDoc(doc) {
+        const data = doc && typeof doc.data === 'function' ? (doc.data() || {}) : (doc || {});
+        const safeAuthor = data.author ? String(data.author) : 'user';
+        const createdAt = this.normalizeTimestamp(data.createdAt);
+        const expiresAt = this.normalizeTimestamp(data.expiresAt);
+        const deleted = data.deleted === true;
+        const active = !deleted
+            && data.active !== false
+            && (!expiresAt || expiresAt > Date.now());
+
+        return {
+            id: doc && doc.id ? doc.id : (data.id || null),
+            ...data,
+            author: safeAuthor,
+            displayName: this.normalizeDisplayName(data.displayName || safeAuthor, safeAuthor),
+            avatar: this.sanitizeAvatarForPublicPayload(data.avatar, safeAuthor),
+            createdAt,
+            expiresAt,
+            deleted,
+            active,
+            highlighted: data.highlighted === true,
+            highlightedAt: this.normalizeTimestamp(data.highlightedAt || data.updatedAt || createdAt),
+            viewsCount: Math.max(0, parseInt(data.viewsCount, 10) || 0)
+        };
+    }
+
     async getActiveStories(limit = 60) {
         const safeLimit = Math.max(1, Math.min(parseInt(limit, 10) || 60, 200));
         const now = Date.now();
-
-        const mapStoryDoc = (doc) => {
-            const data = doc.data() || {};
-            const safeAuthor = data.author ? String(data.author) : 'user';
-            return {
-                id: doc.id,
-                ...data,
-                author: safeAuthor,
-                displayName: this.normalizeDisplayName(data.displayName || safeAuthor, safeAuthor),
-                avatar: this.sanitizeAvatarForPublicPayload(data.avatar, safeAuthor),
-                createdAt: this.normalizeTimestamp(data.createdAt),
-                expiresAt: this.normalizeTimestamp(data.expiresAt),
-                viewsCount: Math.max(0, parseInt(data.viewsCount, 10) || 0)
-            };
-        };
 
         try {
             let stories = [];
@@ -1561,7 +1575,7 @@ class FirebaseService {
                     .orderBy('expiresAt', 'asc')
                     .limit(safeLimit)
                     .get();
-                stories = snapshot.docs.map(mapStoryDoc);
+                stories = snapshot.docs.map(doc => this.mapStoryDoc(doc));
             } catch (indexError) {
                 console.warn('⚠️ getActiveStories(): query with where+orderBy failed, using fallback query:', indexError?.message || indexError);
                 const fallbackLimit = Math.max(safeLimit * 3, safeLimit);
@@ -1570,18 +1584,107 @@ class FirebaseService {
                     .limit(fallbackLimit)
                     .get();
                 stories = snapshot.docs
-                    .map(mapStoryDoc)
+                    .map(doc => this.mapStoryDoc(doc))
                     .filter(story => (parseInt(story.expiresAt, 10) || 0) > now)
                     .slice(0, safeLimit);
             }
 
             return stories
-                .filter(story => !!(story && story.uid && story.mediaUrl))
+                .filter(story => !!(story && !story.deleted && story.active && story.uid && story.mediaUrl))
                 .sort((a, b) => (parseInt(a.createdAt, 10) || 0) - (parseInt(b.createdAt, 10) || 0));
         } catch (error) {
             console.error('❌ Ошибка загрузки активных историй:', error);
             return [];
         }
+    }
+
+    async getUserStoryArchive(uid, limit = 60) {
+        const targetUid = String(uid || '').trim();
+        if (!targetUid) return [];
+
+        const safeLimit = Math.max(1, Math.min(parseInt(limit, 10) || 60, 200));
+
+        try {
+            let stories = [];
+            try {
+                const snapshot = await this.db.collection('stories')
+                    .where('uid', '==', targetUid)
+                    .get();
+                stories = snapshot.docs.map(doc => this.mapStoryDoc(doc));
+            } catch (queryError) {
+                console.warn('⚠️ getUserStoryArchive(): uid query failed, using fallback query:', queryError?.message || queryError);
+                const snapshot = await this.db.collection('stories')
+                    .orderBy('createdAt', 'desc')
+                    .limit(Math.max(safeLimit * 4, safeLimit))
+                    .get();
+                stories = snapshot.docs
+                    .map(doc => this.mapStoryDoc(doc))
+                    .filter(story => String(story.uid || '') === targetUid);
+            }
+
+            return stories
+                .filter(story => !!(story && !story.deleted && story.mediaUrl))
+                .sort((a, b) => (parseInt(b.createdAt, 10) || 0) - (parseInt(a.createdAt, 10) || 0))
+                .slice(0, safeLimit);
+        } catch (error) {
+            console.error('❌ Ошибка загрузки архива историй:', error);
+            return [];
+        }
+    }
+
+    async setStoryHighlight(storyId, highlighted = true) {
+        const uid = this.getCurrentUid();
+        const id = String(storyId || '').trim();
+        if (!uid || !id) throw new Error('История не найдена');
+
+        const storyRef = this.db.collection('stories').doc(id);
+        const snapshot = await storyRef.get();
+        if (!snapshot.exists) throw new Error('История не найдена');
+
+        const story = this.mapStoryDoc(snapshot);
+        if (String(story.uid || '') !== String(uid)) {
+            throw new Error('Можно менять только свои истории');
+        }
+
+        const now = Date.now();
+        await storyRef.set({
+            highlighted: !!highlighted,
+            highlightedAt: highlighted ? now : null,
+            updatedAt: now
+        }, { merge: true });
+
+        return {
+            ...story,
+            highlighted: !!highlighted,
+            highlightedAt: highlighted ? now : null,
+            updatedAt: now
+        };
+    }
+
+    async deleteStory(storyId) {
+        const uid = this.getCurrentUid();
+        const id = String(storyId || '').trim();
+        if (!uid || !id) throw new Error('История не найдена');
+
+        const storyRef = this.db.collection('stories').doc(id);
+        const snapshot = await storyRef.get();
+        if (!snapshot.exists) throw new Error('История не найдена');
+
+        const story = this.mapStoryDoc(snapshot);
+        if (String(story.uid || '') !== String(uid)) {
+            throw new Error('Можно удалить только свою историю');
+        }
+
+        const now = Date.now();
+        await storyRef.set({
+            active: false,
+            deleted: true,
+            deletedAt: now,
+            expiresAt: Math.min(parseInt(story.expiresAt, 10) || now, now),
+            updatedAt: now
+        }, { merge: true });
+
+        return true;
     }
 
     async markStorySeen(storyId) {
@@ -1736,6 +1839,7 @@ class FirebaseService {
                 file: options.file || null,
                 sticker: options.sticker || null,
                 call: options.call || null,
+                storyReply: options.storyReply || null,
                 timestamp: now,
                 delivered,
                 deliveredAt: delivered ? now : null,
@@ -1772,7 +1876,8 @@ class FirebaseService {
                         type: data.type || 'text',
                         file: data.file || null,
                         sticker: data.sticker || null,
-                        call: data.call || null
+                        call: data.call || null,
+                        storyReply: data.storyReply || null
                     };
                 })
                 .sort((a, b) => a.timestamp - b.timestamp);

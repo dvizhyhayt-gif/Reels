@@ -20,17 +20,17 @@
     <link rel="stylesheet" href="css/profile.css">
     <link rel="stylesheet" href="css/security-account.css?v=20260218-1">
     <link rel="stylesheet" href="css/comments.css">
-    <link rel="stylesheet" href="css/components.css?v=20260219-4">
+    <link rel="stylesheet" href="css/components.css?v=20260308-1">
     <link rel="stylesheet" href="css/edit-profile.css">
     <link rel="stylesheet" href="css/menu.css">
     <link rel="stylesheet" href="css/notifications.css">
-<link rel="stylesheet" href="css/messages.css?v=20260307-2">
+<link rel="stylesheet" href="css/messages.css?v=20260308-5">
     <link rel="stylesheet" href="css/message-actions.css?v=20260219-1">
     <link rel="stylesheet" href="css/admin.css">
     <link rel="stylesheet" href="css/ads-cabinet.css?v=20260219-1">
     <link rel="stylesheet" href="css/creator-chat-ads.css?v=20260218-1">
     <link rel="stylesheet" href="css/media-carousel.css?v=20260218-1">
-    <link rel="stylesheet" href="css/ui-rebuild.css?v=20260307-2">
+    <link rel="stylesheet" href="css/ui-rebuild.css?v=20260308-10">
 </head>
 <body>
 
@@ -50,14 +50,14 @@
                 </svg>
                 <span id="theme-text">&#1057;&#1074;&#1077;&#1090;&#1083;&#1072;&#1103; &#1090;&#1077;&#1084;&#1072;</span>
             </div>
-            <div class="menu-item" id="account-switch-menu" style="display: none;">
+            <div class="menu-item is-hidden-default" id="account-switch-menu">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/>
                 </svg>
                 <span>Аккаунты</span>
             </div>
             <div class="menu-divider"></div>
-            <div class="menu-item" id="admin-menu" style="display: none;">
+            <div class="menu-item is-hidden-default" id="admin-menu">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M12 2l7 4v6c0 5-3.4 9.74-7 11-3.6-1.26-7-6-7-11V6l7-4zm0 2.18L7 6.94V12c0 3.89 2.48 7.92 5 8.98 2.52-1.06 5-5.09 5-8.98V6.94l-5-2.76zm-1 3.82h2v4h-2V8zm0 6h2v2h-2v-2z"/>
                 </svg>
@@ -123,12 +123,12 @@
                 </button>
             </div>
             <div class="search-results" id="search-results"></div>
-            <div class="search-empty" id="search-empty" style="display: none;">
+            <div class="search-empty is-hidden-default" id="search-empty">
                 <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity="0.5">
                     <circle cx="11" cy="11" r="8"></circle>
                     <path d="m21 21-4.35-4.35"></path>
                 </svg>
-                <p style="color: var(--secondary-text); margin-top: 15px;">Начните печатать для поиска</p>
+                <p class="search-empty-text">Начните печатать для поиска</p>
             </div>
         </div>
     </div>
@@ -153,7 +153,7 @@
         </div>
 
         <!-- Register Form -->
-        <div class="auth-container" id="register-form" style="display: none;">
+        <div class="auth-container is-hidden-default" id="register-form">
             <h2 class="auth-title">Регистрация</h2>
             <div class="auth-caption">
                 Создайте профиль и настройте аккаунт с первого шага.
@@ -182,7 +182,7 @@
     <!-- View: Upload -->
     <div id="upload-view" class="view">
         <div class="upload-container">
-            <h3 style="margin-bottom: 20px; display: flex; align-items: center; gap: 10px;">
+            <h3 class="upload-view-title">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="var(--accent-color)">
                     <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
                 </svg>
@@ -203,22 +203,22 @@
                 <svg viewBox="0 0 24 24">
                     <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
                 </svg>
-                <span style="font-size: 16px; margin-bottom: 5px;">Загрузите видео</span>
-                <span style="font-size: 12px; margin-bottom: 15px;">или запишите с камеры</span>
-                <button class="primary-btn" style="width: auto; padding: 10px 20px; font-size: 14px;" id="camera-toggle">
+                <span class="upload-area-title">Загрузите видео</span>
+                <span class="upload-area-subtitle">или запишите с камеры</span>
+                <button class="primary-btn upload-trigger-btn" id="camera-toggle">
                     📷 Включить камеру
                 </button>
-                <input type="file" id="video-file-input" accept="image/*,video/mp4,video/webm,video/quicktime" multiple style="display: none;">
+                <input type="file" id="video-file-input" class="is-hidden-default" accept="image/*,video/mp4,video/webm,video/quicktime" multiple>
             </div>
 
             <!-- Video Preview -->
-            <div id="upload-preview" style="display:none; margin-bottom: 20px; border-radius: 16px; overflow: hidden; background: #000;">
-                <video id="preview-video" style="width:100%; max-height: 300px;" controls></video>
+            <div id="upload-preview" class="upload-preview-shell">
+                <video id="preview-video" class="upload-preview-media" controls></video>
             </div>
 
             <!-- Filters -->
-            <div style="margin-bottom: 20px;">
-                <div style="font-size: 14px; margin-bottom: 10px; color: var(--secondary-text);">Фильтры:</div>
+            <div class="upload-section">
+                <div class="upload-section-title">Фильтры:</div>
                 <div class="filter-selector" id="filter-selector"></div>
             </div>
 
@@ -229,28 +229,28 @@
                 <button class="secondary-btn" id="save-draft-btn" type="button">Сохранить черновик</button>
                 <button class="secondary-btn" id="clear-draft-btn" type="button">Очистить</button>
             </div>
-            <div class="upload-draft-note" id="upload-draft-note" style="display: none;"></div>            
+            <div class="upload-draft-note is-hidden-default" id="upload-draft-note"></div>            
             <!-- Advanced Options -->
-            <details style="margin-bottom: 20px;">
-                <summary style="font-size: 14px; color: var(--secondary-text); cursor: pointer; padding: 10px; border-radius: 8px; background: rgba(255,255,255,0.05);">
+            <details class="upload-advanced">
+                <summary class="upload-advanced-summary">
                     Дополнительные настройки
                 </summary>
-                <div style="padding: 10px; background: rgba(255,255,255,0.02); border-radius: 8px; margin-top: 10px;">
-                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
-                        <input type="checkbox" id="allow-comments" checked style="transform: scale(1.2);">
-                        <label for="allow-comments" style="font-size: 13px;">Разрешить комментарии</label>
+                <div class="upload-advanced-body">
+                    <div class="upload-option-row">
+                        <input type="checkbox" id="allow-comments" checked class="upload-check-input">
+                        <label for="allow-comments" class="upload-option-label">Разрешить комментарии</label>
                     </div>
-                    <div style="display: flex; align-items: center; gap: 10px;">
-                        <input type="checkbox" id="private-video" style="transform: scale(1.2);">
-                        <label for="private-video" style="font-size: 13px;">Приватное видео</label>
+                    <div class="upload-option-row">
+                        <input type="checkbox" id="private-video" class="upload-check-input">
+                        <label for="private-video" class="upload-option-label">Приватное видео</label>
                     </div>
-                    <div style="display: flex; align-items: center; gap: 10px; margin-top: 10px;">
-                        <input type="checkbox" id="age-restricted" style="transform: scale(1.2);">
-                        <label for="age-restricted" style="font-size: 13px;">18+ (взрослый контент)</label>
+                    <div class="upload-option-row upload-option-row-top">
+                        <input type="checkbox" id="age-restricted" class="upload-check-input">
+                        <label for="age-restricted" class="upload-option-label">18+ (взрослый контент)</label>
                     </div>
-                    <div style="margin-top: 12px;">
-                        <label for="video-template" style="font-size: 13px; color: var(--secondary-text); display: block; margin-bottom: 6px;">Шаблон видео</label>
-                        <select id="video-template" class="form-input" style="height: 42px;">
+                    <div class="upload-field-block">
+                        <label for="video-template" class="upload-field-label">Шаблон видео</label>
+                        <select id="video-template" class="form-input upload-select-input">
                             <option value="none">Без шаблона</option>
                             <option value="intro-pop">Intro Pop</option>
                             <option value="clean-title">Clean Title</option>
@@ -259,12 +259,12 @@
                             <option value="trend">Trend</option>
                         </select>
                     </div>
-                    <div style="margin-top: 12px;">
-                        <label for="cover-text" style="font-size: 13px; color: var(--secondary-text); display: block; margin-bottom: 6px;">Текст обложки</label>
+                    <div class="upload-field-block">
+                        <label for="cover-text" class="upload-field-label">Текст обложки</label>
                         <input type="text" id="cover-text" class="form-input" maxlength="48" placeholder="Например: Новый трек в 22:00">
                     </div>
-                    <div style="display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 10px;">
-                        <select id="cover-sticker" class="form-input" style="height: 42px;">
+                    <div class="upload-cover-grid">
+                        <select id="cover-sticker" class="form-input upload-select-input">
                             <option value="">Стикер обложки</option>
                             <option value="🔥">🔥 Fire</option>
                             <option value="⚡">⚡ Energy</option>
@@ -273,7 +273,7 @@
                             <option value="🎬">🎬 Movie</option>
                             <option value="🎵">🎵 Music</option>
                         </select>
-                        <input type="color" id="cover-color" class="form-input" value="#1cb8ff" title="Цвет обложки" style="padding: 6px; width: 54px;">
+                        <input type="color" id="cover-color" class="form-input upload-color-input" value="#1cb8ff" title="Цвет обложки">
                     </div>
                 </div>
             </details>
@@ -342,7 +342,7 @@
             </div>
             
             <!-- Chat Dialog -->
-            <div class="chat-dialog" id="chat-dialog" style="display: none;">
+            <div class="chat-dialog" id="chat-dialog">
                 <div class="chat-header" id="chat-header">
                     <button class="back-btn" id="back-to-list" type="button" aria-label="Назад">
                         <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -386,8 +386,8 @@
                 <div class="sticker-picker" id="sticker-picker" style="display: none;"></div>
                 
                 <div class="message-input-area" id="message-input-area">
-                    <button class="message-tool-btn message-gif-btn" id="sticker-toggle-btn" type="button" title="GIF" aria-label="GIF">
-                        <span>GIF</span>
+                    <button class="message-tool-btn message-gif-btn" id="sticker-toggle-btn" type="button" title="Стикеры" aria-label="Стикеры">
+                        <span>Pack</span>
                     </button>
                     <input type="file" id="chat-video-circle-input" style="display: none;" accept="video/*" capture="user">
                     <input type="file" id="chat-file-input" style="display: none;" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt,.zip,.rar,.xls,.xlsx,.ppt,.pptx">
@@ -464,17 +464,16 @@
                         tabindex="0"
                         aria-label="Информация о верификации"
                         title="Верифицированный профиль"
-                        style="display: none;"
                     >
                 </div>
-                <div style="font-size: 13px; color: var(--secondary-text); margin-bottom: 5px;" id="profile-bio">
+                <div id="profile-bio">
                     Расскажите о себе
                 </div>
-                <div id="profile-additional-info" style="font-size: 12px; color: var(--secondary-text); display: flex; flex-direction: column; gap: 3px; margin-bottom: 10px;">
-                    <div id="profile-location" style="display: none;"><strong>📍</strong> <span id="location-text"></span></div>
-                    <div id="profile-website" style="display: none;"><strong>🔗</strong> <a id="website-link" href="#" target="_blank" style="color: var(--accent-color); text-decoration: none;"></a></div>
-                    <div id="profile-interests" style="display: none;"><strong>✨</strong> <span id="interests-text"></span></div>
-                    <div id="profile-gender" style="display: none;"><strong>👤</strong> <span id="gender-text"></span></div>
+                <div id="profile-additional-info">
+                    <div id="profile-location" class="is-hidden-default"><strong>📍</strong> <span id="location-text"></span></div>
+                    <div id="profile-website" class="is-hidden-default"><strong>🔗</strong> <a id="website-link" href="#" target="_blank"></a></div>
+                    <div id="profile-interests" class="is-hidden-default"><strong>✨</strong> <span id="interests-text"></span></div>
+                    <div id="profile-gender" class="is-hidden-default"><strong>👤</strong> <span id="gender-text"></span></div>
                 </div>
                 <div class="stats-row profile-likes-row">
                     <div class="stat-item profile-likes-item" id="likes-stat">
@@ -482,7 +481,7 @@
                         <span class="stat-label">Лайки</span>
                     </div>
                 </div>
-                <div class="profile-header-actions" style="display: flex; gap: 10px; margin-top: 15px; justify-content: center;">
+                <div class="profile-header-actions">
                     <button class="primary-btn" id="edit-profile-btn">
                         Редактировать
                     </button>
@@ -493,6 +492,14 @@
             </div>
         </div>
         <div class="profile-content-shell">
+            <section class="profile-highlights is-hidden-default" id="profile-highlights-section" aria-label="Актуальные истории">
+                <div class="profile-highlights-head">
+                    <div class="profile-highlights-title">Актуальное</div>
+                    <button class="profile-story-archive-btn is-hidden-default" id="profile-story-archive-btn" type="button">Архив</button>
+                </div>
+                <div class="profile-highlights-list" id="profile-highlights-list"></div>
+                <div class="profile-highlights-empty is-hidden-default" id="profile-highlights-empty"></div>
+            </section>
             <div class="profile-media-tabs" id="profile-media-tabs" role="tablist" aria-label="Разделы профиля">
                 <button class="profile-media-tab active" type="button" data-profile-tab="videos" role="tab" aria-selected="true">Видео</button>
                 <button class="profile-media-tab" type="button" data-profile-tab="saved" role="tab" aria-selected="false">Сохраненные</button>
@@ -578,14 +585,14 @@
                 <path d="M20 2H4c-1.1 0-1.99.9-1.99 2L2 22l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 12H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"/>
             </svg>
             <span>Чаты</span>
-            <div class="notification-badge" id="notification-badge" style="display: none;">3</div>
+            <div class="notification-badge is-hidden-default" id="notification-badge">3</div>
         </div>
         <div class="nav-item" data-target="profile-view">
             <svg viewBox="0 0 24 24">
                 <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
             </svg>
             <span>Профиль</span>
-            <div class="notification-badge social-badge" id="social-notification-badge" style="display: none;">0</div>
+            <div class="notification-badge social-badge is-hidden-default" id="social-notification-badge">0</div>
         </div>
     </div>
 
@@ -635,8 +642,8 @@
                             </svg>
                         </div>
                     </div>
-                    <input type="file" id="avatar-file-input" accept="image/*" style="display: none;">
-                    <p style="font-size: 12px; color: var(--secondary-text); margin-top: 10px; text-align: center;">Нажмите на аватар чтобы изменить</p>
+                    <input type="file" id="avatar-file-input" class="is-hidden-default" accept="image/*">
+                    <p class="edit-help-note">Нажмите на аватар чтобы изменить</p>
                 </div>
 
                 <!-- Username Field -->
@@ -649,7 +656,7 @@
                 <!-- Bio Field -->
                 <div class="edit-field">
                     <label for="edit-bio">Биография</label>
-                    <textarea id="edit-bio" class="form-input" placeholder="Расскажите о себе максимум 150 символов" maxlength="150" style="resize: vertical; min-height: 80px;"></textarea>
+                    <textarea id="edit-bio" class="form-input edit-bio-input" placeholder="Расскажите о себе максимум 150 символов" maxlength="150"></textarea>
                     <p class="char-count"><span id="bio-count">0</span>/150</p>
                 </div>
 
@@ -667,15 +674,15 @@
 
                 <!-- Email -->
                 <div class="edit-field">
-                    <label for="edit-email" style="opacity: 0.6;">Email (только для чтения)</label>
-                    <input type="email" id="edit-email" class="form-input" disabled style="background: rgba(255,255,255,0.05);">
+                    <label for="edit-email" class="edit-readonly-label">Email (только для чтения)</label>
+                    <input type="email" id="edit-email" class="form-input edit-readonly-input" disabled>
                 </div>
 
                 <!-- Interests/Hashtags -->
                 <div class="edit-field">
                     <label for="edit-interests">Интересы</label>
                     <input type="text" id="edit-interests" class="form-input" placeholder="#путешествия #музыка #танцы" maxlength="100">
-                    <p style="font-size: 12px; color: var(--secondary-text); margin-top: 5px;">Добавьте хэштеги через пробел</p>
+                    <p class="edit-help-note edit-help-note-compact">Добавьте хэштеги через пробел</p>
                 </div>
 
                 <!-- Sex Selection -->
@@ -704,15 +711,15 @@
                 </div>
 
                 <!-- Verification Info -->
-                <div style="background: rgba(37, 244, 238, 0.1); padding: 15px; border-radius: 12px; margin-bottom: 20px;">
-                    <p style="font-size: 12px; color: var(--secondary-text); margin: 0;">
+                <div class="edit-tip-card">
+                    <p class="edit-tip-text">
                         💡 <strong>Совет:</strong> Интересное описание и аватар помогут вам получить больше подписчиков!
                     </p>
                 </div>
             </div>
 
             <div class="edit-profile-footer">
-                <button class="primary-btn" style="background: rgba(255,255,255,0.1);" id="cancel-edit">
+                <button class="primary-btn" id="cancel-edit">
                     Отмена
                 </button>
                 <button class="primary-btn" id="save-profile">
@@ -723,7 +730,7 @@
     </div>
 
     <!-- Components: Onboarding Interests Modal -->
-    <div class="onboarding-modal" id="onboarding-modal" style="display: none;">
+    <div class="onboarding-modal" id="onboarding-modal">
         <div class="onboarding-card">
             <h3>Выберите интересы</h3>
             <p>Это поможет настроить ленту "Для вас"</p>
@@ -744,7 +751,7 @@
         </div>
     </div>
     <!-- UI Feedback -->
-    <div class="call-modal" id="call-modal" style="display: none;">
+    <div class="call-modal" id="call-modal">
         <div class="call-card">
             <div class="call-title" id="call-title">Видеозвонок</div>
             <div class="call-peer" id="call-peer">@user</div>
@@ -777,27 +784,27 @@
 <!-- JavaScript Files -->
 <script src="js/firebase-config.js?v=20260222-1"></script>
 <script src="js/media-storage-service.js"></script>
-<script src="js/firebase-service.js?v=20260222-1"></script>
+<script src="js/firebase-service.js?v=20260308-2"></script>
 <script src="js/firebase-live.js?v=20260217-1"></script>
-<script src="js/data-service.js?v=20260218-1"></script>
+<script src="js/data-service.js?v=20260308-2"></script>
 <script src="js/view-renderer.js?v=20260222-1"></script>
-<script src="js/app-config.js?v=20260219-5"></script>
+<script src="js/app-config.js?v=20260308-6"></script>
 <script src="https://webrtc.github.io/adapter/adapter-latest.js"></script>
 <script src="js/webrtc-compat.js?v=20260217-2"></script>
 <script src="js/text-encoding-guard.js?v=20260219-3"></script>
 <script src="js/perf-monitor.js?v=20260217-2"></script>
-<script src="js/app.js?v=20260307-1"></script>
+<script src="js/app.js?v=20260308-4"></script>
 <script src="js/app-live.js?v=20260219-2"></script>
 <script src="js/app-feed.js?v=20260219-6"></script>
-<script src="js/app-profile.js?v=20260222-2"></script>
+<script src="js/app-profile.js?v=20260308-4"></script>
 <script src="js/app-media-carousel.js?v=20260218-1"></script>
 <script src="js/app-profile-topbar.js?v=20260221-1"></script>
-<script src="js/app-messages.js?v=20260307-2"></script>
+<script src="js/app-messages.js?v=20260308-5"></script>
 <script src="js/app-security-account.js?v=20260218-1"></script>
 <script src="js/app-avatar-defaults.js?v=20260218-1"></script>
 <script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@^1/index.js"></script>
 <script src="js/app-creator-studio.js?v=20260218-1"></script>
-<script src="js/app-chat-upgrade.js?v=20260218-1"></script>
+<script src="js/app-chat-upgrade.js?v=20260308-1"></script>
 <script src="js/app-chat-message-actions.js?v=20260219-1"></script>
 <script src="js/app-ads.js?v=20260218-1"></script>
 <script src="js/app-ads-cabinet.js?v=20260219-1"></script>

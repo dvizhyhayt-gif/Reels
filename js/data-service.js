@@ -453,10 +453,13 @@ class AdvancedDataService {
 
     getMessagePreviewText(message = {}) {
         const msg = message || {};
+        const mime = String(msg.file?.mime || '').toLowerCase();
+        if (msg.type === 'voice' || (msg.type === 'file' && mime.startsWith('audio/'))) return '🎤 Голосовое';
         if (msg.type === 'file') return `📎 ${msg.file?.name || 'Файл'}`;
         if (msg.type === 'sticker') return '🪄 Стикер';
         if (msg.type === 'video-circle') return '🎥 Видеокружок';
         if (msg.type === 'call-event') return '📹 Видеозвонок';
+        if (msg.type === 'story-reply') return '↪ История';
         return String(msg.content || '');
     }
 
@@ -480,6 +483,7 @@ class AdvancedDataService {
             file: options.file || null,
             sticker: options.sticker || null,
             call: options.call || null,
+            storyReply: options.storyReply || null,
             timestamp,
             delivered: !!options.delivered,
             deliveredAt: options.delivered ? timestamp : null,

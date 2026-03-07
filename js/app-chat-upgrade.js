@@ -69,6 +69,36 @@
         return `${minutes}:${String(seconds).padStart(2, '0')}`;
     }
 
+    proto.syncVoiceRecordingUi = function syncVoiceRecordingUi({ isRecording = false, elapsedMs = 0 } = {}) {
+        if (this.messageInput) {
+            if (!this.messageInput.dataset.defaultPlaceholder) {
+                this.messageInput.dataset.defaultPlaceholder = this.messageInput.getAttribute('placeholder') || 'Сообщение';
+            }
+            this.messageInput.disabled = !!isRecording;
+            this.messageInput.placeholder = isRecording
+                ? `● ${formatMs(elapsedMs)}`
+                : this.messageInput.dataset.defaultPlaceholder;
+        }
+
+        if (this.messageInputArea) {
+            this.messageInputArea.classList.toggle('is-recording', !!isRecording);
+        }
+
+        if (this.voiceMessageBtn) {
+            this.voiceMessageBtn.classList.toggle('is-recording', !!isRecording);
+            this.voiceMessageBtn.setAttribute('aria-label', isRecording ? 'Идёт запись' : TEXT.voiceLabel);
+            this.voiceMessageBtn.title = isRecording
+                ? `Запись ${formatMs(elapsedMs)}`
+                : TEXT.voiceHoldHint;
+        }
+
+        const controls = [this.sendMessageBtn, this.attachFileBtn, this.stickerToggleBtn];
+        controls.forEach((control) => {
+            if (!control) return;
+            control.disabled = !!isRecording;
+        });
+    };
+
     proto.ensureVoiceButton = function ensureVoiceButton() {
         if (!this.messageInputArea || !this.sendMessageBtn) return;
         let btn = document.getElementById('voice-message-btn');
@@ -321,12 +351,17 @@
             AdvancedViewRenderer.showToast(TEXT.noChat, 'warning');
             return;
         }
+        if (this.messageInput && this.messageInput.value.trim()) return;
         if (!(navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function')) {
             AdvancedViewRenderer.showToast(TEXT.noMic, 'error');
             return;
         }
 
         try {
+            this.hideEmojiPicker();
+            this.hideStickerPicker();
+            await this.updateTypingStatus(false);
+
             const stream = await navigator.mediaDevices.getUserMedia({
                 audio: {
                     echoCancellation: true,
@@ -352,14 +387,7 @@
             this.voiceRecordingStartedAt = Date.now();
             this.voiceMediaStream = stream;
             this.voiceMediaRecorder = recorder;
-
-            if (this.voiceMessageBtn) {
-                this.voiceMessageBtn.classList.add('is-recording');
-            }
-            if (this.messageInput) {
-                this.messageInput.placeholder = '\u25cf 00:00';
-                this.messageInput.disabled = true;
-            }
+            this.syncVoiceRecordingUi({ isRecording: true, elapsedMs: 0 });
 
             recorder.ondataavailable = (event) => {
                 if (event.data && event.data.size > 0) chunks.push(event.data);
@@ -371,15 +399,12 @@
                 this.voiceMediaStream = null;
                 this.voiceMediaRecorder = null;
                 this.voiceRecording = false;
-                if (this.voiceMessageBtn) {
-                    this.voiceMessageBtn.classList.remove('is-recording');
-                }
-                if (this.messageInput) {
-                    this.messageInput.disabled = false;
-                    this.messageInput.placeholder = '\u041d\u0430\u043f\u0438\u0448\u0438\u0442\u0435 \u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0435...';
-                }
+                this.voiceHoldArmed = false;
+                this.voiceHoldCancelled = false;
+                this.voiceHoldPointerId = null;
                 clearInterval(this.voiceRecordTick);
                 this.voiceRecordTick = null;
+                this.syncVoiceRecordingUi({ isRecording: false });
 
                 if (this.voiceRecordingCancelled) return;
                 if (durationMs < 500) {
@@ -396,13 +421,23 @@
             this.voiceRecordTick = setInterval(() => {
                 if (!this.messageInput || !this.voiceRecording) return;
                 const elapsed = Date.now() - (this.voiceRecordingStartedAt || Date.now());
-                this.messageInput.placeholder = `\u25cf ${formatMs(elapsed)}`;
+                this.syncVoiceRecordingUi({ isRecording: true, elapsedMs: elapsed });
                 if (elapsed >= 120000) {
                     this.stopVoiceRecording({ cancel: false }).catch(() => {});
                 }
             }, 250);
         } catch (error) {
             console.error('[chat-upgrade] voice recording failed:', error);
+            clearInterval(this.voiceRecordTick);
+            this.voiceRecordTick = null;
+            stopTracks(this.voiceMediaStream);
+            this.voiceMediaStream = null;
+            this.voiceMediaRecorder = null;
+            this.voiceRecording = false;
+            this.voiceHoldArmed = false;
+            this.voiceHoldCancelled = false;
+            this.voiceHoldPointerId = null;
+            this.syncVoiceRecordingUi({ isRecording: false });
             AdvancedViewRenderer.showToast(TEXT.noMic, 'error');
         }
     };
@@ -413,7 +448,16 @@
         try {
             this.voiceMediaRecorder.stop();
         } catch (_) {
+            stopTracks(this.voiceMediaStream);
+            this.voiceMediaStream = null;
+            this.voiceMediaRecorder = null;
             this.voiceRecording = false;
+            this.voiceHoldArmed = false;
+            this.voiceHoldCancelled = false;
+            this.voiceHoldPointerId = null;
+            clearInterval(this.voiceRecordTick);
+            this.voiceRecordTick = null;
+            this.syncVoiceRecordingUi({ isRecording: false });
         }
     };
 
@@ -431,18 +475,23 @@
             const mime = blob.type || 'audio/webm';
             const ext = mime.includes('mp4') ? 'm4a' : (mime.includes('ogg') ? 'ogg' : 'webm');
             const file = makeFileFromBlob(blob, `voice_${Date.now()}.${ext}`, mime);
+            const durationSeconds = Math.max(1, Math.round((parseInt(durationMs, 10) || 0) / 1000));
 
             let filePayload = null;
             if (firebaseService && firebaseService.isInitialized() && typeof firebaseService.uploadChatFile === 'function') {
                 filePayload = await firebaseService.uploadChatFile(this.state.currentChatId, file);
+                filePayload.mime = filePayload.mime || mime;
+                filePayload.name = filePayload.name || file.name || 'voice.webm';
+                filePayload.size = filePayload.size || file.size || 0;
                 filePayload.durationMs = durationMs;
+                filePayload.duration = durationSeconds;
                 await firebaseService.addMessage(
                     this.state.currentChatId,
                     currentUser.name,
                     this.state.currentChatUser,
                     '',
                     this.state.currentChatUid,
-                    { type: 'voice', file: filePayload }
+                    { type: 'file', file: filePayload }
                 );
             } else {
                 filePayload = {
@@ -450,7 +499,8 @@
                     size: file.size || 0,
                     mime: mime,
                     url: URL.createObjectURL(file),
-                    durationMs
+                    durationMs,
+                    duration: durationSeconds
                 };
                 this.dataService.addMessage(
                     this.state.currentChatId,
@@ -461,7 +511,7 @@
                         fromUid: currentUser.uid || null,
                         toUid: this.state.currentChatUid || null,
                         delivered: !!this.state.currentChatOnline,
-                        type: 'voice',
+                        type: 'file',
                         file: filePayload
                     }
                 );
@@ -477,29 +527,6 @@
         }
     };
 
-    proto.renderVoiceMessageBody = function renderVoiceMessageBody(message = {}) {
-        const file = message.file || {};
-        const safeUrl = file.url ? this.escapeHtml(file.url) : '';
-        const durationMs = parseInt(file.durationMs, 10) || 0;
-        const safeDuration = formatMs(durationMs);
-        const safeName = this.escapeHtml(file.name || 'voice');
-
-        if (!safeUrl) {
-            return `
-                <div class="message-content message-voice-wrap">
-                    <div class="message-voice-caption">${safeName}</div>
-                </div>
-            `;
-        }
-
-        return `
-            <div class="message-content message-voice-wrap">
-                <audio class="message-voice-audio" controls preload="metadata" src="${safeUrl}"></audio>
-                <div class="message-voice-caption">${safeDuration}</div>
-            </div>
-        `;
-    };
-
     const ORIGINAL_SETUP_MESSAGES_EVENTS = proto.setupMessagesEvents;
     proto.setupMessagesEvents = function wrappedSetupMessagesEvents(...args) {
         const result = ORIGINAL_SETUP_MESSAGES_EVENTS.apply(this, args);
@@ -512,16 +539,39 @@
             this.voiceMessageBtn.dataset.bound = '1';
             this.voiceMessageBtn.addEventListener('pointerdown', async (event) => {
                 event.preventDefault();
+                this.voiceHoldArmed = true;
+                this.voiceHoldCancelled = false;
+                this.voiceHoldPointerId = typeof event.pointerId === 'number' ? event.pointerId : null;
+                if (typeof this.voiceMessageBtn.setPointerCapture === 'function' && typeof event.pointerId === 'number') {
+                    try {
+                        this.voiceMessageBtn.setPointerCapture(event.pointerId);
+                    } catch (_) {}
+                }
                 await this.startVoiceRecording();
+                if (!this.voiceHoldArmed && this.voiceRecording) {
+                    await this.stopVoiceRecording({ cancel: !!this.voiceHoldCancelled });
+                }
             });
             this.voiceMessageBtn.addEventListener('pointerup', async (event) => {
                 event.preventDefault();
+                if (this.voiceHoldPointerId !== null && event.pointerId !== this.voiceHoldPointerId) return;
+                this.voiceHoldArmed = false;
+                this.voiceHoldCancelled = false;
+                this.voiceHoldPointerId = null;
+                if (typeof this.voiceMessageBtn.releasePointerCapture === 'function' && typeof event.pointerId === 'number') {
+                    try {
+                        this.voiceMessageBtn.releasePointerCapture(event.pointerId);
+                    } catch (_) {}
+                }
                 await this.stopVoiceRecording({ cancel: false });
             });
-            this.voiceMessageBtn.addEventListener('pointerleave', async (event) => {
-                if (!this.voiceRecording) return;
+            this.voiceMessageBtn.addEventListener('pointercancel', async (event) => {
                 event.preventDefault();
-                await this.stopVoiceRecording({ cancel: false });
+                if (this.voiceHoldPointerId !== null && event.pointerId !== this.voiceHoldPointerId) return;
+                this.voiceHoldArmed = false;
+                this.voiceHoldCancelled = true;
+                this.voiceHoldPointerId = null;
+                await this.stopVoiceRecording({ cancel: true });
             });
             this.voiceMessageBtn.addEventListener('contextmenu', (event) => event.preventDefault());
         }
@@ -539,13 +589,6 @@
         }
 
         return result;
-    };
-
-    const ORIGINAL_RENDER_CHAT_MESSAGE_BODY = proto.renderChatMessageBody;
-    proto.renderChatMessageBody = function wrappedRenderChatMessageBody(message = {}) {
-        const msg = message || {};
-        if (msg.type === 'voice') return this.renderVoiceMessageBody(msg);
-        return ORIGINAL_RENDER_CHAT_MESSAGE_BODY.call(this, message);
     };
 
     const ORIGINAL_GET_PREVIEW = proto.getMessagePreviewText;
@@ -570,6 +613,9 @@
     const ORIGINAL_NAVIGATE_TO = proto.navigateTo;
     proto.navigateTo = function wrappedNavigateTo(viewId, ...rest) {
         if (viewId !== 'messages-view') {
+            this.voiceHoldArmed = false;
+            this.voiceHoldCancelled = false;
+            this.voiceHoldPointerId = null;
             if (this.voiceRecording) {
                 this.stopVoiceRecording({ cancel: true }).catch(() => {});
             }
