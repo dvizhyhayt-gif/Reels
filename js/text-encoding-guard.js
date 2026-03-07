@@ -1,6 +1,6 @@
 /**
  * Runtime guard against Cyrillic mojibake like:
- * "РџСЂРёРІРµС‚" -> "Привет"
+ * "Привет" -> "Привет"
  *
  * This protects UI text even if a corrupted literal slips into source files.
  */
@@ -31,7 +31,7 @@
     const reverse1251 = new Map();
     const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'IFRAME']);
     const ATTRIBUTES_TO_FIX = ['placeholder', 'title', 'aria-label', 'alt'];
-    const MOJIBAKE_HINT_RE = /[\u0420\u0421\u00D0\u00D1]/;
+    const MOJIBAKE_HINT_RE = /[\u0420\u0421\u0440\u0441\u00D0\u00D1\u0432]/;
 
     const CP1251_80_9F = [
         0x0402, 0x0403, 0x201A, 0x0453, 0x201E, 0x2026, 0x2020, 0x2021,

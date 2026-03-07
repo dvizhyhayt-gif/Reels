@@ -161,19 +161,34 @@ class FirebaseService {
         return !!result;
     }
 
-    async register(email, password, userName) {
+    async register(email, password, userName, displayName = '', options = {}) {
         try {
+            const normalizedName = this.normalizeProfileName(userName);
+            if (!normalizedName) {
+                throw new Error('Имя профиля обязательно');
+            }
+            const normalizedDisplayName = this.normalizeDisplayName(displayName, normalizedName);
+            const rawBirthDate = typeof options.birthDate === 'string' ? options.birthDate.trim() : '';
+            const birthDate = /^\d{4}-\d{2}-\d{2}$/.test(rawBirthDate) ? rawBirthDate : '';
+            const parsedAge = Number.parseInt(options.ageYears, 10);
+            const ageYears = Number.isFinite(parsedAge) && parsedAge >= 0 && parsedAge <= 130 ? parsedAge : null;
+            const explicitAgeVerified = typeof options.ageVerified === 'boolean' ? options.ageVerified : null;
+            const ageVerified = explicitAgeVerified !== null ? explicitAgeVerified : (ageYears !== null ? ageYears >= 18 : false);
+
             // Проверяем уникальность имени профиля
-            const existing = await this.getUserByName(userName);
-    if (existing) {
-        throw new Error('Имя профиля уже занято');
-    }
-    const { user } = await this.auth.createUserWithEmailAndPassword(email, password);
+            const existing = await this.getUserByName(normalizedName);
+            if (existing) {
+                throw new Error('Имя профиля уже занято');
+            }
+
+            const { user } = await this.auth.createUserWithEmailAndPassword(email, password);
             const userProfile = {
                 uid: user.uid,
                 email,
-                name: userName,
-                avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(userName)}&background=0D8ABC&color=fff&size=150`,
+                name: normalizedName,
+                nameLower: normalizedName.toLowerCase(),
+                displayName: normalizedDisplayName,
+                avatar: this.buildUiAvatar(normalizedDisplayName || normalizedName),
                 avatar_local: null,
                 bio: '',
                 location: '',
@@ -190,7 +205,9 @@ class FirebaseService {
                 privateAccount: false,
                 coins: 100,
                 allowAdultContent: false,
-                ageVerified: false,
+                ageVerified,
+                birthDate: birthDate || null,
+                ageYears,
                 liveStats: {
                     started: 0,
                     joined: 0
@@ -198,10 +215,6 @@ class FirebaseService {
                 blockedUsers: [],
                 hiddenAuthors: [],
                 notifications: [],
-                giftsSentTotal: 0,
-                giftsReceivedTotal: 0,
-                giftsSentCount: 0,
-                giftsReceivedCount: 0,
                 online: false,
                 lastSeen: Date.now(),
                 lastActive: Date.now(),
@@ -213,7 +226,7 @@ class FirebaseService {
             return { success: true, user: userProfile, uid: user.uid };
         } catch (error) {
             console.error('❌ Ошибка регистрации:', error.message);
-            if (error.message === 'Имя профиля уже занято') {
+            if (error.message === 'Имя профиля уже занято' || error.message === 'Имя профиля обязательно') {
                 throw error;
             }
             throw new Error(this.getFirebaseErrorMessage(error.code));
@@ -262,15 +275,35 @@ class FirebaseService {
         return this.auth.currentUser?.uid || null;
     }
 
+    normalizeProfileName(value) {
+        return String(value || '')
+            .trim()
+            .replace(/^@+/, '')
+            .trim();
+    }
+
+    normalizeDisplayName(value, fallback = 'user') {
+        const normalized = String(value || '')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .replace(/^@+/, '')
+            .trim();
+        if (normalized) return normalized;
+        return this.normalizeProfileName(fallback) || 'user';
+    }
+
     buildFallbackProfileFromAuth(authUser = null) {
         const email = authUser && typeof authUser.email === 'string' ? authUser.email : '';
         const displayName = authUser && typeof authUser.displayName === 'string' ? authUser.displayName.trim() : '';
         const emailName = email && email.includes('@') ? email.split('@')[0] : '';
-        const name = displayName || emailName || 'user';
+        const name = this.normalizeProfileName(displayName || emailName || 'user') || 'user';
+        const safeDisplayName = this.normalizeDisplayName(displayName || name, name);
         return {
             uid: authUser && authUser.uid ? String(authUser.uid) : null,
             email,
             name,
+            nameLower: name.toLowerCase(),
+            displayName: safeDisplayName,
             avatar: this.buildUiAvatar(name),
             bio: '',
             location: '',
@@ -294,7 +327,7 @@ class FirebaseService {
     }
 
     buildUiAvatar(name = 'user') {
-        return `https://ui-avatars.com/api/?name=${encodeURIComponent(name || 'user')}&background=random&size=64`;
+        return 'assets/default-avatar.svg';
     }
 
     sanitizeAvatarForPublicPayload(avatarValue, fallbackName = 'user') {
@@ -318,9 +351,14 @@ class FirebaseService {
 
     normalizeUserRecord(data = {}, uid = null) {
         const source = data || {};
+        const safeName = this.normalizeProfileName(source.name || source.username || 'user') || 'user';
+        const safeDisplayName = this.normalizeDisplayName(source.displayName || source.nickName || safeName, safeName);
         return {
             ...source,
             uid: uid || source.uid || null,
+            name: safeName,
+            nameLower: String(source.nameLower || safeName).toLowerCase(),
+            displayName: safeDisplayName,
             interests: typeof source.interests === 'string' ? source.interests : '',
             onboardingCompleted: source.onboardingCompleted === true,
             subscriptions: Array.isArray(source.subscriptions) ? source.subscriptions : [],
@@ -341,10 +379,6 @@ class FirebaseService {
                 started: Math.max(0, parseInt(source?.liveStats?.started, 10) || 0),
                 joined: Math.max(0, parseInt(source?.liveStats?.joined, 10) || 0)
             },
-            giftsSentTotal: Math.max(0, parseInt(source.giftsSentTotal, 10) || 0),
-            giftsReceivedTotal: Math.max(0, parseInt(source.giftsReceivedTotal, 10) || 0),
-            giftsSentCount: Math.max(0, parseInt(source.giftsSentCount, 10) || 0),
-            giftsReceivedCount: Math.max(0, parseInt(source.giftsReceivedCount, 10) || 0),
             lastSeen: this.normalizeTimestamp(source.lastSeen),
             lastActive: this.normalizeTimestamp(source.lastActive)
         };
@@ -429,6 +463,7 @@ class FirebaseService {
             const incoming = (updates && typeof updates === 'object') ? updates : {};
             const allowedProfileKeys = new Set([
                 'name',
+                'displayName',
                 'avatar',
                 'avatar_local',
                 'bio',
@@ -456,13 +491,32 @@ class FirebaseService {
                 safeUpdates.hiddenAuthors = [];
             }
 
-            if (typeof safeUpdates.name === 'string' && safeUpdates.name.trim()) {
-                const normalizedName = safeUpdates.name.trim();
+            if (typeof safeUpdates.name === 'string') {
+                const normalizedName = this.normalizeProfileName(safeUpdates.name);
+                if (!normalizedName) {
+                    throw new Error('Имя профиля обязательно');
+                }
                 const existing = await this.getUserByName(normalizedName);
                 if (existing && existing.uid !== uid) {
                     throw new Error('Имя профиля уже занято');
                 }
                 safeUpdates.name = normalizedName;
+                safeUpdates.nameLower = normalizedName.toLowerCase();
+            }
+
+            if (typeof safeUpdates.displayName === 'string') {
+                const fallbackName = safeUpdates.name || (before && before.name) || 'user';
+                safeUpdates.displayName = this.normalizeDisplayName(safeUpdates.displayName, fallbackName);
+            }
+
+            if (typeof safeUpdates.avatar === 'string') {
+                const rawAvatar = safeUpdates.avatar.trim();
+                const fallbackName = safeUpdates.name || (before && before.name) || 'user';
+                if (!rawAvatar || rawAvatar.startsWith('data:') || rawAvatar.length > 4096) {
+                    safeUpdates.avatar = this.sanitizeAvatarForPublicPayload(before && before.avatar, fallbackName);
+                } else {
+                    safeUpdates.avatar = rawAvatar;
+                }
             }
 
             await this.db.collection('users').doc(uid).update({
@@ -482,6 +536,13 @@ class FirebaseService {
                     || !!before.verified !== !!after.verified
                     || !!before.privateAccount !== !!after.privateAccount)
             );
+            const shouldSyncStories = !!(
+                before
+                && after
+                && (before.name !== after.name
+                    || before.displayName !== after.displayName
+                    || before.avatar !== after.avatar)
+            );
 
             if (shouldSyncVideos) {
                 try {
@@ -494,6 +555,19 @@ class FirebaseService {
                     });
                 } catch (syncError) {
                     console.warn('⚠️ Не удалось синхронизировать видео после обновления профиля:', syncError?.message || syncError);
+                }
+            }
+
+            if (shouldSyncStories) {
+                try {
+                    const safeAvatar = this.sanitizeAvatarForPublicPayload(after.avatar, after.name || 'user');
+                    await this.syncUserStoriesAuthorMeta(uid, {
+                        author: after.name,
+                        displayName: after.displayName || after.name,
+                        avatar: safeAvatar
+                    });
+                } catch (syncError) {
+                    console.warn('⚠️ Не удалось синхронизировать истории после обновления профиля:', syncError?.message || syncError);
                 }
             }
 
@@ -549,6 +623,48 @@ class FirebaseService {
         }
     }
 
+    async syncUserStoriesAuthorMeta(uid, { author = null, displayName = null, avatar = null } = {}) {
+        if (!uid) return 0;
+
+        const payload = { updatedAt: Date.now() };
+        if (typeof author === 'string' && author.trim()) payload.author = author.trim();
+        if (typeof displayName === 'string' && displayName.trim()) payload.displayName = displayName.trim();
+        if (typeof avatar === 'string' && avatar.trim()) payload.avatar = avatar.trim();
+
+        try {
+            const snapshot = await this.db.collection('stories')
+                .where('uid', '==', uid)
+                .get();
+            if (snapshot.empty) return 0;
+
+            let updated = 0;
+            let batch = this.db.batch();
+            let ops = 0;
+
+            for (const doc of snapshot.docs) {
+                const data = doc.data() || {};
+                if ((parseInt(data.expiresAt, 10) || 0) <= Date.now()) continue;
+                batch.set(doc.ref, payload, { merge: true });
+                updated += 1;
+                ops += 1;
+
+                if (ops >= 450) {
+                    await batch.commit();
+                    batch = this.db.batch();
+                    ops = 0;
+                }
+            }
+
+            if (ops > 0) {
+                await batch.commit();
+            }
+            return updated;
+        } catch (error) {
+            console.error('❌ Ошибка синхронизации историй автора:', error);
+            throw error;
+        }
+    }
+
     async setUserVerified(targetUid, verified) {
         this.requireAdminAccess('управлению верификацией');
         if (!targetUid) {
@@ -597,8 +713,11 @@ class FirebaseService {
 
     async getUserByName(userName) {
         try {
+            const normalizedName = this.normalizeProfileName(userName);
+            if (!normalizedName) return null;
+
             const querySnapshot = await this.db.collection('users')
-                .where('name', '==', userName)
+                .where('name', '==', normalizedName)
                 .limit(1)
                 .get();
             
@@ -1040,6 +1159,77 @@ class FirebaseService {
         }
     }
 
+    async getLikedVideosByUid(uid, { limit = 100 } = {}) {
+        if (!uid) return [];
+        try {
+            const currentUid = this.getCurrentUid();
+            const allowAdultContent = this.isAdultContentAllowed(this.currentUser);
+            const viewerSubscriptions = new Set(
+                this.currentUser && Array.isArray(this.currentUser.subscriptions)
+                    ? this.currentUser.subscriptions.map(v => String(v))
+                    : []
+            );
+            const normalizedLimit = Math.max(1, parseInt(limit, 10) || 100);
+
+            const mapVideoDoc = (doc) => {
+                const data = doc.data() || {};
+                const commentsCount = Number.isFinite(parseInt(data.commentsCount, 10))
+                    ? (parseInt(data.commentsCount, 10) || 0)
+                    : (Array.isArray(data.comments) ? data.comments.length : 0);
+                return {
+                    ...data,
+                    comments: [],
+                    commentsCount,
+                    timestamp: this.normalizeTimestamp(data.timestamp),
+                    firestoreId: doc.id,
+                    isLiked: currentUid ? Array.isArray(data.likedBy) && data.likedBy.includes(currentUid) : false,
+                    authorPrivate: data.authorPrivate === true,
+                    ageRestricted: data.ageRestricted === true,
+                    videoTemplate: typeof data.videoTemplate === 'string' ? data.videoTemplate : 'none',
+                    coverText: typeof data.coverText === 'string' ? data.coverText : '',
+                    coverSticker: typeof data.coverSticker === 'string' ? data.coverSticker : '',
+                    coverColor: this.normalizeCoverColor(data.coverColor)
+                };
+            };
+
+            const canViewVideo = (video) => {
+                if (!video) return false;
+                if (!allowAdultContent && video.ageRestricted === true) return false;
+                if (video.authorPrivate !== true) return true;
+
+                const authorUid = video.uid ? String(video.uid) : '';
+                if (!authorUid) return false;
+                if (currentUid && String(currentUid) === authorUid) return true;
+                return viewerSubscriptions.has(authorUid);
+            };
+
+            let snapshot;
+            try {
+                snapshot = await this.db.collection('videos')
+                    .where('likedBy', 'array-contains', String(uid))
+                    .orderBy('timestamp', 'desc')
+                    .limit(normalizedLimit)
+                    .get();
+            } catch (indexError) {
+                console.warn('⚠️ getLikedVideosByUid(): query with array-contains+orderBy failed, using fallback query:', indexError?.message || indexError);
+                snapshot = await this.db.collection('videos')
+                    .where('likedBy', 'array-contains', String(uid))
+                    .get();
+            }
+
+            const list = snapshot.docs
+                .map(mapVideoDoc)
+                .filter(canViewVideo)
+                .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+                .slice(0, normalizedLimit);
+
+            return list;
+        } catch (error) {
+            console.error('❌ Ошибка получения лайкнутых видео:', error);
+            return [];
+        }
+    }
+
     async deleteVideo(firestoreId, storagePath, storageProvider = 'firebase') {
         try {
             if (storagePath) {
@@ -1289,7 +1479,33 @@ class FirebaseService {
 
         const profile = await this.getUserProfile(uid);
         const author = profile?.name || 'user';
-        const avatar = this.sanitizeAvatarForPublicPayload(profile?.avatar, author);
+        const displayName = this.normalizeDisplayName(profile?.displayName || author, author);
+        let avatarSource = profile?.avatar || '';
+        if (typeof avatarSource === 'string' && avatarSource.startsWith('data:')) {
+            try {
+                const response = await fetch(avatarSource);
+                const blob = await response.blob();
+                const ext = blob.type && blob.type.includes('png') ? 'png' : 'jpg';
+                const file = new File([blob], `avatar.${ext}`, { type: blob.type || 'image/jpeg' });
+                const uploadedAvatar = await this.uploadMedia(file, `avatars/${uid}`, {
+                    uid,
+                    purpose: 'avatar-migrate-story'
+                });
+                if (uploadedAvatar && uploadedAvatar.url) {
+                    avatarSource = uploadedAvatar.url;
+                    await this.db.collection('users').doc(uid).set({
+                        avatar: avatarSource,
+                        updatedAt: new Date()
+                    }, { merge: true });
+                    if (this.currentUser && String(this.currentUser.uid || '') === String(uid)) {
+                        this.currentUser.avatar = avatarSource;
+                    }
+                }
+            } catch (avatarMigrateError) {
+                console.warn('⚠️ Не удалось мигрировать avatar из data-url для истории:', avatarMigrateError);
+            }
+        }
+        const avatar = this.sanitizeAvatarForPublicPayload(avatarSource, author);
         const uploaded = await this.uploadMedia(file, `stories/${uid}`, {
             uid,
             purpose: 'story'
@@ -1299,6 +1515,7 @@ class FirebaseService {
         const storyDoc = {
             uid,
             author,
+            displayName,
             avatar,
             mediaUrl: uploaded.url,
             mediaMime: file.type || '',
@@ -1323,9 +1540,13 @@ class FirebaseService {
 
         const mapStoryDoc = (doc) => {
             const data = doc.data() || {};
+            const safeAuthor = data.author ? String(data.author) : 'user';
             return {
                 id: doc.id,
                 ...data,
+                author: safeAuthor,
+                displayName: this.normalizeDisplayName(data.displayName || safeAuthor, safeAuthor),
+                avatar: this.sanitizeAvatarForPublicPayload(data.avatar, safeAuthor),
                 createdAt: this.normalizeTimestamp(data.createdAt),
                 expiresAt: this.normalizeTimestamp(data.expiresAt),
                 viewsCount: Math.max(0, parseInt(data.viewsCount, 10) || 0)
@@ -1590,7 +1811,7 @@ class FirebaseService {
                         id: chatId,
                         otherUid: otherUid || null,
                         otherUser: otherUser || 'user',
-                        otherAvatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(otherUser || 'user')}&background=random&size=64`,
+                        otherAvatar: this.buildUiAvatar(otherUser || 'user'),
                         otherOnline: false,
                         otherLastSeen: null,
                         otherVerified: false,
@@ -2528,86 +2749,6 @@ class FirebaseService {
         }
     }
 
-    // ===================== GIFTS / DONATIONS =====================
-
-    async sendGift({
-        toUid,
-        toUser = '',
-        amount = 50,
-        message = '',
-        sourceVideoId = null,
-        sourceVideoFirestoreId = null,
-        context = 'video'
-    } = {}) {
-        const fromUid = this.getCurrentUid();
-        if (!fromUid) throw new Error('Необходимо авторизироваться');
-        if (!toUid) throw new Error('Получатель не найден');
-        if (String(fromUid) === String(toUid)) {
-            throw new Error('Нельзя отправить подарок самому себе');
-        }
-
-        const safeAmount = Math.max(1, Math.min(100000, parseInt(amount, 10) || 0));
-        if (!safeAmount) throw new Error('Некорректная сумма подарка');
-
-        const safeMessage = String(message || '').trim().slice(0, 160);
-        const now = Date.now();
-        const fromProfile = this.currentUser && this.currentUser.uid === fromUid
-            ? this.currentUser
-            : await this.getUserProfile(fromUid);
-        const targetProfile = await this.getUserProfile(toUid);
-
-        const payload = {
-            fromUid,
-            fromUser: fromProfile?.name || 'user',
-            toUid: String(toUid),
-            toUser: targetProfile?.name || String(toUser || 'user'),
-            amount: safeAmount,
-            message: safeMessage,
-            context: String(context || 'video'),
-            sourceVideoId: sourceVideoId || null,
-            sourceVideoFirestoreId: sourceVideoFirestoreId || null,
-            timestamp: now,
-            createdAt: now
-        };
-
-        const giftRef = await this.db.collection('gifts').add(payload);
-
-        const senderRef = this.db.collection('users').doc(fromUid);
-        const targetRef = this.db.collection('users').doc(String(toUid));
-        const batch = this.db.batch();
-        batch.set(senderRef, {
-            giftsSentTotal: firebase.firestore.FieldValue.increment(safeAmount),
-            giftsSentCount: firebase.firestore.FieldValue.increment(1),
-            updatedAt: new Date()
-        }, { merge: true });
-        batch.set(targetRef, {
-            giftsReceivedTotal: firebase.firestore.FieldValue.increment(safeAmount),
-            giftsReceivedCount: firebase.firestore.FieldValue.increment(1),
-            updatedAt: new Date()
-        }, { merge: true });
-        await batch.commit();
-
-        if (this.currentUser && this.currentUser.uid === fromUid) {
-            this.currentUser.giftsSentTotal = (parseInt(this.currentUser.giftsSentTotal, 10) || 0) + safeAmount;
-            this.currentUser.giftsSentCount = (parseInt(this.currentUser.giftsSentCount, 10) || 0) + 1;
-        }
-
-        try {
-            await this.addNotification(String(toUid), 'gift', {
-                fromUid,
-                fromUser: fromProfile?.name || 'user',
-                amount: safeAmount,
-                message: safeMessage,
-                context: payload.context,
-                videoId: sourceVideoId || null
-            });
-        } catch (notifError) {
-            console.warn('⚠️ Не удалось отправить уведомление о подарке:', notifError?.message || notifError);
-        }
-
-        return { id: giftRef.id, ...payload };
-    }
-
     // ===================== NOTIFICATIONS =====================
 
     async addNotification(targetUid, type, data) {
@@ -2890,6 +3031,111 @@ class FirebaseService {
         return updated;
     }
 
+    async reauthenticateWithPassword(currentPassword = '') {
+        const authUser = this.auth && this.auth.currentUser ? this.auth.currentUser : null;
+        if (!authUser) {
+            throw new Error('Необходимо авторизироваться');
+        }
+
+        const password = String(currentPassword || '').trim();
+        if (!password) {
+            throw new Error('Введите текущий пароль');
+        }
+
+        const email = authUser.email ? String(authUser.email).trim() : '';
+        if (!email) {
+            throw new Error('Текущий аккаунт не поддерживает вход по email/паролю');
+        }
+
+        if (!firebase || !firebase.auth || !firebase.auth.EmailAuthProvider) {
+            throw new Error('EmailAuthProvider недоступен');
+        }
+
+        const credential = firebase.auth.EmailAuthProvider.credential(email, password);
+        await authUser.reauthenticateWithCredential(credential);
+        return true;
+    }
+
+    async changeCurrentUserEmail(newEmail = '', currentPassword = '') {
+        const authUser = this.auth && this.auth.currentUser ? this.auth.currentUser : null;
+        if (!authUser) {
+            throw new Error('Необходимо авторизироваться');
+        }
+
+        const normalizedEmail = String(newEmail || '').trim().toLowerCase();
+        if (!normalizedEmail) {
+            throw new Error('Введите новый email');
+        }
+
+        if (normalizedEmail === String(authUser.email || '').trim().toLowerCase()) {
+            throw new Error('Этот email уже установлен');
+        }
+
+        try {
+            await this.reauthenticateWithPassword(currentPassword);
+            await authUser.updateEmail(normalizedEmail);
+
+            const uid = this.getCurrentUid();
+            if (uid) {
+                await this.db.collection('users').doc(uid).set({
+                    email: normalizedEmail,
+                    updatedAt: new Date()
+                }, { merge: true });
+            }
+
+            if (this.currentUser) {
+                this.currentUser = {
+                    ...this.currentUser,
+                    email: normalizedEmail
+                };
+            }
+
+            try {
+                await authUser.sendEmailVerification();
+            } catch (_) {}
+
+            return { success: true, email: normalizedEmail };
+        } catch (error) {
+            const code = error && error.code ? error.code : '';
+            if (code) {
+                throw new Error(this.getFirebaseErrorMessage(code));
+            }
+            throw error;
+        }
+    }
+
+    async changeCurrentUserPassword(currentPassword = '', newPassword = '') {
+        const authUser = this.auth && this.auth.currentUser ? this.auth.currentUser : null;
+        if (!authUser) {
+            throw new Error('Необходимо авторизироваться');
+        }
+
+        const nextPassword = String(newPassword || '');
+        if (nextPassword.length < 6) {
+            throw new Error('Пароль слишком слабый (минимум 6 символов)');
+        }
+
+        try {
+            await this.reauthenticateWithPassword(currentPassword);
+            await authUser.updatePassword(nextPassword);
+
+            const uid = this.getCurrentUid();
+            if (uid) {
+                await this.db.collection('users').doc(uid).set({
+                    updatedAt: new Date()
+                }, { merge: true });
+            }
+
+            return { success: true };
+        } catch (error) {
+            const code = error && error.code ? error.code : '';
+            if (code) {
+                throw new Error(this.getFirebaseErrorMessage(code));
+            }
+            throw error;
+        }
+    }
+
     // ===================== HELPERS =====================
 
     getFirebaseErrorMessage(code) {
@@ -2899,6 +3145,9 @@ class FirebaseService {
             'auth/weak-password': 'Пароль слишком слабый (минимум 6 символов)',
             'auth/user-not-found': 'Пользователь не найден',
             'auth/wrong-password': 'Неверный пароль',
+            'auth/requires-recent-login': 'Для этого действия нужно подтвердить текущий пароль',
+            'auth/invalid-credential': 'Неверные учетные данные',
+            'auth/user-mismatch': 'Подтверждение не соответствует текущему аккаунту',
             'auth/too-many-requests': 'Слишком много попыток входа. Попробуйте позже',
             'auth/network-request-failed': 'Ошибка сети. Проверьте интернет'
         };

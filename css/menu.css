@@ -74,27 +74,17 @@ body.show-profile-menu .menu-dropdown {
     transform: scale(0.96);
 }
 
-.hamburger-btn span {
+.hamburger-btn .hamburger-icon {
+    width: 24px;
+    height: 24px;
+    object-fit: contain;
     display: block;
-    width: 22px;
-    height: 2.5px;
-    background: var(--text-color-primary);
-    border-radius: 2px;
-    transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
-    transform-origin: center;
+    pointer-events: none;
+    transition: transform 0.2s ease;
 }
 
-.hamburger-btn.active span:nth-child(1) {
-    transform: rotate(45deg) translateY(8px);
-}
-
-.hamburger-btn.active span:nth-child(2) {
-    opacity: 0;
-    transform: scaleX(0);
-}
-
-.hamburger-btn.active span:nth-child(3) {
-    transform: rotate(-45deg) translateY(-8px);
+.hamburger-btn.active .hamburger-icon {
+    transform: scale(0.92);
 }
 
 /* Menu Dropdown */

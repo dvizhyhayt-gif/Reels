@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Reelgram Live Module (UI layer)
  * Keeps live-stream UI/room logic out of app.js core file.
  */
@@ -100,34 +100,34 @@
             modal.innerHTML = `
                 <div class="live-room-shell">
                     <div class="live-room-top">
-                        <button type="button" class="live-room-top-btn" id="live-room-close">РќР°Р·Р°Рґ</button>
+                        <button type="button" class="live-room-top-btn" id="live-room-close">Назад</button>
                         <div class="live-room-host">
-                            <img class="live-room-owner-avatar" id="live-room-owner-avatar" src="https://ui-avatars.com/api/?name=Live&background=random&size=72" alt="@owner">
+                            <img class="live-room-owner-avatar" id="live-room-owner-avatar" src="assets/default-avatar.svg" alt="@owner">
                             <div class="live-room-host-text">
-                                <div class="live-room-title" id="live-room-title">РџСЂСЏРјРѕР№ СЌС„РёСЂ</div>
+                                <div class="live-room-title" id="live-room-title">Прямой эфир</div>
                                 <div class="live-room-subtitle" id="live-room-subtitle">@user</div>
                             </div>
                         </div>
-                        <button type="button" class="live-room-leave-btn" id="live-room-leave">Р’С‹Р№С‚Рё</button>
+                        <button type="button" class="live-room-leave-btn" id="live-room-leave">Выйти</button>
                     </div>
 
                     <div class="live-room-stage">
                         <video id="live-room-main-video" class="live-room-main-video" autoplay playsinline muted></video>
                         <div class="live-room-video-overlay"></div>
-                        <div class="live-room-video-placeholder" id="live-room-video-placeholder">РћР¶РёРґР°РЅРёРµ РІРёРґРµРѕРїРѕС‚РѕРєР°...</div>
-                        <button type="button" class="live-room-unmute-btn" id="live-room-unmute-btn" style="display:none;">Р’РєР»СЋС‡РёС‚СЊ Р·РІСѓРє</button>
+                        <div class="live-room-video-placeholder" id="live-room-video-placeholder">Ожидание видеопотока...</div>
+                        <button type="button" class="live-room-unmute-btn" id="live-room-unmute-btn" style="display:none;">Включить звук</button>
                         <span class="live-room-stage-badge">LIVE</span>
-                        <h3 class="live-room-stage-title" id="live-room-stage-title">РџРѕРґРєР»СЋС‡РµРЅРёРµ Рє СЌС„РёСЂСѓ...</h3>
-                        <p class="live-room-stage-sub" id="live-room-stage-sub">РћР¶РёРґР°РЅРёРµ РґР°РЅРЅС‹С… РєРѕРјРЅР°С‚С‹</p>
-                        <button type="button" class="live-room-edit-title-btn" id="live-room-edit-title" style="display:none;">РР·РјРµРЅРёС‚СЊ РЅР°Р·РІР°РЅРёРµ</button>
+                        <h3 class="live-room-stage-title" id="live-room-stage-title">Подключение к эфиру...</h3>
+                        <p class="live-room-stage-sub" id="live-room-stage-sub">Ожидание данных комнаты</p>
+                        <button type="button" class="live-room-edit-title-btn" id="live-room-edit-title" style="display:none;">Изменить название</button>
                         <div class="live-room-reaction-total" id="live-room-reaction-total"></div>
                         <div class="live-room-reaction-layer" id="live-room-reaction-layer"></div>
                     </div>
 
                     <div class="live-room-pinned" id="live-room-pinned" style="display:none;">
-                        <span class="live-room-pinned-label">Р—Р°РєСЂРµРї:</span>
+                        <span class="live-room-pinned-label">Закреп:</span>
                         <span class="live-room-pinned-text" id="live-room-pinned-text"></span>
-                        <button type="button" class="live-room-pin-clear-btn" id="live-room-pin-clear" style="display:none;">РЎРЅСЏС‚СЊ</button>
+                        <button type="button" class="live-room-pin-clear-btn" id="live-room-pin-clear" style="display:none;">Снять</button>
                     </div>
 
                     <div class="live-room-audience" id="live-room-audience"></div>
@@ -135,16 +135,16 @@
 
                     <div class="live-room-bottom">
                         <div class="live-room-reactions-row" id="live-room-reaction-row">
-                            <button type="button" class="live-room-reaction-btn" data-reaction="love">вќ¤пёЏ</button>
-                            <button type="button" class="live-room-reaction-btn" data-reaction="fire">рџ”Ґ</button>
-                            <button type="button" class="live-room-reaction-btn" data-reaction="wow">рџ®</button>
-                            <button type="button" class="live-room-reaction-btn" data-reaction="clap">рџ‘Џ</button>
-                            <button type="button" class="live-room-reaction-btn" data-reaction="party">рџЋ‰</button>
-                            <button type="button" class="live-room-reaction-btn" data-reaction="like">рџ‘Ќ</button>
+                            <button type="button" class="live-room-reaction-btn" data-reaction="love">❤️</button>
+                            <button type="button" class="live-room-reaction-btn" data-reaction="fire">🔥</button>
+                            <button type="button" class="live-room-reaction-btn" data-reaction="wow">😮</button>
+                            <button type="button" class="live-room-reaction-btn" data-reaction="clap">👏</button>
+                            <button type="button" class="live-room-reaction-btn" data-reaction="party">🎉</button>
+                            <button type="button" class="live-room-reaction-btn" data-reaction="like">👍</button>
                         </div>
                         <div class="live-room-input-row">
-                            <input id="live-room-input" type="text" maxlength="240" placeholder="РќР°РїРёСЃР°С‚СЊ РІ С‡Р°С‚ СЌС„РёСЂР°...">
-                            <button type="button" class="primary-btn" id="live-room-send">РћС‚РїСЂР°РІРёС‚СЊ</button>
+                            <input id="live-room-input" type="text" maxlength="240" placeholder="Написать в чат эфира...">
+                            <button type="button" class="primary-btn" id="live-room-send">Отправить</button>
                         </div>
                     </div>
                 </div>
@@ -361,7 +361,7 @@
         if (!placeholder) return;
         const textEl = placeholder.querySelector('.live-feed-reel-fallback-text');
         if (textEl) {
-            textEl.textContent = String(text || '').trim() || 'РџРѕРґРєР»СЋС‡Р°РµРј СЌС„РёСЂ...';
+            textEl.textContent = String(text || '').trim() || 'Подключаем эфир...';
         }
         placeholder.style.display = '';
     };
@@ -512,12 +512,12 @@
 
         const currentUid = getCurrentUid();
         if (!currentUid) {
-            this.setLiveFeedPreviewPlaceholder(card, 'Р’РѕР№РґРёС‚Рµ, С‡С‚РѕР±С‹ СЃРјРѕС‚СЂРµС‚СЊ РїСЂРµРґРїСЂРѕСЃРјРѕС‚СЂ');
+            this.setLiveFeedPreviewPlaceholder(card, 'Войдите, чтобы смотреть предпросмотр');
             return;
         }
 
         if (currentUid === ownerUid) {
-            this.setLiveFeedPreviewPlaceholder(card, 'Р’Р°С€ СЌС„РёСЂ В· РЅР°Р¶РјРёС‚Рµ, С‡С‚РѕР±С‹ РѕС‚РєСЂС‹С‚СЊ РєРѕРјРЅР°С‚Сѓ');
+            this.setLiveFeedPreviewPlaceholder(card, 'Ваш эфир · нажмите, чтобы открыть комнату');
             return;
         }
 
@@ -533,7 +533,7 @@
             ? compat.getPeerConnectionCtor()
             : null;
         if (supportError || typeof PeerConnectionCtor !== 'function') {
-            this.setLiveFeedPreviewPlaceholder(card, supportError || 'Р‘СЂР°СѓР·РµСЂ РЅРµ РїРѕРґРґРµСЂР¶РёРІР°РµС‚ live-РїСЂРµРґРїСЂРѕСЃРјРѕС‚СЂ');
+            this.setLiveFeedPreviewPlaceholder(card, supportError || 'Браузер не поддерживает live-предпросмотр');
             return;
         }
 
@@ -549,7 +549,7 @@
             preview.activeCard.classList.add('is-preview-active');
         }
 
-        this.setLiveFeedPreviewPlaceholder(card, 'РџРѕРґРєР»СЋС‡Р°РµРј live-РїРѕС‚РѕРє...');
+        this.setLiveFeedPreviewPlaceholder(card, 'Подключаем live-поток...');
         videoEl.muted = true;
         videoEl.playsInline = true;
         videoEl.autoplay = true;
@@ -606,7 +606,7 @@
             const sameSession = this.liveFeedPreview && this.liveFeedPreview.sessionId === sessionId;
             if (!sameSession) return;
             if (placeholderEl && placeholderEl.style.display !== 'none') {
-                this.setLiveFeedPreviewPlaceholder(card, 'РќР°Р¶РјРёС‚Рµ, С‡С‚РѕР±С‹ РІРѕР№С‚Рё РІ СЌС„РёСЂ');
+                this.setLiveFeedPreviewPlaceholder(card, 'Нажмите, чтобы войти в эфир');
             }
         }, 9000);
     };
@@ -682,7 +682,7 @@
             if (typeof this.renderStoriesStrip === 'function') {
                 this.renderStoriesStrip();
             }
-            if (!silent) AdvancedViewRenderer.showToast('Live РґРѕСЃС‚СѓРїРµРЅ РїРѕСЃР»Рµ РїРѕРґРєР»СЋС‡РµРЅРёСЏ Р±Р°Р·С‹', 'warning');
+            if (!silent) AdvancedViewRenderer.showToast('Live доступен после подключения базы', 'warning');
             return;
         }
 
@@ -695,8 +695,8 @@
                 this.renderStoriesStrip();
             }
         } catch (error) {
-            console.error('РћС€РёР±РєР° РѕР±РЅРѕРІР»РµРЅРёСЏ СЌС„РёСЂРѕРІ:', error);
-            if (!silent) AdvancedViewRenderer.showToast(error?.message || 'РќРµ СѓРґР°Р»РѕСЃСЊ РѕР±РЅРѕРІРёС‚СЊ СЌС„РёСЂС‹', 'error');
+            console.error('Ошибка обновления эфиров:', error);
+            if (!silent) AdvancedViewRenderer.showToast(error?.message || 'Не удалось обновить эфиры', 'error');
         }
     };
 
@@ -707,7 +707,7 @@
         if (!this.liveSessionsList) return;
         const sessions = Array.isArray(this.liveSessions) ? this.liveSessions.slice(0, 8) : [];
         if (!sessions.length) {
-            this.liveSessionsList.innerHTML = '<div class="live-sessions-empty">РЎРµР№С‡Р°СЃ РЅРµС‚ Р°РєС‚РёРІРЅС‹С… СЌС„РёСЂРѕРІ</div>';
+            this.liveSessionsList.innerHTML = '<div class="live-sessions-empty">Сейчас нет активных эфиров</div>';
             return;
         }
 
@@ -740,10 +740,10 @@
         root.className = 'live-feed-root';
         root.innerHTML = `
             <div class="live-feed-head">
-                <div class="live-feed-title">РџСЂСЏРјС‹Рµ СЌС„РёСЂС‹</div>
+                <div class="live-feed-title">Прямые эфиры</div>
                 <div class="live-feed-head-actions">
-                    <button type="button" class="secondary-btn live-feed-refresh">РћР±РЅРѕРІРёС‚СЊ</button>
-                    <button type="button" class="primary-btn live-feed-open">РњРѕРё СЌС„РёСЂС‹</button>
+                    <button type="button" class="secondary-btn live-feed-refresh">Обновить</button>
+                    <button type="button" class="primary-btn live-feed-open">Мои эфиры</button>
                 </div>
             </div>
             <div class="live-feed-list"></div>
@@ -766,8 +766,8 @@
         if (!sessions.length) {
             listEl.innerHTML = `
                 <div class="live-feed-empty">
-                    <h3>РЎРµР№С‡Р°СЃ РЅРµС‚ Р°РєС‚РёРІРЅС‹С… СЌС„РёСЂРѕРІ</h3>
-                    <p>РќР°Р¶РјРёС‚Рµ "РњРѕРё СЌС„РёСЂС‹", С‡С‚РѕР±С‹ Р·Р°РїСѓСЃС‚РёС‚СЊ С‚СЂР°РЅСЃР»СЏС†РёСЋ.</p>
+                    <h3>Сейчас нет активных эфиров</h3>
+                    <p>Нажмите "Мои эфиры", чтобы запустить трансляцию.</p>
                 </div>
             `;
             this.feedContainer.appendChild(root);
@@ -780,14 +780,14 @@
             const isOwner = !!(currentUid && String(session.ownerUid || '') === currentUid);
             const canJoinAsCoHost = !isOwner && Array.isArray(session.coHosts) && session.coHosts.length < 2;
             const coHostsCount = Array.isArray(session.coHosts) ? session.coHosts.length : 0;
-            const avatar = this.escapeHtml(session.ownerAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(session.ownerName || 'user')}&background=random&size=72`);
+            const avatar = this.escapeHtml(session.ownerAvatar || 'assets/default-avatar.svg');
 
             row.innerHTML = `
                 <div class="live-feed-meta">
                     <img class="live-feed-avatar" src="${avatar}" alt="@${this.escapeHtml(session.ownerName || 'user')}">
                     <div class="live-feed-text">
-                        <div class="live-feed-row-title">${this.escapeHtml(session.title || 'РџСЂСЏРјРѕР№ СЌС„РёСЂ')}</div>
-                        <div class="live-feed-row-sub">@${this.escapeHtml(session.ownerName || 'user')} В· Р·СЂРёС‚РµР»РµР№: ${AdvancedViewRenderer.formatNumber(session.viewersCount || 0)} В· co-host: ${coHostsCount}/2</div>
+                        <div class="live-feed-row-title">${this.escapeHtml(session.title || 'Прямой эфир')}</div>
+                        <div class="live-feed-row-sub">@${this.escapeHtml(session.ownerName || 'user')} · зрителей: ${AdvancedViewRenderer.formatNumber(session.viewersCount || 0)} · co-host: ${coHostsCount}/2</div>
                     </div>
                 </div>
                 <div class="live-feed-actions"></div>
@@ -799,23 +799,23 @@
                     const openRoomBtn = document.createElement('button');
                     openRoomBtn.type = 'button';
                     openRoomBtn.className = 'secondary-btn';
-                    openRoomBtn.textContent = 'РћС‚РєСЂС‹С‚СЊ';
+                    openRoomBtn.textContent = 'Открыть';
                     openRoomBtn.addEventListener('click', () => this.openLiveRoom(session.id, { skipJoin: true }));
                     actions.appendChild(openRoomBtn);
 
                     const endBtn = document.createElement('button');
                     endBtn.type = 'button';
                     endBtn.className = 'secondary-btn';
-                    endBtn.textContent = 'Р—Р°РІРµСЂС€РёС‚СЊ';
+                    endBtn.textContent = 'Завершить';
                     endBtn.addEventListener('click', async () => {
                         try {
                             await firebaseService.endLiveSession(session.id);
-                            AdvancedViewRenderer.showToast('Р­С„РёСЂ Р·Р°РІРµСЂС€РµРЅ', 'success');
+                            AdvancedViewRenderer.showToast('Эфир завершен', 'success');
                             await this.refreshLiveSessions({ silent: true });
                             this.renderLiveFeedList();
                         } catch (error) {
                             console.error(error);
-                            AdvancedViewRenderer.showToast(error?.message || 'РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РІРµСЂС€РёС‚СЊ СЌС„РёСЂ', 'error');
+                            AdvancedViewRenderer.showToast(error?.message || 'Не удалось завершить эфир', 'error');
                         }
                     });
                     actions.appendChild(endBtn);
@@ -823,7 +823,7 @@
                     const joinBtn = document.createElement('button');
                     joinBtn.type = 'button';
                     joinBtn.className = 'secondary-btn';
-                    joinBtn.textContent = 'Р’РѕР№С‚Рё';
+                    joinBtn.textContent = 'Войти';
                     joinBtn.addEventListener('click', () => this.joinLiveSession(session.id, { asCoHost: false }));
                     actions.appendChild(joinBtn);
 
@@ -848,7 +848,7 @@
         const sessions = Array.isArray(this.liveSessions) ? this.liveSessions : [];
         const currentUid = getCurrentUid();
         if (!sessions.length) {
-            this.liveSheetList.innerHTML = '<div class="live-sessions-empty">РЎРµР№С‡Р°СЃ РЅРµС‚ Р°РєС‚РёРІРЅС‹С… СЌС„РёСЂРѕРІ</div>';
+            this.liveSheetList.innerHTML = '<div class="live-sessions-empty">Сейчас нет активных эфиров</div>';
             return;
         }
 
@@ -861,8 +861,8 @@
             const coHostsCount = Array.isArray(session.coHosts) ? session.coHosts.length : 0;
             row.innerHTML = `
                 <div class="live-sheet-meta">
-                    <div class="live-sheet-title">${this.escapeHtml(session.title || 'РџСЂСЏРјРѕР№ СЌС„РёСЂ')}</div>
-                    <div class="live-sheet-sub">@${this.escapeHtml(session.ownerName || 'user')} В· Р·СЂРёС‚РµР»РµР№: ${AdvancedViewRenderer.formatNumber(session.viewersCount || 0)} В· co-host: ${coHostsCount}/2</div>
+                    <div class="live-sheet-title">${this.escapeHtml(session.title || 'Прямой эфир')}</div>
+                    <div class="live-sheet-sub">@${this.escapeHtml(session.ownerName || 'user')} · зрителей: ${AdvancedViewRenderer.formatNumber(session.viewersCount || 0)} · co-host: ${coHostsCount}/2</div>
                 </div>
                 <div class="live-sheet-actions"></div>
             `;
@@ -873,14 +873,14 @@
                     const openBtn = document.createElement('button');
                     openBtn.type = 'button';
                     openBtn.className = 'secondary-btn';
-                    openBtn.textContent = 'РћС‚РєСЂС‹С‚СЊ';
+                    openBtn.textContent = 'Открыть';
                     openBtn.addEventListener('click', () => this.openLiveRoom(session.id, { skipJoin: true }));
                     actions.appendChild(openBtn);
                 } else {
                     const joinBtn = document.createElement('button');
                     joinBtn.type = 'button';
                     joinBtn.className = 'secondary-btn';
-                    joinBtn.textContent = 'Р’РѕР№С‚Рё';
+                    joinBtn.textContent = 'Войти';
                     joinBtn.addEventListener('click', () => this.joinLiveSession(session.id, { asCoHost: false }));
                     actions.appendChild(joinBtn);
 
@@ -939,7 +939,7 @@
         }
         if (this.liveRoomVideoPlaceholder) {
             this.liveRoomVideoPlaceholder.style.display = '';
-            this.liveRoomVideoPlaceholder.textContent = 'РћР¶РёРґР°РЅРёРµ РІРёРґРµРѕРїРѕС‚РѕРєР°...';
+            this.liveRoomVideoPlaceholder.textContent = 'Ожидание видеопотока...';
         }
         if (this.liveRoomUnmuteBtn) {
             this.liveRoomUnmuteBtn.style.display = 'none';
@@ -1202,7 +1202,7 @@
         if (typeof RTCPeerConnection !== 'function') {
             if (this.liveRoomVideoPlaceholder) {
                 this.liveRoomVideoPlaceholder.style.display = '';
-                this.liveRoomVideoPlaceholder.textContent = 'Р’Р°С€ Р±СЂР°СѓР·РµСЂ РЅРµ РїРѕРґРґРµСЂР¶РёРІР°РµС‚ WebRTC';
+                this.liveRoomVideoPlaceholder.textContent = 'Ваш браузер не поддерживает WebRTC';
             }
             return;
         }
@@ -1229,9 +1229,9 @@
             } catch (mediaError) {
                 if (this.liveRoomVideoPlaceholder) {
                     this.liveRoomVideoPlaceholder.style.display = '';
-                    this.liveRoomVideoPlaceholder.textContent = 'РќРµС‚ РґРѕСЃС‚СѓРїР° Рє РєР°РјРµСЂРµ/РјРёРєСЂРѕС„РѕРЅСѓ';
+                    this.liveRoomVideoPlaceholder.textContent = 'Нет доступа к камере/микрофону';
                 }
-                AdvancedViewRenderer.showToast(mediaError?.message || 'РќРµ СѓРґР°Р»РѕСЃСЊ РІРєР»СЋС‡РёС‚СЊ РєР°РјРµСЂСѓ', 'error');
+                AdvancedViewRenderer.showToast(mediaError?.message || 'Не удалось включить камеру', 'error');
             }
             return;
         }
@@ -1267,7 +1267,7 @@
             return;
         }
         if (!isFirebaseLiveReady() || typeof firebaseService.createLiveSession !== 'function') {
-            AdvancedViewRenderer.showToast('Live РЅРµРґРѕСЃС‚СѓРїРµРЅ Р±РµР· РїРѕРґРєР»СЋС‡РµРЅРёСЏ Р±Р°Р·С‹', 'warning');
+            AdvancedViewRenderer.showToast('Live недоступен без подключения базы', 'warning');
             return;
         }
 
@@ -1279,10 +1279,10 @@
             this.closeLiveSheet();
             await this.refreshLiveSessions({ silent: true });
             await this.openLiveRoom(this.state.activeLiveSessionId, { skipJoin: true });
-            AdvancedViewRenderer.showToast('Р­С„РёСЂ Р·Р°РїСѓС‰РµРЅ', 'success');
+            AdvancedViewRenderer.showToast('Эфир запущен', 'success');
         } catch (error) {
             console.error(error);
-            AdvancedViewRenderer.showToast(error?.message || 'РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РїСѓСЃС‚РёС‚СЊ СЌС„РёСЂ', 'error');
+            AdvancedViewRenderer.showToast(error?.message || 'Не удалось запустить эфир', 'error');
         }
     };
 
@@ -1293,7 +1293,7 @@
             return;
         }
         if (!isFirebaseLiveReady()) {
-            AdvancedViewRenderer.showToast('Live РЅРµРґРѕСЃС‚СѓРїРµРЅ Р±РµР· РїРѕРґРєР»СЋС‡РµРЅРёСЏ Р±Р°Р·С‹', 'warning');
+            AdvancedViewRenderer.showToast('Live недоступен без подключения базы', 'warning');
             return;
         }
 
@@ -1303,10 +1303,10 @@
             this.closeLiveSheet();
             await this.openLiveRoom(this.state.activeLiveSessionId, { skipJoin: true });
             await this.refreshLiveSessions({ silent: true });
-            AdvancedViewRenderer.showToast(asCoHost ? 'Р’С‹ РїСЂРёСЃРѕРµРґРёРЅРёР»РёСЃСЊ РєР°Рє co-host' : 'Р’С‹ РІРѕС€Р»Рё РІ СЌС„РёСЂ', 'success');
+            AdvancedViewRenderer.showToast(asCoHost ? 'Вы присоединились как co-host' : 'Вы вошли в эфир', 'success');
         } catch (error) {
             console.error(error);
-            AdvancedViewRenderer.showToast(error?.message || 'РќРµ СѓРґР°Р»РѕСЃСЊ РІРѕР№С‚Рё РІ СЌС„РёСЂ', 'error');
+            AdvancedViewRenderer.showToast(error?.message || 'Не удалось войти в эфир', 'error');
         }
     };
 
@@ -1317,6 +1317,17 @@
             return;
         }
         if (!sessionId) return;
+        if (!this.liveRoomModal || !this.liveRoomMainVideo || !this.liveRoomChat) {
+            if (typeof this.ensureEnhancedUiScaffold === 'function') {
+                this.ensureEnhancedUiScaffold();
+            }
+            if (typeof this.cacheElements === 'function') {
+                this.cacheElements();
+            }
+            if (typeof this.setupLiveEvents === 'function') {
+                this.setupLiveEvents();
+            }
+        }
         if (!(isFirebaseLiveReady()
             && typeof firebaseService.subscribeToLiveSession === 'function'
             && typeof firebaseService.subscribeToLiveMessages === 'function'
@@ -1324,7 +1335,7 @@
             && typeof firebaseService.subscribeToLiveAudience === 'function'
             && typeof firebaseService.subscribeToLiveSignals === 'function'
             && typeof firebaseService.sendLiveSignal === 'function')) {
-            AdvancedViewRenderer.showToast('Live-РјРѕРґСѓР»СЊ РЅРµ РіРѕС‚РѕРІ', 'warning');
+            AdvancedViewRenderer.showToast('Live-модуль не готов', 'warning');
             return;
         }
 
@@ -1332,7 +1343,7 @@
             try {
                 await firebaseService.joinLiveSession(sessionId, { asCoHost: false });
             } catch (joinError) {
-                AdvancedViewRenderer.showToast(joinError?.message || 'РќРµ СѓРґР°Р»РѕСЃСЊ РІРѕР№С‚Рё РІ СЌС„РёСЂ', 'error');
+                AdvancedViewRenderer.showToast(joinError?.message || 'Не удалось войти в эфир', 'error');
                 return;
             }
         }
@@ -1355,16 +1366,16 @@
         }
         if (this.liveRoomVideoPlaceholder) {
             this.liveRoomVideoPlaceholder.style.display = '';
-            this.liveRoomVideoPlaceholder.textContent = 'РџРѕРґРєР»СЋС‡РµРЅРёРµ Рє РІРёРґРµРѕРїРѕС‚РѕРєСѓ...';
+            this.liveRoomVideoPlaceholder.textContent = 'Подключение к видеопотоку...';
         }
         if (this.liveRoomUnmuteBtn) {
             this.liveRoomUnmuteBtn.style.display = 'none';
         }
         if (this.liveRoomChat) {
-            this.liveRoomChat.innerHTML = '<div class="live-room-chat-empty">РџРѕРґРєР»СЋС‡Р°РµРј С‡Р°С‚ СЌС„РёСЂР°...</div>';
+            this.liveRoomChat.innerHTML = '<div class="live-room-chat-empty">Подключаем чат эфира...</div>';
         }
         if (this.liveRoomAudience) {
-            this.liveRoomAudience.innerHTML = '<div class="live-room-audience-empty">РћР±РЅРѕРІР»СЏРµРј Р·СЂРёС‚РµР»РµР№...</div>';
+            this.liveRoomAudience.innerHTML = '<div class="live-room-audience-empty">Обновляем зрителей...</div>';
         }
 
         const sessionCallback = (session) => this.handleLiveRoomSessionUpdate(session);
@@ -1397,25 +1408,25 @@
         if (!session || session.status !== 'live') {
             this.closeLiveRoom({ leaveSession: false });
             this.refreshLiveSessions({ silent: true });
-            AdvancedViewRenderer.showToast('Р­С„РёСЂ Р·Р°РІРµСЂС€РµРЅ', 'warning');
+            AdvancedViewRenderer.showToast('Эфир завершен', 'warning');
             return;
         }
 
         this.liveRoomState.session = session;
         this.liveRoomState.role = this.getActiveLiveRole();
 
-        if (this.liveRoomTitle) this.liveRoomTitle.textContent = session.title || 'РџСЂСЏРјРѕР№ СЌС„РёСЂ';
-        if (this.liveRoomStageTitle) this.liveRoomStageTitle.textContent = session.title || 'РџСЂСЏРјРѕР№ СЌС„РёСЂ';
+        if (this.liveRoomTitle) this.liveRoomTitle.textContent = session.title || 'Прямой эфир';
+        if (this.liveRoomStageTitle) this.liveRoomStageTitle.textContent = session.title || 'Прямой эфир';
         if (this.liveRoomSubtitle) this.liveRoomSubtitle.textContent = `@${session.ownerName || 'user'}`;
         if (this.liveRoomStageSub) {
             const coHostsCount = Array.isArray(session.coHosts) ? session.coHosts.length : 0;
-            this.liveRoomStageSub.textContent = `Р—СЂРёС‚РµР»РµР№: ${AdvancedViewRenderer.formatNumber(session.viewersCount || 0)} В· co-host: ${coHostsCount}/2`;
+            this.liveRoomStageSub.textContent = `Зрителей: ${AdvancedViewRenderer.formatNumber(session.viewersCount || 0)} · co-host: ${coHostsCount}/2`;
         }
         if (this.liveRoomOwnerAvatar) {
-            this.liveRoomOwnerAvatar.src = session.ownerAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(session.ownerName || 'user')}&background=random&size=72`;
+            this.liveRoomOwnerAvatar.src = session.ownerAvatar || 'assets/default-avatar.svg';
         }
         if (this.liveRoomLeaveBtn) {
-            this.liveRoomLeaveBtn.textContent = this.liveRoomState.role === 'owner' ? 'Р—Р°РІРµСЂС€РёС‚СЊ' : 'Р’С‹Р№С‚Рё';
+            this.liveRoomLeaveBtn.textContent = this.liveRoomState.role === 'owner' ? 'Завершить' : 'Выйти';
         }
         if (this.liveRoomEditTitleBtn) {
             this.liveRoomEditTitleBtn.style.display = (this.liveRoomState.role === 'owner' || this.liveRoomState.role === 'cohost') ? '' : 'none';
@@ -1434,7 +1445,7 @@
         const total = ['love', 'fire', 'wow', 'clap', 'party', 'like']
             .reduce((sum, key) => sum + (parseInt(counters[key], 10) || 0), 0);
         this.liveRoomReactionTotal.textContent = total > 0
-            ? `Р РµР°РєС†РёР№: ${AdvancedViewRenderer.formatNumber(total)}`
+            ? `Реакций: ${AdvancedViewRenderer.formatNumber(total)}`
             : '';
     };
 
@@ -1460,13 +1471,13 @@
         const session = this.liveRoomState.session || null;
         const viewersCount = session ? (parseInt(session.viewersCount, 10) || audience.length) : audience.length;
         if (!audience.length) {
-            this.liveRoomAudience.innerHTML = `<div class="live-room-audience-empty">Р—СЂРёС‚РµР»РµР№: ${AdvancedViewRenderer.formatNumber(viewersCount)}</div>`;
+            this.liveRoomAudience.innerHTML = `<div class="live-room-audience-empty">Зрителей: ${AdvancedViewRenderer.formatNumber(viewersCount)}</div>`;
             return;
         }
 
         const top = audience.slice(0, 8).map((row) => {
-            const roleLabel = row.role === 'owner' ? 'РІРµРґСѓС‰РёР№' : (row.role === 'cohost' ? 'co-host' : 'Р·СЂРёС‚РµР»СЊ');
-            const avatar = this.escapeHtml(row.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(row.user || 'user')}&background=random&size=48`);
+            const roleLabel = row.role === 'owner' ? 'ведущий' : (row.role === 'cohost' ? 'co-host' : 'зритель');
+            const avatar = this.escapeHtml(row.avatar || 'assets/default-avatar.svg');
             return `
                 <div class="live-room-audience-chip">
                     <img src="${avatar}" alt="@${this.escapeHtml(row.user || 'user')}">
@@ -1477,7 +1488,7 @@
         }).join('');
 
         this.liveRoomAudience.innerHTML = `
-            <div class="live-room-audience-head">Р—СЂРёС‚РµР»РµР№: ${AdvancedViewRenderer.formatNumber(viewersCount)}</div>
+            <div class="live-room-audience-head">Зрителей: ${AdvancedViewRenderer.formatNumber(viewersCount)}</div>
             <div class="live-room-audience-list">${top}</div>
         `;
     };
@@ -1488,16 +1499,16 @@
         const myUid = getCurrentUid();
         const canPin = this.liveRoomState.role === 'owner' || this.liveRoomState.role === 'cohost';
         if (!rows.length) {
-            this.liveRoomChat.innerHTML = '<div class="live-room-chat-empty">Р§Р°С‚ РїСѓСЃС‚. РќР°РїРёС€РёС‚Рµ РїРµСЂРІРѕРµ СЃРѕРѕР±С‰РµРЅРёРµ.</div>';
+            this.liveRoomChat.innerHTML = '<div class="live-room-chat-empty">Чат пуст. Напишите первое сообщение.</div>';
             return;
         }
 
         this.liveRoomChat.innerHTML = rows.map((row) => {
             const own = !!(myUid && String(row.uid || '') === myUid);
-            const avatar = this.escapeHtml(row.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(row.user || 'user')}&background=random&size=40`);
+            const avatar = this.escapeHtml(row.avatar || 'assets/default-avatar.svg');
             const system = row.type === 'system';
             const pinAction = canPin && !system && row.text
-                ? `<button type="button" class="live-room-pin-btn" data-live-pin-id="${this.escapeHtml(row.id || '')}">Р—Р°РєСЂРµРїРёС‚СЊ</button>`
+                ? `<button type="button" class="live-room-pin-btn" data-live-pin-id="${this.escapeHtml(row.id || '')}">Закрепить</button>`
                 : '';
             return `
                 <div class="live-room-chat-row${own ? ' own' : ''}${system ? ' system' : ''}">
@@ -1533,7 +1544,7 @@
             if (!rid || seen.has(rid)) return;
             seen.add(rid);
             if (now - (parseInt(row.createdAt, 10) || 0) <= 18000) {
-                this.animateLiveReaction(row.emoji || 'рџ”Ґ');
+                this.animateLiveReaction(row.emoji || '🔥');
             }
         });
         if (seen.size > 1200) {
@@ -1547,7 +1558,7 @@
         }
     };
 
-    proto.animateLiveReaction = function animateLiveReaction(emoji = 'рџ”Ґ') {
+    proto.animateLiveReaction = function animateLiveReaction(emoji = '🔥') {
         if (!this.liveRoomReactionLayer) return;
         const bubble = document.createElement('span');
         bubble.className = 'live-room-reaction-float';
@@ -1570,7 +1581,7 @@
             await firebaseService.sendLiveMessage(sessionId, text, { type: 'text' });
         } catch (error) {
             console.error(error);
-            AdvancedViewRenderer.showToast(error?.message || 'РќРµ СѓРґР°Р»РѕСЃСЊ РѕС‚РїСЂР°РІРёС‚СЊ СЃРѕРѕР±С‰РµРЅРёРµ', 'error');
+            AdvancedViewRenderer.showToast(error?.message || 'Не удалось отправить сообщение', 'error');
         }
     };
 
@@ -1579,13 +1590,13 @@
         if (!sessionId) return;
         const preset = (firebaseService && typeof firebaseService.getLiveReactionPreset === 'function')
             ? firebaseService.getLiveReactionPreset(reactionKey)
-            : { emoji: 'рџ”Ґ' };
-        this.animateLiveReaction(preset.emoji || 'рџ”Ґ');
+            : { emoji: '🔥' };
+        this.animateLiveReaction(preset.emoji || '🔥');
         try {
             await firebaseService.sendLiveReaction(sessionId, reactionKey);
         } catch (error) {
             console.error(error);
-            AdvancedViewRenderer.showToast(error?.message || 'РќРµ СѓРґР°Р»РѕСЃСЊ РѕС‚РїСЂР°РІРёС‚СЊ СЂРµР°РєС†РёСЋ', 'error');
+            AdvancedViewRenderer.showToast(error?.message || 'Не удалось отправить реакцию', 'error');
         }
     };
 
@@ -1597,10 +1608,10 @@
         if (!row) return;
         try {
             await firebaseService.pinLiveMessage(sessionId, row);
-            AdvancedViewRenderer.showToast('РЎРѕРѕР±С‰РµРЅРёРµ Р·Р°РєСЂРµРїР»РµРЅРѕ', 'success');
+            AdvancedViewRenderer.showToast('Сообщение закреплено', 'success');
         } catch (error) {
             console.error(error);
-            AdvancedViewRenderer.showToast(error?.message || 'РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РєСЂРµРїРёС‚СЊ СЃРѕРѕР±С‰РµРЅРёРµ', 'error');
+            AdvancedViewRenderer.showToast(error?.message || 'Не удалось закрепить сообщение', 'error');
         }
     };
 
@@ -1610,10 +1621,10 @@
         if (!(this.liveRoomState.role === 'owner' || this.liveRoomState.role === 'cohost')) return;
         try {
             await firebaseService.clearLivePinnedMessage(sessionId);
-            AdvancedViewRenderer.showToast('Р—Р°РєСЂРµРї СЃРЅСЏС‚', 'success');
+            AdvancedViewRenderer.showToast('Закреп снят', 'success');
         } catch (error) {
             console.error(error);
-            AdvancedViewRenderer.showToast(error?.message || 'РќРµ СѓРґР°Р»РѕСЃСЊ СЃРЅСЏС‚СЊ Р·Р°РєСЂРµРї', 'error');
+            AdvancedViewRenderer.showToast(error?.message || 'Не удалось снять закреп', 'error');
         }
     };
 
@@ -1622,16 +1633,16 @@
         const session = this.liveRoomState && this.liveRoomState.session ? this.liveRoomState.session : null;
         if (!sessionId || !session) return;
         if (!(this.liveRoomState.role === 'owner' || this.liveRoomState.role === 'cohost')) return;
-        const value = window.prompt('РќРѕРІРѕРµ РЅР°Р·РІР°РЅРёРµ СЌС„РёСЂР°', session.title || '');
+        const value = window.prompt('Новое название эфира', session.title || '');
         if (value === null) return;
         const nextTitle = String(value || '').trim();
         if (!nextTitle) return;
         try {
             await firebaseService.updateLiveSessionTitle(sessionId, nextTitle);
-            AdvancedViewRenderer.showToast('РќР°Р·РІР°РЅРёРµ РѕР±РЅРѕРІР»РµРЅРѕ', 'success');
+            AdvancedViewRenderer.showToast('Название обновлено', 'success');
         } catch (error) {
             console.error(error);
-            AdvancedViewRenderer.showToast(error?.message || 'РќРµ СѓРґР°Р»РѕСЃСЊ РѕР±РЅРѕРІРёС‚СЊ РЅР°Р·РІР°РЅРёРµ', 'error');
+            AdvancedViewRenderer.showToast(error?.message || 'Не удалось обновить название', 'error');
         }
     };
 
@@ -1644,14 +1655,14 @@
         }
 
         if (this.liveRoomState.role === 'owner') {
-            const ok = window.confirm('Р—Р°РІРµСЂС€РёС‚СЊ СЌС„РёСЂ РґР»СЏ РІСЃРµС… Р·СЂРёС‚РµР»РµР№?');
+            const ok = window.confirm('Завершить эфир для всех зрителей?');
             if (!ok) return;
             try {
                 await firebaseService.endLiveSession(sessionId);
-                AdvancedViewRenderer.showToast('Р­С„РёСЂ Р·Р°РІРµСЂС€РµРЅ', 'success');
+                AdvancedViewRenderer.showToast('Эфир завершен', 'success');
             } catch (error) {
                 console.error(error);
-                AdvancedViewRenderer.showToast(error?.message || 'РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РІРµСЂС€РёС‚СЊ СЌС„РёСЂ', 'error');
+                AdvancedViewRenderer.showToast(error?.message || 'Не удалось завершить эфир', 'error');
                 return;
             }
             await this.closeLiveRoom({ leaveSession: false });
@@ -1824,18 +1835,19 @@
 
         const storyUids = new Set(groups.map((group) => String(group.uid || '')));
         const liveOnlyGroups = [];
-        liveMap.forEach((session, ownerUid) => {
-            if (!visibleLiveUids.has(ownerUid)) return;
-            if (storyUids.has(ownerUid)) return;
-            liveOnlyGroups.push({
-                uid: ownerUid,
-                author: session.ownerName || 'user',
-                avatar: session.ownerAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(session.ownerName || 'user')}&background=random&size=72`,
-                hasUnseen: true,
-                liveOnly: true,
-                liveSession: session
+            liveMap.forEach((session, ownerUid) => {
+                if (!visibleLiveUids.has(ownerUid)) return;
+                if (storyUids.has(ownerUid)) return;
+                liveOnlyGroups.push({
+                    uid: ownerUid,
+                    author: session.ownerName || 'user',
+                    displayName: session.ownerDisplayName || session.ownerName || 'user',
+                    avatar: session.ownerAvatar || 'assets/default-avatar.svg',
+                    hasUnseen: true,
+                    liveOnly: true,
+                    liveSession: session
+                });
             });
-        });
 
         const liveStoryGroups = [];
         const regularStoryGroups = [];
@@ -1850,7 +1862,7 @@
 
         const orderedGroups = [...liveStoryGroups, ...liveOnlyGroups, ...regularStoryGroups];
         if (!orderedGroups.length && !currentUid) {
-            this.storiesStrip.innerHTML = '<div class="stories-empty">Р’РѕР№РґРёС‚Рµ, С‡С‚РѕР±С‹ РїСѓР±Р»РёРєРѕРІР°С‚СЊ РёСЃС‚РѕСЂРёРё</div>';
+            this.storiesStrip.innerHTML = '<div class="stories-empty">Войдите, чтобы публиковать истории</div>';
             if (feedView) feedView.classList.remove('has-stories');
             return;
         }
@@ -1863,10 +1875,10 @@
             addBtn.type = 'button';
             addBtn.innerHTML = `
                 <span class="story-avatar-ring">
-                    <img src="${this.escapeHtml(current.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(current.name || 'you')}&background=random&size=72`)}" alt="@${this.escapeHtml(current.name || 'you')}" class="story-avatar">
+                    <img src="${this.escapeHtml(current.avatar || 'assets/default-avatar.svg')}" alt="@${this.escapeHtml(current.name || 'you')}" class="story-avatar">
                     <span class="story-add-plus">+</span>
                 </span>
-                <span class="story-name">Р”РѕР±Р°РІРёС‚СЊ</span>
+                <span class="story-name">${this.escapeHtml('\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c')}</span>
             `;
             fragment.appendChild(addBtn);
         }
@@ -1885,17 +1897,18 @@
                 chip.dataset.liveSessionId = String(liveSession.id);
             }
             const safeAuthor = this.escapeHtml(group.author || liveSession?.ownerName || 'user');
+            const safeDisplayName = this.escapeHtml(group.displayName || group.author || liveSession?.ownerDisplayName || liveSession?.ownerName || 'user');
             const safeAvatar = this.escapeHtml(
                 group.avatar
                 || liveSession?.ownerAvatar
-                || `https://ui-avatars.com/api/?name=${encodeURIComponent(group.author || liveSession?.ownerName || 'user')}&background=random&size=72`
+                || 'assets/default-avatar.svg'
             );
             chip.innerHTML = `
                 <span class="story-avatar-ring">
                     <img src="${safeAvatar}" alt="@${safeAuthor}" class="story-avatar">
                     ${liveSession ? '<span class="story-live-badge">LIVE</span>' : ''}
                 </span>
-                <span class="story-name">${safeAuthor}</span>
+                <span class="story-name">${safeDisplayName}</span>
             `;
             fragment.appendChild(chip);
         });
@@ -1920,10 +1933,10 @@
         root.className = 'live-feed-root live-feed-reels-mode';
         root.innerHTML = `
             <div class="live-feed-head live-feed-head-reels">
-                <div class="live-feed-title">Р­С„РёСЂС‹</div>
+                <div class="live-feed-title">Эфиры</div>
                 <div class="live-feed-head-actions">
-                    <button type="button" class="secondary-btn live-feed-refresh">РћР±РЅРѕРІРёС‚СЊ</button>
-                    <button type="button" class="primary-btn live-feed-open">РњРѕРё СЌС„РёСЂС‹</button>
+                    <button type="button" class="secondary-btn live-feed-refresh">Обновить</button>
+                    <button type="button" class="primary-btn live-feed-open">Мои эфиры</button>
                 </div>
             </div>
             <div class="live-feed-reels"></div>
@@ -1948,8 +1961,8 @@
         if (!sessions.length) {
             reels.innerHTML = `
                 <div class="live-feed-empty live-feed-empty-reels">
-                    <h3>РЎРµР№С‡Р°СЃ РЅРµС‚ Р°РєС‚РёРІРЅС‹С… СЌС„РёСЂРѕРІ</h3>
-                    <p>РќР°Р¶РјРёС‚Рµ В«РњРѕРё СЌС„РёСЂС‹В», С‡С‚РѕР±С‹ Р·Р°РїСѓСЃС‚РёС‚СЊ С‚СЂР°РЅСЃР»СЏС†РёСЋ.</p>
+                    <h3>Сейчас нет активных эфиров</h3>
+                    <p>Нажмите «Мои эфиры», чтобы запустить трансляцию.</p>
                 </div>
             `;
             this.feedContainer.appendChild(root);
@@ -1964,11 +1977,11 @@
             const isOwner = !!(currentUid && ownerUid === currentUid);
             const ownerName = this.escapeHtml(session.ownerName || 'user');
             const avatar = this.escapeHtml(
-                session.ownerAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(session.ownerName || 'user')}&background=random&size=72`
+                session.ownerAvatar || 'assets/default-avatar.svg'
             );
             const coHostsCount = Array.isArray(session.coHosts) ? session.coHosts.length : 0;
             const viewers = AdvancedViewRenderer.formatNumber(session.viewersCount || 0);
-            const title = this.escapeHtml(session.title || 'РџСЂСЏРјРѕР№ СЌС„РёСЂ');
+            const title = this.escapeHtml(session.title || 'Прямой эфир');
 
             const card = document.createElement('article');
             card.className = 'live-feed-reel';
@@ -1980,7 +1993,7 @@
                     <video class="live-feed-reel-video" autoplay muted playsinline preload="none"></video>
                     <div class="live-feed-reel-fallback">
                         <span class="live-feed-reel-fallback-badge">LIVE</span>
-                        <span class="live-feed-reel-fallback-text">РџРѕРґРєР»СЋС‡Р°РµРј СЌС„РёСЂ...</span>
+                        <span class="live-feed-reel-fallback-text">Подключаем эфир...</span>
                     </div>
                     <div class="live-feed-reel-gradient"></div>
                     <div class="live-feed-reel-top">
@@ -1996,7 +2009,7 @@
                     </div>
                     <div class="live-feed-reel-bottom">
                         <h3 class="live-feed-reel-title">${title}</h3>
-                        <button type="button" class="live-feed-enter-btn" data-live-enter="1">${isOwner ? 'РћС‚РєСЂС‹С‚СЊ СЌС„РёСЂ' : 'Р’РѕР№С‚Рё РІ СЌС„РёСЂ'}</button>
+                        <button type="button" class="live-feed-enter-btn" data-live-enter="1">${isOwner ? 'Открыть эфир' : 'Войти в эфир'}</button>
                     </div>
                 </div>
             `;

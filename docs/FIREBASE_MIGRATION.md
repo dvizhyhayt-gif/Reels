@@ -1,205 +1,304 @@
-# 🔥 Reelgram - Миграция на Firebase
+# Firebase Migration Runbook
 
-## 📋 Что было сделано на этом этапе
+This file is the operational handoff for moving the project to a different Firebase/Firestore project without breaking the frontend.
 
-### ✅ Этап 1: Регистрация и Логин (ЗАВЕРШЕНО)
+Use this when:
+- you are moving from one Firebase project to another
+- you are cloning the app for a new client
+- you are rotating storage/backends before production launch
 
-#### Новые файлы:
-- **`js/firebase-config.js`** - конфигурация Firebase (заполни своими credentials!)
-- **`js/firebase-service.js`** - полный Flask для работы с Firebase
-- **`FIREBASE_SETUP.md`** - пошаговая инструкция по настройке
+## What Is Bound To Firebase Right Now
 
-#### Обновленные файлы:
-- **`index.html`** - добавлены Firebase SDK и форма регистрации
-- **`js/app.js`** - обновлены методы login, register, logout для Firebase
-- **`js/data-service.js`** - добавлена поддержка Firebase
+The frontend is wired directly to Firebase v8 SDKs from `index.html`.
 
-#### Функции Firebase Auth:
-- ✅ Регистрация с валидацией
-- ✅ Логин с хранением сессии
-- ✅ Logout с очисткой аутентификации
-- ✅ Автоматическое сохранение профилей в Firestore
+Load order in `index.html`:
+1. `firebase-app.js`
+2. `firebase-auth.js`
+3. `firebase-firestore.js`
+4. `firebase-storage.js`
+5. `js/firebase-config.js`
+6. `js/media-storage-service.js`
+7. `js/firebase-service.js`
 
----
+Primary integration files:
+- `js/firebase-config.js`
+- `js/firebase-service.js`
+- `js/data-service.js`
+- `js/app.js`
+- `index.html`
 
-## 🚀 Как начать использовать
+Cloudflare media worker config is separate from Firebase config and currently lives in:
+- `js/firebase-config.js`
+- `wrangler.jsonc`
 
-### Шаг 1: Подготовь Firebase
-1. Открой [console.firebase.google.com](https://console.firebase.google.com)
-2. Создай новый проект (назови "Reelgram")
-3. Добавь веб-приложение
-4. Включи:
-   - ✅ Authentication (Email/Password)
-   - ✅ Firestore Database (test mode)
-   - ✅ Storage (для видео)
+## Current Firebase Resources Used By The App
 
-### Шаг 2: Скопируй конфиг
-В Firebase Console → Project Settings → скопируй firebaseConfig
+Main Firestore collections used by `js/firebase-service.js`:
+- `users`
+- `videos`
+- `stories`
+- `messages`
+- `chatTyping`
+- `calls`
+- `liveSessions`
+- `coinTransactions`
+- `userSessions`
+- `adminAuditLogs`
 
-### Шаг 3: Обнови `js/firebase-config.js`
-Замени значения на свои:
-```javascript
+Subcollections currently used:
+- `videos/{videoId}/comments`
+- `stories/{storyId}/views`
+- `calls/{callId}/candidates`
+
+Firebase features used:
+- Authentication: Email/Password
+- Firestore: primary app database
+- Storage: optional; app can fall back to external media storage
+
+External media path currently supported:
+- Cloudflare Worker upload/delete endpoints
+- Cloudflare R2 bucket via `wrangler.jsonc`
+
+## Step 1: Create The New Firebase Project
+
+In Firebase Console:
+1. Create the new project.
+2. Add a Web App.
+3. Enable Authentication:
+   - Sign-in method: `Email/Password`
+4. Enable Firestore Database.
+5. Enable Storage only if you want to use Firebase Storage instead of external media storage.
+
+Collect these values from Project Settings:
+- `apiKey`
+- `authDomain`
+- `projectId`
+- `storageBucket`
+- `messagingSenderId`
+- `appId`
+
+## Step 2: Replace Frontend Firebase Config
+
+Open `js/firebase-config.js`.
+
+Replace the `firebaseConfig` object values:
+
+```js
 const firebaseConfig = {
-    apiKey: "ТОЙ_КЛЮЧ",
-    authDomain: "твой_домен.firebaseapp.com",
-    projectId: "твой_проект",
-    storageBucket: "твой_bucket.appspot.com",
-    messagingSenderId: "000000",
-    appId: "1:000000:web:000000"
+    apiKey: 'NEW_API_KEY',
+    authDomain: 'new-project.firebaseapp.com',
+    projectId: 'new-project-id',
+    storageBucket: 'new-project.appspot.com',
+    messagingSenderId: 'NEW_SENDER_ID',
+    appId: 'NEW_APP_ID'
 };
 ```
 
-### Шаг 4: Тестируй
-1. Открой приложение
-2. Нажми "Нет аккаунта? Зарегистрироваться"
-3. Введи email и пароль
-4. Должна появиться кнопка "🔥 Регистрация через Firebase успешна!"
+Do not change:
+- the wrapper function
+- the `REELGRAM_FIREBASE_CONFIG` export on `window`
+- the `experimentalForceLongPolling` Firestore setting unless you have tested browser compatibility
 
----
+## Step 3: Decide Where Media Will Live
 
-## 📊 Struktura данных в Firestore
+There are two media paths in this project:
 
-### Коллекция: `users`
-```javascript
-{
-  uid: "firebase_uid",
-  name: "username",
-  email: "user@example.com",
-  avatar: "url_to_avatar",
-  bio: "my bio",
-  subscriptions: ["uid1", "uid2"],  // на кого подписан
-  subscribers: ["uid3", "uid4"],    // кто подписан на меня
-  notifications: [],
-  createdAt: Date,
-  updatedAt: Date
-}
-```
+1. Firebase Storage
+2. External media storage via Cloudflare Worker / R2
 
-### Коллекция: `videos` (будет на следующем этапе)
-```javascript
-{
-  id: 123456789,
-  uid: "firebase_uid",
-  author: "username",
-  avatar: "url",
-  url: "firebase_storage_url",
-  desc: "description",
-  likes: 150,
-  likedBy: ["uid1", "uid2"],
-  comments: [],
-  views: 1000,
-  timestamp: Date
-}
-```
+### If You Keep Cloudflare Media
 
----
+Update `window.CLOUDFLARE_MEDIA_CONFIG` in `js/firebase-config.js`:
+- `uploadEndpoint`
+- `deleteEndpoint`
+- `authToken` if your worker validates a token
+- `folderPrefix`
 
-## 🔄 Fallback на локальное хранилище
+Update `wrangler.jsonc`:
+- `name`
+- `r2_buckets[0].bucket_name`
+- `vars.CORS_ORIGINS`
 
-Если Firebase недоступен, приложение автоматически использует localStorage:
-```javascript
-if (firebaseService && firebaseService.isInitialized()) {
-    // Используем Firebase
-} else {
-    // Используем localStorage
-}
-```
+### If You Move To Firebase Storage Only
 
----
+You can leave `CLOUDFLARE_MEDIA_CONFIG.enabled = false` and confirm the upload flows still use Firebase Storage where required.
 
-## 📝 Методы FirebaseService
+Before switching this, test:
+- feed video upload
+- story upload
+- chat file upload
 
-### Authentication
-- `register(email, password)` - регистрация
-- `login(email, password)` - логин
-- `logout()` - выход
-- `getCurrentUser()` - текущий пользователь
-- `getCurrentUid()` - UID текущего пользователя
+## Step 4: Recreate Firestore Structure
 
-### Profile
-- `getUserProfile(uid)` - получить профиль
-- `updateUserProfile(uid, updates)` - обновить профиль
-- `getUserByName(userName)` - поиск по имени
+This app does not require pre-created collections, but your rules must allow the app to create and update them.
 
-### Videos (будет на следующем этапе)
-- `uploadVideo(file, metadata)` - загрузить видео
-- `getFeed(limit)` - получить ленту
-- `deleteVideo(firestoreId, storagePath)` - удалить видео
+Minimum documents the app expects:
 
-### Likes (будет на следующем этапе)
-- `toggleLike(firestoreId)` - лайк/удалить лайк
-- `getLikesCount(firestoreId)` - количество лайков
+### `users/{uid}`
 
-### Comments (будет на следующем этапе)
-- `addComment(firestoreId, text)` - добавить комментарий
-- `deleteComment(firestoreId, commentText)` - удалить
+Important fields:
+- `uid`
+- `email`
+- `name`
+- `nameLower`
+- `displayName`
+- `avatar`
+- `bio`
+- `subscriptions`
+- `subscribers`
+- `followRequests`
+- `privateAccount`
+- `verified`
+- `isAdmin`
+- `notifications`
+- `online`
+- `lastSeen`
+- `lastActive`
 
-### Subscriptions
-- `subscribe(targetUid)` - подписаться
-- `unsubscribe(targetUid)` - отписаться
-- `isSubscribed(targetUid)` - проверить подписку
+### `videos/{videoId}`
 
----
+Important fields:
+- `uid`
+- `author`
+- `avatar`
+- `url`
+- `desc`
+- `likes`
+- `likedBy`
+- `views`
+- `timestamp`
 
-## ⚠️ Важные замечания
+### `messages/{messageId}`
 
-1. **Test Mode** - Firestore Security Rules установлены на `read, write: if true`
-   - Это для тестирования! В production используй proper rules
+Important fields:
+- `chatId`
+- `participants`
+- `fromUid`
+- `toUid`
+- `fromUser`
+- `toUser`
+- `content`
+- `type`
+- `timestamp`
+- `delivered`
+- `read`
 
-2. **Storage Files** - видео хранятся в `videos/{userId}/{timestamp}`
+Optional nested payloads:
+- `file`
+- `sticker`
+- `call`
 
-3. **Real-time Updates** - используется Firestore listener для автоматических обновлений
+### `chatTyping/{chatId}`
 
-4. **Fallback** - старое localStorage работает параллельно для совместимости
+Document stores typing states by user id.
 
----
+### `calls/{callId}`
 
-## 🎯 Следующие этапы
+Used for WebRTC signaling plus nested `candidates`.
 
-- [ ] Этап 2: Загрузка видео на Firebase Storage
-- [ ] Этап 3: Реальные лайки и комментарии через Firestore  
-- [ ] Этап 4: Уведомления в реальном времени
-- [ ] Этап 5: Чат между пользователями
+## Step 5: Review Security Rules Before Production
 
----
+Do not ship with broad test rules.
 
-## 🐛 Troubleshooting
+At minimum:
+1. Restrict writes to authenticated users.
+2. Restrict profile edits to document owners.
+3. Restrict message writes to chat participants.
+4. Restrict call signaling writes to the two participants.
+5. Restrict admin-only collections such as audit logs.
 
-### "Ошибка сети. Проверьте интернет"
-- Проверь credentials в firebase-config.js
-- Убедись, что Firebase project активен
+If you are preparing the project for client delivery or a fund audit, create a separate rules review before launch.
 
-### "Email уже используется"
-- Нормально! Значит аккаунт уже создан
-- Нажми "Уже есть аккаунт? Войти"
+## Step 6: Validate Runtime Flows After Migration
 
-### "Пользователь не найден"
-- Проверь правильность Email
-- Убедись, что регистрация прошла успешно
+Test this exact sequence:
 
-### Firebase не инициализируется
-- Проверь консоль браузера (F12)
-- Убедись, что credentials правильные
-- Дай приложению 2-3 секунды на инициализацию
+1. Register a new user
+2. Log out
+3. Log back in
+4. Edit profile
+5. Upload a feed video
+6. Upload a story
+7. Open chat
+8. Send:
+   - text
+   - image
+   - audio file
+   - video circle
+9. Open another user profile and follow/unfollow
+10. Verify notifications and unread counters
+11. Start and end a video call
 
----
+If any of these fail, inspect:
+- browser console
+- Network tab
+- Firestore rules rejection messages
+- Firebase Auth provider configuration
 
-## 📞 Нужна помощь?
+## Step 7: Clean Data When Cloning For Another Client
 
-Если что-то не работает:
-1. Открой консоль браузера: F12 → Console
-2. Прочитай ошибку
-3. Проверь FIREBASE_SETUP.md еще раз
-4. Убедись, что все файлы подключены в правильном порядке
+If you are cloning the product for a new customer, replace or reset:
+- production Firebase keys in `js/firebase-config.js`
+- Cloudflare worker endpoints in `js/firebase-config.js`
+- R2 bucket name in `wrangler.jsonc`
+- old seeded media in `assets/` if it contains client-branded content
+- any hardcoded project names (`kazreels`, `Reelgram`) that should be rebranded
 
-**Порядок Scripts в HTML:**
-1. Firebase SDKs
-2. firebase-config.js
-3. firebase-service.js
-4. data-service.js
-5. view-renderer.js
-6. app.js
+## What A Developer Usually Needs To Change
 
----
+The typical transfer checklist is:
 
-Good luck! 🚀
+1. `js/firebase-config.js`
+   Replace Firebase credentials and media endpoints.
+
+2. `wrangler.jsonc`
+   Replace worker name, bucket name, and allowed origins.
+
+3. `index.html`
+   Keep script order intact. Only change SDK versions if you test the full app.
+
+4. `js/firebase-service.js`
+   Change only if:
+   - collection names are being renamed
+   - rules or document schema change
+   - media provider behavior changes
+
+## If You Rename Collections
+
+These are the high-risk search targets in `js/firebase-service.js`:
+- `collection('users')`
+- `collection('videos')`
+- `collection('stories')`
+- `collection('messages')`
+- `collection('chatTyping')`
+- `collection('calls')`
+- `collection('liveSessions')`
+- `collection('coinTransactions')`
+- `collection('userSessions')`
+- `collection('adminAuditLogs')`
+
+If you rename even one collection, update every direct string reference in that file in the same pass.
+
+## Recommended Migration Process
+
+For a safe transfer:
+
+1. Clone the repo
+2. Replace Firebase and media config
+3. Point to a staging Firebase project first
+4. Run full manual smoke test
+5. Only then switch to the final production Firebase project
+
+Do not point the raw working branch at a client production Firebase project before staging validation.
+
+## Notes For Future Cleanup
+
+This project still mixes:
+- Firebase-backed runtime data
+- local fallback data in `js/data-service.js`
+- external media storage config in `js/firebase-config.js`
+
+For a cleaner long-term architecture, move config into:
+- one env-driven config file
+- one backend/provider abstraction layer
+- one deployment document per environment

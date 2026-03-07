@@ -1,0 +1,83 @@
+﻿/* Chat message actions: edit/delete menu + state badges */
+
+.message {
+    position: relative;
+}
+
+.message-actions {
+    position: absolute;
+    top: -6px;
+    right: -8px;
+    z-index: 6;
+}
+
+.message:not(.own) .message-actions {
+    left: -8px;
+    right: auto;
+}
+
+.message-actions-trigger {
+    width: 22px;
+    height: 22px;
+    border: 0;
+    border-radius: 999px;
+    background: rgba(8, 12, 20, 0.72);
+    color: rgba(255, 255, 255, 0.92);
+    font-size: 14px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.message-actions-menu {
+    position: absolute;
+    top: 24px;
+    right: 0;
+    min-width: 122px;
+    border-radius: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(10, 16, 28, 0.96);
+    backdrop-filter: blur(12px);
+    padding: 4px;
+    display: none;
+    gap: 3px;
+}
+
+.message:not(.own) .message-actions-menu {
+    left: 0;
+    right: auto;
+}
+
+.message-actions.open .message-actions-menu {
+    display: grid;
+}
+
+.message-actions-menu button {
+    border: 0;
+    border-radius: 8px;
+    height: 30px;
+    text-align: left;
+    padding: 0 9px;
+    font-size: 12px;
+    color: #fff;
+    background: transparent;
+}
+
+.message-actions-menu button:hover {
+    background: rgba(255, 255, 255, 0.12);
+}
+
+.message-actions-menu button[data-action="delete-message"] {
+    color: #ff8a8a;
+}
+
+.message-edited {
+    font-size: 10px;
+    opacity: 0.75;
+}
+
+.message-content.message-deleted {
+    font-style: italic;
+    opacity: 0.72;
+}

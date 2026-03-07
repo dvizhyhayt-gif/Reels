@@ -313,7 +313,11 @@
     width: 62px;
     height: 62px;
     border-radius: 50%;
-    background: var(--season-ring-bg);
+    background: linear-gradient(
+        135deg,
+        rgb(var(--accent-primary-rgb) / 0.95),
+        rgb(var(--accent-secondary-rgb) / 0.95)
+    );
     padding: 2.5px;
     display: inline-flex;
     align-items: center;
@@ -386,37 +390,6 @@
     border-color: #fff;
 }
 
-.seasonal-banner {
-    position: absolute;
-    top: calc(var(--safe-top) + 136px);
-    left: 12px;
-    right: 12px;
-    z-index: 1090;
-    pointer-events: none;
-    border-radius: 14px;
-    border: 1px solid var(--season-banner-border);
-    background: var(--season-banner-bg);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-    padding: 10px 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    box-shadow: 0 10px 26px rgb(0 0 0 / 0.2);
-}
-
-.seasonal-banner-title {
-    font-size: 12px;
-    font-weight: 700;
-    color: var(--text-color-primary);
-}
-
-.seasonal-banner-sub {
-    font-size: 11px;
-    color: var(--text-color-secondary);
-    line-height: 1.25;
-}
-
 @media (max-width: 520px) {
     .stories-strip {
         gap: 8px;
@@ -432,9 +405,4 @@
         max-width: 64px;
     }
 
-    .seasonal-banner {
-        top: calc(var(--safe-top) + 126px);
-        left: 10px;
-        right: 10px;
-    }
 }

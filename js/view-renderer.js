@@ -1,6 +1,6 @@
-/**
+﻿/**
  * AdvancedViewRenderer
- * Отвечает за создание и рендеринг компонентов UI
+ * РћС‚РІРµС‡Р°РµС‚ Р·Р° СЃРѕР·РґР°РЅРёРµ Рё СЂРµРЅРґРµСЂРёРЅРі РєРѕРјРїРѕРЅРµРЅС‚РѕРІ UI
  */
 class AdvancedViewRenderer {
     static createVideoCard(video, options = {}) {
@@ -28,11 +28,11 @@ class AdvancedViewRenderer {
             .replace(/"/g, '&quot;')
             .replace(/'/g, '&#39;');
 
-        // Определяем текст кнопки подписки
+        // РћРїСЂРµРґРµР»СЏРµРј С‚РµРєСЃС‚ РєРЅРѕРїРєРё РїРѕРґРїРёСЃРєРё
         const isSubscribed = options.isSubscribed ? true : false;
         const isFollowRequested = options.isFollowRequested ? true : false;
         const showFollow = options.showFollow !== false;
-        const followButtonText = isSubscribed ? '✓' : (isFollowRequested ? '…' : '+');
+        const followButtonText = isSubscribed ? 'вњ“' : (isFollowRequested ? 'вЂ¦' : '+');
         const followButtonStyle = isSubscribed
             ? 'var(--accent-secondary)'
             : (isFollowRequested ? 'rgba(126, 148, 182, 0.95)' : 'var(--accent-color)');
@@ -66,6 +66,10 @@ class AdvancedViewRenderer {
             ? `<div class="video-cover-badge" style="--cover-color: ${safeCoverColor};">${safeCoverSticker ? `<span class="video-cover-sticker">${safeCoverSticker}</span>` : ''}${safeCoverText ? `<span class="video-cover-text">${safeCoverText}</span>` : ''}</div>`
             : '';
         const metaBadges = `${ageBadge}${templateBadge}`;
+        const likeIconDefault = 'assets/feed-like.svg';
+        const likeIconActive = 'assets/feed-like-active.svg';
+        const commentIcon = 'assets/feed-comment.png';
+        const shareIcon = 'assets/feed-share.png';
         
         const posterAttr = video.thumbnail ? ` poster="${video.thumbnail}"` : '';
 
@@ -87,28 +91,16 @@ class AdvancedViewRenderer {
                          <img src="${video.avatar}" alt="${video.author}" data-author="${video.author}">
                         ${followPlusHtml}
                      </div>
-                    <div class="action-btn like-btn ${video.isLiked ? 'liked' : ''}" data-id="${video.id}" title="Лайк">
-                        <svg viewBox="0 0 24 24">
-                            <path d="${video.isLiked ? 'M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z' : 'M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z'}"/>
-                        </svg>
+                    <div class="action-btn like-btn ${video.isLiked ? 'liked' : ''}" data-id="${video.id}" data-icon-default="${likeIconDefault}" data-icon-active="${likeIconActive}" title="Р›Р°Р№Рє">
+                        <img src="${video.isLiked ? likeIconActive : likeIconDefault}" alt="Лайк" class="action-icon">
                         <span class="like-count" data-count="${parseInt(video.likes, 10) || 0}">${this.formatNumber(parseInt(video.likes, 10) || 0)}</span>
                     </div>
-                    <div class="action-btn comment-btn" data-id="${video.id}" title="Комментарии">
-                        <svg viewBox="0 0 24 24">
-                            <path d="M21.99 4c0-1.1-.89-2-1.99-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14l4 4-.01-18zM18 14H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"/>
-                        </svg>
+                    <div class="action-btn comment-btn" data-id="${video.id}" title="РљРѕРјРјРµРЅС‚Р°СЂРёРё">
+                        <img src="${commentIcon}" alt="Комментарии" class="action-icon">
                         <span class="comment-count" data-count="${commentsCount}">${this.formatNumber(commentsCount)}</span>
                     </div>
-                    <div class="action-btn gift-btn" data-id="${video.id}" title="Поддержать автора">
-                        <svg viewBox="0 0 24 24">
-                            <path d="M12 2l2.4 4.86L20 8l-4 3.9.94 5.5L12 14.8 7.06 17.4 8 11.9 4 8l5.6-1.14L12 2zm0 9.3a2.7 2.7 0 1 0 0 5.4 2.7 2.7 0 0 0 0-5.4z"/>
-                        </svg>
-                        <span>₽</span>
-                    </div>
-                    <div class="action-btn share-btn" data-id="${video.id}" title="Поделиться">
-                        <svg viewBox="0 0 24 24">
-                            <path d="M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.66 0 1.61 1.31 2.92 2.92 2.92 1.61 0 2.92-1.31 2.92-2.92s-1.31-2.92-2.92-2.92z"/>
-                        </svg>
+                    <div class="action-btn share-btn" data-id="${video.id}" title="РџРѕРґРµР»РёС‚СЊСЃСЏ">
+                        <img src="${shareIcon}" alt="Поделиться" class="action-icon">
                         <span>${this.formatNumber(video.shares || 0)}</span>
                     </div>
                 </div>
@@ -123,7 +115,7 @@ class AdvancedViewRenderer {
                         <svg class="music-note" width="12" height="12" viewBox="0 0 24 24" fill="#fff">
                             <path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/>
                         </svg>
-                        <span>Оригинальный звук - ${video.author}</span>
+                        <span>РћСЂРёРіРёРЅР°Р»СЊРЅС‹Р№ Р·РІСѓРє - ${video.author}</span>
                     </div>
                     ${metaBadges ? `<div class="video-meta-badges">${metaBadges}</div>` : ''}
                     <div style="font-size: 11px; color: rgba(255,255,255,0.6); margin-top: 5px;">${timeAgo}</div>
@@ -148,7 +140,7 @@ class AdvancedViewRenderer {
 
     static getVerifiedBadge(isVerified = false) {
         if (!isVerified) return '';
-        return '<svg class="verified-badge" viewBox="0 0 24 24"><path d="M23 12l-2.44-2.78.34-3.68-3.61-.82-1.89-3.18L12 3 8.6 1.54 6.71 4.72l-3.61.81.34 3.68L1 12l2.44 2.78-.34 3.69 3.61.82 1.89 3.18L12 21l3.4 1.46 1.89-3.18 3.61-.82-.34-3.68L23 12zm-10 5l-4-4 1.41-1.41L12 14.17l2.59-2.58L16 13l-4 4z"/></svg>';
+        return '<img class="verified-badge" src="assets/verified.png" alt="верифицирован" role="button" tabindex="0" aria-label="Информация о верификации" title="Верифицированный профиль">';
     }
 
     static renderComments(comments) {
@@ -156,7 +148,7 @@ class AdvancedViewRenderer {
             const timeAgo = this.formatTimeAgo(comment.time);
             return `
                 <div class="comment-item">
-                    <img src="https://ui-avatars.com/api/?name=${encodeURIComponent(comment.user)}&background=random&size=32" class="comment-avatar">
+                    <img src="assets/default-avatar.svg" class="comment-avatar">
                     <div class="comment-content">
                         <div class="comment-author">
                             @${comment.user}
@@ -164,8 +156,8 @@ class AdvancedViewRenderer {
                         </div>
                         <div class="comment-text">${comment.text}</div>
                         <div class="comment-actions">
-                            <span class="comment-action">💬 Ответить</span>
-                            <span class="comment-action">❤️ ${comment.likes || 0}</span>
+                            <span class="comment-action">рџ’¬ РћС‚РІРµС‚РёС‚СЊ</span>
+                            <span class="comment-action">вќ¤пёЏ ${comment.likes || 0}</span>
                         </div>
                     </div>
                 </div>
@@ -180,7 +172,7 @@ class AdvancedViewRenderer {
                 <svg viewBox="0 0 24 24">
                     <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
                 </svg>
-                <span>Копировать</span>
+                <span>РљРѕРїРёСЂРѕРІР°С‚СЊ</span>
             </div>
             <div class="share-option" data-action="whatsapp" data-url="${url}">
                 <svg viewBox="0 0 24 24">
@@ -225,11 +217,11 @@ class AdvancedViewRenderer {
     static formatTimeAgo(timestamp) {
         const seconds = Math.floor((Date.now() - timestamp) / 1000);
         
-        if (seconds < 60) return 'только что';
-        if (seconds < 3600) return `${Math.floor(seconds / 60)} мин назад`;
-        if (seconds < 86400) return `${Math.floor(seconds / 3600)} ч назад`;
-        if (seconds < 2592000) return `${Math.floor(seconds / 86400)} дн назад`;
-        return `${Math.floor(seconds / 2592000)} мес назад`;
+        if (seconds < 60) return 'С‚РѕР»СЊРєРѕ С‡С‚Рѕ';
+        if (seconds < 3600) return `${Math.floor(seconds / 60)} РјРёРЅ РЅР°Р·Р°Рґ`;
+        if (seconds < 86400) return `${Math.floor(seconds / 3600)} С‡ РЅР°Р·Р°Рґ`;
+        if (seconds < 2592000) return `${Math.floor(seconds / 86400)} РґРЅ РЅР°Р·Р°Рґ`;
+        return `${Math.floor(seconds / 2592000)} РјРµСЃ РЅР°Р·Р°Рґ`;
     }
 
     static showToast(msg, type = 'info') {
@@ -277,7 +269,7 @@ class AdvancedViewRenderer {
     static renderEditProfileForm(user) {
         const modal = document.getElementById('edit-profile-modal');
         
-        // Обновляем поля формы
+        // РћР±РЅРѕРІР»СЏРµРј РїРѕР»СЏ С„РѕСЂРјС‹
         document.getElementById('avatar-img-large').src = user.avatar;
         document.getElementById('edit-username').value = user.name || '';
         document.getElementById('edit-bio').value = user.bio || '';
@@ -286,10 +278,10 @@ class AdvancedViewRenderer {
         document.getElementById('edit-email').value = user.email;
         document.getElementById('edit-interests').value = user.interests || '';
         
-        // Обновляем счётчики символов
+        // РћР±РЅРѕРІР»СЏРµРј СЃС‡С‘С‚С‡РёРєРё СЃРёРјРІРѕР»РѕРІ
         this.updateCharCounters();
         
-        // Выбираем пол
+        // Р’С‹Р±РёСЂР°РµРј РїРѕР»
         document.querySelectorAll('.gender-btn').forEach(btn => {
             btn.classList.remove('active');
         });
@@ -308,7 +300,7 @@ class AdvancedViewRenderer {
         document.getElementById('username-count').textContent = usernameInput.value.length;
         document.getElementById('bio-count').textContent = bioInput.value.length;
         
-        // Предупреждение при приближении к лимиту
+        // РџСЂРµРґСѓРїСЂРµР¶РґРµРЅРёРµ РїСЂРё РїСЂРёР±Р»РёР¶РµРЅРёРё Рє Р»РёРјРёС‚Сѓ
         if (usernameInput.value.length >= 25) {
             document.querySelector('#edit-username').parentElement.querySelector('.char-count').classList.add('warning');
         } else {
@@ -347,18 +339,18 @@ class AdvancedViewRenderer {
         const name = document.getElementById('edit-username').value.trim();
         
         if (!name) {
-            this.showToast('Имя пользователя обязательно', 'warning');
+            this.showToast('РРјСЏ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ РѕР±СЏР·Р°С‚РµР»СЊРЅРѕ', 'warning');
             return false;
         }
         
         if (name.length < 2) {
-            this.showToast('Имя должно содержать минимум 2 символа', 'warning');
+            this.showToast('РРјСЏ РґРѕР»Р¶РЅРѕ СЃРѕРґРµСЂР¶Р°С‚СЊ РјРёРЅРёРјСѓРј 2 СЃРёРјРІРѕР»Р°', 'warning');
             return false;
         }
         
         const website = document.getElementById('edit-website').value.trim();
         if (website && !this.isValidUrl(website)) {
-            this.showToast('Неверный формат URL', 'warning');
+            this.showToast('РќРµРІРµСЂРЅС‹Р№ С„РѕСЂРјР°С‚ URL', 'warning');
             return false;
         }
         
@@ -374,3 +366,4 @@ class AdvancedViewRenderer {
         }
     }
 }
+

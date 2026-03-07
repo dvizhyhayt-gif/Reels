@@ -46,7 +46,8 @@
     transform: scale(1.1);
 }
 
-.action-btn svg { 
+.action-btn svg,
+.action-btn .action-icon { 
     width: 32px; 
     height: 32px; 
     margin-bottom: 6px; 
@@ -55,7 +56,13 @@
     transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-.action-btn:active svg { 
+.action-btn .action-icon {
+    display: block;
+    object-fit: contain;
+}
+
+.action-btn:active svg,
+.action-btn:active .action-icon { 
     transform: scale(0.85); 
 }
 
@@ -65,18 +72,9 @@
     animation: heartBeat 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-.action-btn.gift-btn svg {
-    fill: rgb(var(--season-gradient-a) / 1);
-    filter: drop-shadow(0 0 9px rgb(var(--season-gradient-b) / 0.48));
-}
-
-.action-btn.gift-btn span {
-    font-weight: 700;
-    color: #ffe6b3;
-}
-
-.action-btn.gift-btn:hover svg {
-    transform: translateY(-1px) scale(1.08);
+.action-btn.liked .action-icon {
+    filter: drop-shadow(0 0 10px rgb(var(--like-color-rgb) / 0.6));
+    animation: heartBeat 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 @keyframes heartBeat {
@@ -155,8 +153,11 @@
 .verified-badge {
     width: 18px;
     height: 18px;
-    fill: var(--accent-secondary);
-    filter: drop-shadow(0 0 5px var(--accent-secondary));
+    display: inline-block;
+    object-fit: contain;
+    vertical-align: middle;
+    flex-shrink: 0;
+    filter: none;
 }
 
 .description { 

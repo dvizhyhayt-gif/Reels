@@ -292,8 +292,8 @@
    ================================================================= */
 #security-view {
     background:
-        radial-gradient(120% 80% at 0% -10%, rgb(var(--season-gradient-b) / 0.14), transparent 52%),
-        radial-gradient(100% 60% at 100% 0%, rgb(var(--season-gradient-a) / 0.12), transparent 58%),
+        radial-gradient(120% 80% at 0% -10%, rgb(var(--accent-secondary-rgb) / 0.14), transparent 52%),
+        radial-gradient(100% 60% at 100% 0%, rgb(var(--accent-primary-rgb) / 0.12), transparent 58%),
         var(--bg-color-dark);
 }
 
@@ -418,11 +418,11 @@
 }
 
 .security-session-row.is-current {
-    border-color: rgb(var(--season-gradient-a) / 0.52);
+    border-color: rgb(var(--accent-primary-rgb) / 0.52);
     background: linear-gradient(
         135deg,
-        rgb(var(--season-gradient-a) / 0.18),
-        rgb(var(--season-gradient-b) / 0.16)
+        rgb(var(--accent-primary-rgb) / 0.18),
+        rgb(var(--accent-secondary-rgb) / 0.16)
     );
 }
 
@@ -457,8 +457,8 @@
 }
 
 .security-session-pill {
-    border: 1px solid rgb(var(--season-gradient-b) / 0.42);
-    background: rgb(var(--season-gradient-b) / 0.2);
+    border: 1px solid rgb(var(--accent-secondary-rgb) / 0.42);
+    background: rgb(var(--accent-secondary-rgb) / 0.2);
     color: #dcecff;
 }
 

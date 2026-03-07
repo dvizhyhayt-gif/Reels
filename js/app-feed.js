@@ -361,7 +361,6 @@
 
                 if (clear) {
                     this.loadStories({ silent: true }).catch(() => {});
-                    this.refreshSeasonBanner();
                 }
             }
         } catch (error) {

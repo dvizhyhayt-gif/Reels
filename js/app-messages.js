@@ -132,7 +132,7 @@
             let icon = '', text = '', userName = '';
             const notifData = notif.data || {};
 
-                        if (notif.type === 'like') {
+            if (notif.type === 'like') {
                 icon = 'like';
                 userName = notifData.fromUser || 'user';
                 text = 'поставил(а) лайк вашему видео';
@@ -140,11 +140,6 @@
                 icon = 'comment';
                 userName = notifData.fromUser || 'user';
                 text = `${notifData.text || 'Новый комментарий'}`;
-            } else if (notif.type === 'gift') {
-                icon = 'gift';
-                userName = notifData.fromUser || 'user';
-                const amount = Math.max(0, parseInt(notifData.amount, 10) || 0);
-                text = amount ? `отправил(а) подарок ${amount} ₽` : 'отправил(а) подарок';
             } else if (notif.type === 'follow_request') {
                 icon = 'comment';
                 userName = notifData.fromUser || 'user';
@@ -169,7 +164,7 @@
                 ? notifData.videoThumbnail
                 : 'https://via.placeholder.com/48x48?text=Video';
             item.innerHTML = `
-                <img src="https://ui-avatars.com/api/?name=${encodeURIComponent(userName || 'user')}&background=random&size=48" class="notification-avatar">
+                <img src="assets/default-avatar.svg" class="notification-avatar">
                 <div class="notification-content">
                     <div class="notification-user">@${safeUser}</div>
                     <div class="notification-text">${this.escapeHtml(text)}</div>
@@ -364,6 +359,11 @@
             this.videoCallBtn.addEventListener('click', () => this.startVideoCall());
         }
 
+        this.audioCallBtn = this.audioCallBtn || document.getElementById('audio-call-btn');
+        if (this.audioCallBtn) {
+            this.audioCallBtn.addEventListener('click', () => this.startVideoCall());
+        }
+
         if (this.callAcceptBtn) {
             this.callAcceptBtn.addEventListener('click', () => this.acceptIncomingVideoCall());
         }
@@ -438,32 +438,39 @@
                 ? '✓✓'
                 : (chat.lastMessageDelivered ? '✓✓' : '✓');
             const preview = this.escapeHtml(chat.lastMessage || 'Сообщений пока нет');
+            const previewValue = chat.lastMessage ? preview : '\u0421\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0439 \u043f\u043e\u043a\u0430 \u043d\u0435\u0442';
+            const displayStatusIcon = chat.lastMessageRead
+                ? '&#10003;&#10003;'
+                : (chat.lastMessageDelivered ? '&#10003;&#10003;' : '&#10003;');
             const statusPart = chat.lastMessageFromMe
-                ? `<span class="chat-last-status ${statusClass}">${statusIcon}</span>`
+                ? `<span class="chat-last-status ${statusClass}">${displayStatusIcon}</span>`
                 : '';
             const unreadBadge = chat.unreadCount > 0
                 ? `<span class="chat-unread-count">${chat.unreadCount > 99 ? '99+' : chat.unreadCount}</span>`
                 : '';
-            const avatar = chat.otherAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(chat.otherUser || 'user')}&background=random&size=64`;
+            const avatar = chat.otherAvatar || 'assets/default-avatar.svg';
             const presence = this.formatLastSeen(!!chat.otherOnline, chat.otherLastSeen);
             const onlineDot = chat.otherOnline ? '<span class="chat-online-dot"></span>' : '';
             const safeUser = this.escapeHtml(chat.otherUser || 'user');
-            const verifiedBadge = chat.otherVerified ? '<span style="color:#46a4ff; font-size:12px;">✓</span>' : '';
+            const verifiedBadge = AdvancedViewRenderer.getVerifiedBadge(!!chat.otherVerified);
             chatItem.innerHTML = `
                 <div class="chat-avatar-wrap">
-                    <img src="${avatar}" class="chat-avatar" alt="@${safeUser}">
+                    <img src="${avatar}" class="chat-avatar" alt="${safeUser}">
                     ${onlineDot}
                 </div>
                 <div class="chat-info">
                     <div class="chat-main-row">
-                        <div class="chat-user">@${safeUser} ${verifiedBadge}</div>
-                        <div class="chat-presence">${presence}</div>
+                        <div class="chat-main-userline">
+                            <span class="chat-user">${safeUser}</span>
+                            ${verifiedBadge}
+                        </div>
+                        <div class="chat-time">${this.formatTime(chat.lastMessageTime)}</div>
                     </div>
                     <div class="chat-preview-row">
-                        <div class="chat-last-message">${statusPart}${preview}</div>
-                        <div class="chat-time">${this.formatTime(chat.lastMessageTime)}</div>
+                        <div class="chat-last-message">${statusPart}<span class="chat-last-message-text">${previewValue}</span></div>
                         ${unreadBadge}
                     </div>
+                    <div class="chat-presence">${presence}</div>
                 </div>
             `;
 
@@ -567,7 +574,7 @@
             }
         }
 
-        const avatar = targetProfile?.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=random&size=64`;
+        const avatar = targetProfile?.avatar || 'assets/default-avatar.svg';
         const online = !!targetProfile?.online;
         const lastSeen = targetProfile?.lastSeen || targetProfile?.lastActive || targetProfile?.updatedAt || null;
 
@@ -606,6 +613,9 @@
         this.state.currentChatLastSeen = this.normalizeTimestampValue(lastSeen);
         if (this.videoCallBtn) {
             this.videoCallBtn.style.display = resolvedTargetUid ? '' : 'none';
+        }
+        if (this.audioCallBtn) {
+            this.audioCallBtn.style.display = resolvedTargetUid ? '' : 'none';
         }
 
         await this.refreshCurrentChatMessages();
@@ -932,7 +942,7 @@
 
         if (isTyping) {
             this.typingIndicator.style.display = 'flex';
-            this.chatUserStatus.textContent = 'печатает...';
+            this.chatUserStatus.textContent = '\u043f\u0435\u0447\u0430\u0442\u0430\u0435\u0442...';
         } else {
             this.typingIndicator.style.display = 'none';
             this.chatUserStatus.textContent = this.formatLastSeen(
@@ -978,6 +988,10 @@
                         if (!profile) return;
                         this.state.currentChatOnline = !!profile.online;
                         this.state.currentChatLastSeen = this.normalizeTimestampValue(profile.lastSeen || profile.lastActive || profile.updatedAt);
+                        const onlineDot = document.getElementById('chat-user-online-dot');
+                        if (onlineDot) {
+                            onlineDot.classList.toggle('is-online', !!this.state.currentChatOnline);
+                        }
                         if (this.typingIndicator && this.typingIndicator.style.display === 'none' && this.chatUserStatus) {
                             this.chatUserStatus.textContent = this.formatLastSeen(
                                 this.state.currentChatOnline,
@@ -1141,13 +1155,20 @@
                 );
             } else {
                 let localUrl = '';
-                if ((file.type || '').startsWith('image/')) {
+                const mime = String(file.type || '').toLowerCase();
+                if (mime.startsWith('image/')) {
                     localUrl = await new Promise((resolve, reject) => {
                         const reader = new FileReader();
                         reader.onload = (e) => resolve(e.target.result);
                         reader.onerror = reject;
                         reader.readAsDataURL(file);
                     });
+                } else if (mime.startsWith('audio/') || mime.startsWith('video/')) {
+                    try {
+                        localUrl = URL.createObjectURL(file);
+                    } catch (_) {
+                        localUrl = '';
+                    }
                 }
                 filePayload = {
                     name: file.name,
@@ -1974,6 +1995,703 @@
                 : (normalizedStatus === 'missed' ? 'Пропущенный звонок' : 'Звонок завершен');
             AdvancedViewRenderer.showToast(text, 'info');
         }
+    };
+
+    AdvancedApp.prototype.renderChatMessages = function(messages = []) {
+        if (!this.messagesContainer) return;
+        const currentUser = this.dataService.getCurrentUser();
+        const currentUid = currentUser ? currentUser.uid : null;
+        const currentName = currentUser ? currentUser.name : null;
+
+        const sorted = [...messages].sort((a, b) => this.normalizeTimestampValue(a.timestamp) - this.normalizeTimestampValue(b.timestamp));
+        this.messagesContainer.innerHTML = '';
+
+        sorted.forEach(msg => {
+            const isOwn = (msg.fromUid && currentUid)
+                ? msg.fromUid === currentUid
+                : msg.fromUser === currentName;
+            const isVideoCircle = msg.type === 'video-circle';
+
+            const msgEl = document.createElement('div');
+            msgEl.className = `message ${isOwn ? 'own' : ''}${isVideoCircle ? ' message-video-note' : ''}`;
+
+            const formattedTime = this.formatClockTime(msg.timestamp);
+            const statusClass = msg.read ? 'read' : (msg.delivered ? 'delivered' : 'sent');
+            const doubleTick = '&#10003;&#10003;';
+            const singleTick = '&#10003;';
+            const statusIcon = msg.read ? doubleTick : (msg.delivered ? doubleTick : singleTick);
+            const statusHtml = isOwn ? `<span class="message-status ${statusClass}">${statusIcon}</span>` : '';
+            const bodyHtml = this.renderChatMessageBody(msg);
+
+            msgEl.innerHTML = `
+                ${bodyHtml}
+                <div class="message-meta">
+                    <span>${formattedTime}</span>
+                    ${statusHtml}
+                </div>
+            `;
+            this.messagesContainer.appendChild(msgEl);
+
+            if (isVideoCircle) {
+                const trigger = msgEl.querySelector('.message-video-circle-hit');
+                const videoEl = msgEl.querySelector('.message-video-circle');
+                this.bindChatVideoCircleInteraction(trigger, videoEl);
+            }
+        });
+    };
+
+    AdvancedApp.prototype.renderVideoCircleMessageBody = function(message = {}) {
+        const file = message.file || {};
+        const safeUrl = file.url ? this.escapeHtml(file.url) : '';
+        const video = safeUrl
+            ? `<video class="message-video-circle" src="${safeUrl}" playsinline autoplay preload="metadata" loop muted disablepictureinpicture></video>`
+            : `<div class="message-video-circle-fallback"><span class="message-video-circle-glyph"></span></div>`;
+
+        return `
+            <div class="message-content message-video-circle-wrap">
+                <button class="message-video-circle-hit" type="button" aria-label="Open video message">
+                    <span class="message-video-circle-progress"></span>
+                    ${video}
+                    <span class="message-video-circle-overlay">
+                        <span class="message-video-circle-glyph"></span>
+                    </span>
+                </button>
+            </div>
+        `;
+    };
+
+    AdvancedApp.prototype.bindChatVideoCircleInteraction = function(trigger, videoEl) {
+        if (!trigger || !videoEl || trigger.dataset.bound === '1') return;
+
+        trigger.dataset.bound = '1';
+        videoEl.muted = true;
+        videoEl.loop = true;
+
+        const progressEl = trigger.querySelector('.message-video-circle-progress');
+        const ensurePlaying = () => {
+            const playPromise = videoEl.play();
+            if (playPromise && typeof playPromise.catch === 'function') {
+                playPromise.catch(() => {});
+            }
+        };
+
+        const syncProgress = () => {
+            this.updateChatVideoCircleProgress(progressEl, videoEl);
+        };
+
+        ensurePlaying();
+        videoEl.addEventListener('loadedmetadata', () => {
+            ensurePlaying();
+            syncProgress();
+        });
+        videoEl.addEventListener('timeupdate', syncProgress);
+        videoEl.addEventListener('ended', syncProgress);
+
+        trigger.addEventListener('click', () => {
+            this.openChatVideoCircleViewer(videoEl);
+        });
+    };
+
+    AdvancedApp.prototype.updateChatVideoCircleProgress = function(progressEl, videoEl) {
+        if (!progressEl) return;
+
+        const duration = Number(videoEl && videoEl.duration) || 0;
+        const currentTime = Number(videoEl && videoEl.currentTime) || 0;
+        const ratio = duration > 0 ? Math.max(0, Math.min(1, currentTime / duration)) : 0;
+        progressEl.style.setProperty('--progress', `${Math.round(ratio * 360)}deg`);
+    };
+
+    AdvancedApp.prototype.ensureChatVideoCircleViewer = function() {
+        if (this.chatVideoCircleViewer) return this.chatVideoCircleViewer;
+
+        const root = document.createElement('div');
+        root.className = 'video-circle-viewer';
+        root.hidden = true;
+        root.innerHTML = `
+            <div class="video-circle-viewer-backdrop" data-action="close"></div>
+            <div class="video-circle-viewer-shell" role="dialog" aria-modal="true" aria-label="Video message viewer">
+                <button class="video-circle-viewer-close" type="button" data-action="close" aria-label="Close video message">&times;</button>
+                <div class="video-circle-viewer-stage">
+                    <span class="video-circle-viewer-progress"></span>
+                    <video class="video-circle-viewer-video" playsinline preload="metadata" disablepictureinpicture></video>
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(root);
+
+        const videoEl = root.querySelector('.video-circle-viewer-video');
+        const progressEl = root.querySelector('.video-circle-viewer-progress');
+
+        const handleClose = () => {
+            this.closeChatVideoCircleViewer();
+        };
+
+        root.addEventListener('click', (event) => {
+            if (event.target === root || event.target.closest('[data-action="close"]')) {
+                handleClose();
+            }
+        });
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && root.classList.contains('is-visible')) {
+                handleClose();
+            }
+        });
+
+        videoEl.addEventListener('loadedmetadata', () => {
+            this.updateChatVideoCircleProgress(progressEl, videoEl);
+        });
+        videoEl.addEventListener('timeupdate', () => {
+            this.updateChatVideoCircleProgress(progressEl, videoEl);
+        });
+        videoEl.addEventListener('ended', () => {
+            this.updateChatVideoCircleProgress(progressEl, videoEl);
+        });
+
+        this.chatVideoCircleViewer = {
+            root,
+            videoEl,
+            progressEl,
+            activePreview: null,
+            closeTimer: null
+        };
+
+        return this.chatVideoCircleViewer;
+    };
+
+    AdvancedApp.prototype.openChatVideoCircleViewer = function(sourceVideo) {
+        if (!sourceVideo) return;
+
+        const sourceUrl = sourceVideo.currentSrc || sourceVideo.src || '';
+        if (!sourceUrl) return;
+
+        const viewer = this.ensureChatVideoCircleViewer();
+        if (viewer.closeTimer) {
+            clearTimeout(viewer.closeTimer);
+            viewer.closeTimer = null;
+        }
+
+        viewer.activePreview = sourceVideo;
+        viewer.root.hidden = false;
+        document.body.classList.add('video-circle-viewer-open');
+
+        if (viewer.videoEl.getAttribute('src') !== sourceUrl) {
+            viewer.videoEl.setAttribute('src', sourceUrl);
+            viewer.videoEl.load();
+        }
+
+        viewer.videoEl.muted = false;
+        viewer.videoEl.loop = false;
+
+        try {
+            viewer.videoEl.currentTime = Number(sourceVideo.currentTime) || 0;
+        } catch (_) {}
+
+        this.updateChatVideoCircleProgress(viewer.progressEl, viewer.videoEl);
+
+        sourceVideo.pause();
+
+        requestAnimationFrame(() => {
+            viewer.root.classList.add('is-visible');
+            const playPromise = viewer.videoEl.play();
+            if (playPromise && typeof playPromise.catch === 'function') {
+                playPromise.catch(() => {});
+            }
+        });
+    };
+
+    AdvancedApp.prototype.closeChatVideoCircleViewer = function() {
+        const viewer = this.chatVideoCircleViewer;
+        if (!viewer || viewer.root.hidden) return;
+
+        const activePreview = viewer.activePreview;
+        viewer.activePreview = null;
+        viewer.root.classList.remove('is-visible');
+        document.body.classList.remove('video-circle-viewer-open');
+
+        viewer.closeTimer = setTimeout(() => {
+            viewer.videoEl.pause();
+            viewer.videoEl.removeAttribute('src');
+            viewer.videoEl.load();
+            viewer.root.hidden = true;
+            this.updateChatVideoCircleProgress(viewer.progressEl, null);
+
+            if (activePreview) {
+                const playPromise = activePreview.play();
+                if (playPromise && typeof playPromise.catch === 'function') {
+                    playPromise.catch(() => {});
+                }
+            }
+        }, 220);
+    };
+
+    const originalSetupMessagesEvents = AdvancedApp.prototype.setupMessagesEvents;
+    AdvancedApp.prototype.setupMessagesEvents = function() {
+        originalSetupMessagesEvents.call(this);
+        this.setupChatComposerEnhancements();
+    };
+
+    const originalOpenChat = AdvancedApp.prototype.openChat;
+    AdvancedApp.prototype.openChat = async function(...args) {
+        await originalOpenChat.apply(this, args);
+
+        if (this.chatUserName) {
+            this.chatUserName.textContent = String(this.state.currentChatUser || this.chatUserName.textContent || '').replace(/^@+/, '');
+        }
+        const onlineDot = document.getElementById('chat-user-online-dot');
+        if (onlineDot) {
+            onlineDot.classList.toggle('is-online', !!this.state.currentChatOnline);
+        }
+        if (this.typingText) {
+            const peerName = String(this.state.currentChatUser || '').replace(/^@+/, '');
+            this.typingText.textContent = peerName
+                ? `${peerName} \u043f\u0435\u0447\u0430\u0442\u0430\u0435\u0442...`
+                : '\u041f\u0435\u0447\u0430\u0442\u0430\u0435\u0442...';
+        }
+
+        this.syncChatComposerVisuals();
+    };
+
+    AdvancedApp.prototype.formatLastSeen = function(online, timestamp) {
+        if (online) return '\u0432 \u0441\u0435\u0442\u0438';
+
+        const normalizedTs = this.normalizeTimestampValue(timestamp);
+        if (!normalizedTs) return '\u0431\u044b\u043b(\u0430) \u043d\u0435\u0434\u0430\u0432\u043d\u043e';
+
+        const diff = Date.now() - normalizedTs;
+        const minutes = Math.floor(diff / 60000);
+        if (minutes < 1) return '\u0431\u044b\u043b(\u0430) \u0442\u043e\u043b\u044c\u043a\u043e \u0447\u0442\u043e';
+        if (minutes < 60) return `\u0431\u044b\u043b(\u0430) ${minutes}\u043c \u043d\u0430\u0437\u0430\u0434`;
+
+        const hours = Math.floor(minutes / 60);
+        if (hours < 24) return `\u0431\u044b\u043b(\u0430) ${hours}\u0447 \u043d\u0430\u0437\u0430\u0434`;
+
+        return `\u0431\u044b\u043b(\u0430) ${new Date(normalizedTs).toLocaleDateString('ru-RU')}`;
+    };
+
+    AdvancedApp.prototype.setupChatComposerEnhancements = function() {
+        if (this.messageInput) {
+            this.messageInput.setAttribute('placeholder', '\u0421\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0435');
+        }
+
+        if (this.sendMessageBtn && this.sendMessageBtn.dataset.chatComposerBound !== '1') {
+            this.sendMessageBtn.dataset.chatComposerBound = '1';
+            this.sendMessageBtn.addEventListener('click', (event) => {
+                const hasText = !!(this.messageInput && this.messageInput.value.trim());
+                if (hasText) return;
+
+                event.preventDefault();
+                event.stopImmediatePropagation();
+
+                if (this.videoCircleBtn) {
+                    this.videoCircleBtn.click();
+                } else if (this.chatVideoCircleInput) {
+                    this.chatVideoCircleInput.click();
+                }
+            }, true);
+        }
+
+        if (this.sendMessageBtn) {
+            this.sendMessageBtn.disabled = false;
+        }
+
+        this.syncChatComposerVisuals();
+    };
+
+    AdvancedApp.prototype.syncChatComposerVisuals = function() {
+        const hasText = !!(this.messageInput && this.messageInput.value.trim());
+
+        if (this.messageInputArea) {
+            this.messageInputArea.classList.toggle('has-text', hasText);
+        }
+
+        if (this.sendMessageBtn) {
+            this.sendMessageBtn.disabled = false;
+            this.sendMessageBtn.setAttribute(
+                'aria-label',
+                hasText ? '\u041e\u0442\u043f\u0440\u0430\u0432\u0438\u0442\u044c \u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0435' : '\u041e\u0442\u043a\u0440\u044b\u0442\u044c \u043a\u0430\u043c\u0435\u0440\u0443'
+            );
+        }
+    };
+
+    AdvancedApp.prototype.onMessageInputChanged = function() {
+        if (!this.messageInput) return;
+
+        const hasText = this.messageInput.value.trim().length > 0;
+        this.syncChatComposerVisuals();
+
+        if (hasText) {
+            this.updateTypingStatus(true);
+            clearTimeout(this.stopTypingTimeout);
+            this.stopTypingTimeout = setTimeout(() => this.updateTypingStatus(false), 1500);
+        } else {
+            this.updateTypingStatus(false);
+        }
+    };
+
+    AdvancedApp.prototype.getChatMessageRenderClass = function(message = {}) {
+        const msg = message || {};
+        const mime = String(msg.file && msg.file.mime ? msg.file.mime : '').toLowerCase();
+
+        if (msg.type === 'video-circle') return 'message-video-note';
+        if (msg.type === 'file' && mime.startsWith('image/')) return 'message-image-note';
+        if (msg.type === 'file' && mime.startsWith('audio/')) return 'message-voice-note';
+        if (msg.type === 'file') return 'message-file-note';
+        if (msg.type === 'sticker') return 'message-sticker-note';
+        if (msg.type === 'call-event') return 'message-call-note';
+        return 'message-text-note';
+    };
+
+    AdvancedApp.prototype.renderChatMessages = function(messages = []) {
+        if (!this.messagesContainer) return;
+
+        const currentUser = this.dataService.getCurrentUser();
+        const currentUid = currentUser ? currentUser.uid : null;
+        const currentName = currentUser ? currentUser.name : null;
+        const sorted = [...messages].sort((a, b) => this.normalizeTimestampValue(a.timestamp) - this.normalizeTimestampValue(b.timestamp));
+
+        this.messagesContainer.innerHTML = '';
+
+        sorted.forEach((msg) => {
+            const isOwn = (msg.fromUid && currentUid)
+                ? msg.fromUid === currentUid
+                : msg.fromUser === currentName;
+            const renderClass = this.getChatMessageRenderClass(msg);
+            const msgEl = document.createElement('div');
+            const className = `message ${isOwn ? 'own' : ''} ${renderClass}`.trim().replace(/\s+/g, ' ');
+
+            msgEl.className = className;
+
+            const formattedTime = this.formatClockTime(msg.timestamp);
+            const statusClass = msg.read ? 'read' : (msg.delivered ? 'delivered' : 'sent');
+            const doubleTick = '&#10003;&#10003;';
+            const singleTick = '&#10003;';
+            const statusIcon = msg.read ? doubleTick : (msg.delivered ? doubleTick : singleTick);
+            const statusHtml = isOwn ? `<span class="message-status ${statusClass}">${statusIcon}</span>` : '';
+            const bodyHtml = this.renderChatMessageBody(msg, { isOwn, formattedTime, statusClass, statusIcon });
+            const metaMode = this.getChatMessageMetaMode(renderClass, { isOwn });
+            const outerMetaHtml = metaMode === 'outside'
+                ? `
+                    <div class="message-meta">
+                        <span>${formattedTime}</span>
+                        ${statusHtml}
+                    </div>
+                `
+                : '';
+
+            msgEl.innerHTML = `
+                ${bodyHtml}
+                ${outerMetaHtml}
+            `;
+
+            this.messagesContainer.appendChild(msgEl);
+
+            if (renderClass === 'message-video-note') {
+                const trigger = msgEl.querySelector('.message-video-circle-hit');
+                const videoEl = msgEl.querySelector('.message-video-circle');
+                this.bindChatVideoCircleInteraction(trigger, videoEl);
+            }
+
+            if (renderClass === 'message-image-note') {
+                this.bindChatImageMessageInteraction(msgEl);
+            }
+
+            if (renderClass === 'message-voice-note') {
+                this.bindChatVoiceMessageInteraction(msgEl);
+            }
+        });
+    };
+
+    AdvancedApp.prototype.getChatMessageMetaMode = function(renderClass = '', context = {}) {
+        if (renderClass === 'message-text-note') return context.isOwn ? 'inside' : 'hidden';
+        if (renderClass === 'message-image-note') return 'hidden';
+        if (renderClass === 'message-voice-note') return 'hidden';
+        return 'outside';
+    };
+
+    AdvancedApp.prototype.renderChatMessageBody = function(message = {}, context = {}) {
+        const msg = message || {};
+        const mime = String(msg.file && msg.file.mime ? msg.file.mime : '').toLowerCase();
+
+        if (msg.type === 'file' && mime.startsWith('image/')) return this.renderImageMessageBody(msg);
+        if (msg.type === 'file' && mime.startsWith('audio/')) return this.renderVoiceMessageBody(msg, context);
+        if (msg.type === 'file') return this.renderFileMessageBody(msg);
+        if (msg.type === 'sticker') return this.renderStickerMessageBody(msg);
+        if (msg.type === 'video-circle') return this.renderVideoCircleMessageBody(msg);
+        if (msg.type === 'call-event') return this.renderCallEventMessageBody(msg);
+        return this.renderTextMessageBody(msg, context);
+    };
+
+    AdvancedApp.prototype.renderTextMessageBody = function(message = {}, context = {}) {
+        const safeText = this.escapeHtml(message.content || '').replace(/\n/g, '<br>');
+        const inlineMeta = context.isOwn
+            ? `
+                <div class="message-inline-meta">
+                    <span class="message-inline-time">${this.escapeHtml(context.formattedTime || '')}</span>
+                    <span class="message-inline-status ${this.escapeHtml(context.statusClass || 'sent')}">${context.statusIcon || '&#10003;'}</span>
+                </div>
+            `
+            : '';
+
+        return `
+            <div class="message-shell message-text-shell">
+                <div class="message-bubble message-text-bubble">${safeText}${inlineMeta}</div>
+            </div>
+        `;
+    };
+
+    AdvancedApp.prototype.renderImageMessageBody = function(message = {}) {
+        const file = message.file || {};
+        const safeUrl = file.url ? this.escapeHtml(file.url) : '';
+        const safeName = this.escapeHtml(file.name || 'photo');
+
+        if (!safeUrl) {
+            return this.renderFileMessageBody(message);
+        }
+
+        return `
+            <div class="message-content image-message-card">
+                <button class="image-message-hit" type="button" data-image-url="${safeUrl}" data-image-name="${safeName}" aria-label="\u041e\u0442\u043a\u0440\u044b\u0442\u044c \u0444\u043e\u0442\u043e">
+                    <img class="image-message-media" src="${safeUrl}" alt="${safeName}" loading="lazy">
+                </button>
+            </div>
+        `;
+    };
+
+    AdvancedApp.prototype.renderVoiceMessageBody = function(message = {}, context = {}) {
+        const file = message.file || {};
+        const safeUrl = file.url ? this.escapeHtml(file.url) : '';
+        const durationText = this.escapeHtml(this.formatVoiceDuration(file.duration || 0));
+        const timeText = this.escapeHtml(this.formatClockTime(message.timestamp) || '');
+        const statusClass = message.read ? 'read' : (message.delivered ? 'delivered' : 'sent');
+        const doubleTick = '&#10003;&#10003;';
+        const singleTick = '&#10003;';
+        const statusIcon = message.read ? doubleTick : (message.delivered ? doubleTick : singleTick);
+        const statusHtml = context.isOwn
+            ? `<span class="voice-message-inline-status ${statusClass}">${statusIcon}</span>`
+            : '';
+        const waveform = this.buildVoiceMessageWaveform((file.name || safeUrl || String(message.timestamp || 'voice')).slice(0, 48));
+        const audioHtml = safeUrl
+            ? `<audio class="voice-message-audio" src="${safeUrl}" preload="metadata"></audio>`
+            : '';
+
+        return `
+            <div class="message-shell message-voice-shell">
+                <div class="message-bubble voice-message-card">
+                    <button class="voice-message-toggle" type="button" aria-label="\u041f\u0440\u043e\u0441\u043b\u0443\u0448\u0430\u0442\u044c \u0433\u043e\u043b\u043e\u0441\u043e\u0432\u043e\u0435">
+                        <span class="voice-message-toggle-icon"></span>
+                    </button>
+                    <div class="voice-message-body">
+                        <div class="voice-message-wave">${waveform}</div>
+                        <div class="voice-message-row">
+                            <span class="voice-message-duration">${durationText}</span>
+                            <span class="voice-message-row-spacer"></span>
+                            <span class="voice-message-time">${timeText}</span>
+                            ${statusHtml}
+                        </div>
+                    </div>
+                    ${audioHtml}
+                </div>
+            </div>
+        `;
+    };
+
+    AdvancedApp.prototype.buildVoiceMessageWaveform = function(seed = 'voice') {
+        const source = String(seed || 'voice');
+        const bars = [];
+
+        for (let i = 0; i < 26; i += 1) {
+            const code = source.charCodeAt(i % source.length) || 71;
+            const height = 8 + ((code + (i * 11)) % 18);
+            bars.push(`<span class="voice-message-bar" style="height:${height}px"></span>`);
+        }
+
+        return bars.join('');
+    };
+
+    AdvancedApp.prototype.formatVoiceDuration = function(seconds) {
+        const totalSeconds = Math.max(0, Math.round(Number(seconds) || 0));
+        const minutes = Math.floor(totalSeconds / 60);
+        const rest = String(totalSeconds % 60).padStart(2, '0');
+        return `${minutes}:${rest}`;
+    };
+
+    AdvancedApp.prototype.bindChatVoiceMessageInteraction = function(messageEl) {
+        if (!messageEl) return;
+
+        const toggle = messageEl.querySelector('.voice-message-toggle');
+        const audio = messageEl.querySelector('.voice-message-audio');
+        const durationEl = messageEl.querySelector('.voice-message-duration');
+        const bars = Array.from(messageEl.querySelectorAll('.voice-message-bar'));
+
+        if (!toggle || !audio || toggle.dataset.bound === '1') return;
+        toggle.dataset.bound = '1';
+
+        const sync = () => {
+            const duration = Number(audio.duration) || Number(audio.dataset.duration) || 0;
+            const currentTime = Number(audio.currentTime) || 0;
+            const ratio = duration > 0 ? Math.max(0, Math.min(1, currentTime / duration)) : 0;
+            const playedBars = Math.round(bars.length * ratio);
+            const displayTime = (!audio.paused && currentTime > 0) ? currentTime : duration;
+
+            if (durationEl) {
+                durationEl.textContent = this.formatVoiceDuration(displayTime);
+            }
+
+            bars.forEach((bar, index) => {
+                bar.classList.toggle('is-played', index < playedBars);
+            });
+
+            toggle.classList.toggle('is-playing', !audio.paused);
+        };
+
+        audio.addEventListener('loadedmetadata', () => {
+            audio.dataset.duration = String(Number(audio.duration) || 0);
+            sync();
+        });
+        audio.addEventListener('timeupdate', sync);
+        audio.addEventListener('play', sync);
+        audio.addEventListener('pause', sync);
+        audio.addEventListener('ended', () => {
+            audio.currentTime = 0;
+            sync();
+        });
+
+        toggle.addEventListener('click', () => {
+            if (this.activeVoiceMessageAudio && this.activeVoiceMessageAudio !== audio) {
+                const previousAudio = this.activeVoiceMessageAudio;
+                previousAudio.pause();
+                previousAudio.currentTime = 0;
+
+                const previousRoot = previousAudio.closest('.message-voice-note');
+                if (previousRoot) {
+                    previousRoot.querySelectorAll('.voice-message-bar').forEach((bar) => bar.classList.remove('is-played'));
+
+                    const previousToggle = previousRoot.querySelector('.voice-message-toggle');
+                    if (previousToggle) previousToggle.classList.remove('is-playing');
+
+                    const previousDuration = previousRoot.querySelector('.voice-message-duration');
+                    if (previousDuration) {
+                        previousDuration.textContent = this.formatVoiceDuration(Number(previousAudio.dataset.duration) || 0);
+                    }
+                }
+            }
+
+            if (audio.paused) {
+                this.activeVoiceMessageAudio = audio;
+                const playPromise = audio.play();
+                if (playPromise && typeof playPromise.catch === 'function') {
+                    playPromise.catch(() => {});
+                }
+            } else {
+                audio.pause();
+            }
+
+            sync();
+        });
+
+        sync();
+    };
+
+    AdvancedApp.prototype.bindChatImageMessageInteraction = function(messageEl) {
+        if (!messageEl) return;
+
+        const trigger = messageEl.querySelector('.image-message-hit');
+        if (!trigger || trigger.dataset.bound === '1') return;
+
+        trigger.dataset.bound = '1';
+        trigger.addEventListener('click', () => {
+            const src = trigger.dataset.imageUrl || '';
+            const name = trigger.dataset.imageName || 'photo';
+            this.openChatImageViewer(src, name);
+        });
+    };
+
+    AdvancedApp.prototype.ensureChatImageViewer = function() {
+        if (this.chatImageViewer) return this.chatImageViewer;
+
+        const root = document.createElement('div');
+        root.className = 'chat-image-viewer';
+        root.hidden = true;
+        root.innerHTML = `
+            <div class="chat-image-viewer-backdrop" data-action="close"></div>
+            <div class="chat-image-viewer-shell" role="dialog" aria-modal="true" aria-label="\u041f\u0440\u043e\u0441\u043c\u043e\u0442\u0440 \u0444\u043e\u0442\u043e">
+                <div class="chat-image-viewer-toolbar">
+                    <a class="chat-image-viewer-download" href="#" download data-action="download">\u0421\u043a\u0430\u0447\u0430\u0442\u044c</a>
+                    <button class="chat-image-viewer-close" type="button" data-action="close" aria-label="\u0417\u0430\u043a\u0440\u044b\u0442\u044c \u0444\u043e\u0442\u043e">\u2715</button>
+                </div>
+                <div class="chat-image-viewer-stage">
+                    <img class="chat-image-viewer-image" alt="\u0424\u043e\u0442\u043e">
+                </div>
+            </div>
+        `;
+
+        document.body.appendChild(root);
+
+        const imageEl = root.querySelector('.chat-image-viewer-image');
+        const downloadEl = root.querySelector('.chat-image-viewer-download');
+
+        const closeViewer = () => {
+            this.closeChatImageViewer();
+        };
+
+        root.addEventListener('click', (event) => {
+            if (event.target === root || event.target.closest('[data-action="close"]')) {
+                closeViewer();
+            }
+        });
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && root.classList.contains('is-visible')) {
+                closeViewer();
+            }
+        });
+
+        this.chatImageViewer = {
+            root,
+            imageEl,
+            downloadEl,
+            closeTimer: null
+        };
+
+        return this.chatImageViewer;
+    };
+
+    AdvancedApp.prototype.openChatImageViewer = function(src = '', name = 'photo') {
+        const imageSrc = String(src || '').trim();
+        if (!imageSrc) return;
+
+        const viewer = this.ensureChatImageViewer();
+        if (viewer.closeTimer) {
+            clearTimeout(viewer.closeTimer);
+            viewer.closeTimer = null;
+        }
+
+        viewer.imageEl.setAttribute('src', imageSrc);
+        viewer.downloadEl.setAttribute('href', imageSrc);
+        viewer.downloadEl.setAttribute('download', String(name || 'photo'));
+
+        viewer.root.hidden = false;
+        document.body.classList.add('chat-image-viewer-open');
+
+        requestAnimationFrame(() => {
+            viewer.root.classList.add('is-visible');
+        });
+    };
+
+    AdvancedApp.prototype.closeChatImageViewer = function() {
+        const viewer = this.chatImageViewer;
+        if (!viewer || viewer.root.hidden) return;
+
+        viewer.root.classList.remove('is-visible');
+        document.body.classList.remove('chat-image-viewer-open');
+
+        viewer.closeTimer = setTimeout(() => {
+            viewer.imageEl.removeAttribute('src');
+            viewer.downloadEl.setAttribute('href', '#');
+            viewer.root.hidden = true;
+        }, 180);
     };
 
 })(window);

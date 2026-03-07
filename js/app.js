@@ -1,6 +1,6 @@
-/**
+﻿/**
  * AdvancedApp
- * Основное приложение - управление состоянием и событиями
+ * РћСЃРЅРѕРІРЅРѕРµ РїСЂРёР»РѕР¶РµРЅРёРµ - СѓРїСЂР°РІР»РµРЅРёРµ СЃРѕСЃС‚РѕСЏРЅРёРµРј Рё СЃРѕР±С‹С‚РёСЏРјРё
  */
 class AdvancedApp {
     constructor() {
@@ -28,13 +28,16 @@ class AdvancedApp {
             selectedFilter: 'none',
             theme: 'dark',
             avatarData: null,
+            avatarFile: null,
             currentChatId: null,
             currentChatUser: null,
             currentChatUid: null,
             activeCallId: null,
-            activeLiveSessionId: null
+            activeLiveSessionId: null,
+            profileGridTab: 'videos' // 'videos' | 'saved' | 'liked' | 'drafts'
         };
         this.uploadDraftKey = storageKeys.uploadDraft || 'reelgram_upload_draft_v1';
+        this.savedVideosKey = storageKeys.savedVideos || 'reelgram_saved_videos_v1';
         this.feedPrefsKey = storageKeys.feedPrefs || 'reelgram_feed_prefs_v1';
         this.moderationPrefsKey = storageKeys.moderationPrefs || 'reelgram_moderation_prefs_v1';
         this.watchProfileKey = storageKeys.watchProfile || 'reelgram_watch_profile_v1';
@@ -57,18 +60,18 @@ class AdvancedApp {
         this.keyboardHandlersBound = false;
         this.emojiList = Array.isArray(uiConfig.emojiList) && uiConfig.emojiList.length
             ? [...uiConfig.emojiList]
-            : ['😀', '😂', '😍', '😎', '🥳', '🔥', '❤️', '👍', '👏', '🤝', '🤔', '😢', '🙌', '✨', '😅', '🎉'];
+            : ['рџЂ', 'рџ‚', 'рџЌ', 'рџ‹', 'рџҐі', 'рџ”Ґ', 'вќ¤пёЏ', 'рџ‘Ќ', 'рџ‘Џ', 'рџ¤ќ', 'рџ¤”', 'рџў', 'рџ™Њ', 'вњЁ', 'рџ…', 'рџЋ‰'];
         this.stickerPack = Array.isArray(uiConfig.stickerPack) && uiConfig.stickerPack.length
             ? uiConfig.stickerPack.map(sticker => ({ ...sticker }))
             : [
-                { id: 'party', title: 'Party', emoji: '🥳', style: 'sticker-style-party', motion: 'sticker-motion-bounce' },
-                { id: 'wow', title: 'Wow', emoji: '🤯', style: 'sticker-style-wow', motion: 'sticker-motion-pop' },
-                { id: 'cool', title: 'Cool', emoji: '😎', style: 'sticker-style-cool', motion: 'sticker-motion-wiggle' },
-                { id: 'love', title: 'Love', emoji: '😍', style: 'sticker-style-love', motion: 'sticker-motion-pulse' },
-                { id: 'fire', title: 'Fire', emoji: '🔥', style: 'sticker-style-fire', motion: 'sticker-motion-pop' },
-                { id: 'lol', title: 'Lol', emoji: '😂', style: 'sticker-style-lol', motion: 'sticker-motion-bounce' },
-                { id: 'power', title: 'Power', emoji: '💪', style: 'sticker-style-power', motion: 'sticker-motion-pulse' },
-                { id: 'hype', title: 'Hype', emoji: '⚡', style: 'sticker-style-hype', motion: 'sticker-motion-wiggle' }
+                { id: 'party', title: 'РџР°С‚Рё', emoji: 'рџҐі', style: 'sticker-style-party', motion: 'sticker-motion-bounce' },
+                { id: 'wow', title: 'Р’Р°Сѓ', emoji: 'рџ¤Ї', style: 'sticker-style-wow', motion: 'sticker-motion-pop' },
+                { id: 'cool', title: 'РљСЂСѓС‚Рѕ', emoji: 'рџ‹', style: 'sticker-style-cool', motion: 'sticker-motion-wiggle' },
+                { id: 'love', title: 'Р›СЋР±РѕРІСЊ', emoji: 'рџЌ', style: 'sticker-style-love', motion: 'sticker-motion-pulse' },
+                { id: 'fire', title: 'РћРіРѕРЅСЊ', emoji: 'рџ”Ґ', style: 'sticker-style-fire', motion: 'sticker-motion-pop' },
+                { id: 'lol', title: 'РЎРјРµС…', emoji: 'рџ‚', style: 'sticker-style-lol', motion: 'sticker-motion-bounce' },
+                { id: 'power', title: 'РЎРёР»Р°', emoji: 'рџ’Є', style: 'sticker-style-power', motion: 'sticker-motion-pulse' },
+                { id: 'hype', title: 'РҐР°Р№Рї', emoji: 'вљЎ', style: 'sticker-style-hype', motion: 'sticker-motion-wiggle' }
             ];
         this.stickerPackById = new Map(this.stickerPack.map(sticker => [sticker.id, sticker]));
 
@@ -82,6 +85,13 @@ class AdvancedApp {
         this.observedFeedItems = new WeakSet();
         this.profileGridObserver = null;
         this.viewedFeedFirestoreIds = new Set();
+        this.profileViewContext = {
+            isOwn: true,
+            profileUid: null,
+            baseVideos: [],
+            loading: false
+        };
+        this.profileLikedRequestToken = 0;
         this.feedPaging = {
             touchStartScrollTop: 0,
             touchStartIndex: 0,
@@ -123,16 +133,14 @@ class AdvancedApp {
         this.storyAutoplayTimer = null;
         this.storyAutoplayStartedAt = 0;
         this.storyAutoplayDuration = 5000;
+        this.storyAutoplayElapsed = 0;
         this.storyAutoplayRaf = null;
+        this.storyAutoplayPaused = false;
+        this.storyProgressSegments = [];
+        this.storyPressState = null;
+        this.storyViewerSurface = null;
+        this.storyViewerProgressTrack = null;
         this.activeStoryVideoEl = null;
-        this.giftAmounts = Array.isArray(uiConfig.giftAmounts) && uiConfig.giftAmounts.length
-            ? uiConfig.giftAmounts.map(value => Math.max(1, parseInt(value, 10) || 0)).filter(Boolean)
-            : [10, 25, 50, 100, 250, 500];
-        this.selectedGiftAmount = 50;
-        this.pendingGiftContext = null;
-        this.seasonThemePrefsKey = storageKeys.seasonTheme || 'reelgram_season_theme_v1';
-        this.seasonThemeEnabled = true;
-        this.activeSeasonMeta = null;
         this.liveSessions = [];
         this.liveSessionsUnsubscribe = null;
         this.firebaseRecoveryTimer = null;
@@ -141,12 +149,10 @@ class AdvancedApp {
     }
 
     async init() {
-        console.log('🚀 Initializing app...');
+        console.log('рџљЂ Initializing app...');
         this.ensureEnhancedUiScaffold();
         this.cacheElements();
         this.setupAppViewportHeight();
-        this.restoreSeasonThemePrefs();
-        this.applySeasonTheme();
         this.setupTheme();
         this.setupEventListeners();
         this.setupNotifications();
@@ -156,8 +162,8 @@ class AdvancedApp {
         this.restoreFeedPreferences();
         this.loadWatchProfile();
 
-        // FirebaseService инициализируется асинхронно в firebase-service.js (через setTimeout).
-        // Чтобы лента/профиль после перезагрузки брали данные из Firestore, ждём готовности (с таймаутом).
+        // FirebaseService РёРЅРёС†РёР°Р»РёР·РёСЂСѓРµС‚СЃСЏ Р°СЃРёРЅС…СЂРѕРЅРЅРѕ РІ firebase-service.js (С‡РµСЂРµР· setTimeout).
+        // Р§С‚РѕР±С‹ Р»РµРЅС‚Р°/РїСЂРѕС„РёР»СЊ РїРѕСЃР»Рµ РїРµСЂРµР·Р°РіСЂСѓР·РєРё Р±СЂР°Р»Рё РґР°РЅРЅС‹Рµ РёР· Firestore, Р¶РґС‘Рј РіРѕС‚РѕРІРЅРѕСЃС‚Рё (СЃ С‚Р°Р№РјР°СѓС‚РѕРј).
         let firebaseReadyNow = false;
         if (typeof waitForFirebaseService === 'function') {
             firebaseReadyNow = await waitForFirebaseService(12000);
@@ -186,7 +192,6 @@ class AdvancedApp {
         this.setupIncomingCallsWatcher();
         this.updateHamburgerVisibility();
         this.updateAdminMenuVisibility();
-        this.refreshSeasonBanner();
         this.scheduleNotificationBadgeRefresh();
         
         this.setupDeepLinks();
@@ -244,13 +249,13 @@ class AdvancedApp {
                 try {
                     await this.handleFirebaseReady({ forceReloadFeed: true });
                 } catch (error) {
-                    console.warn('⚠️ Не удалось восстановить состояние после подключения Firebase:', error?.message || error);
+                    console.warn('вљ пёЏ РќРµ СѓРґР°Р»РѕСЃСЊ РІРѕСЃСЃС‚Р°РЅРѕРІРёС‚СЊ СЃРѕСЃС‚РѕСЏРЅРёРµ РїРѕСЃР»Рµ РїРѕРґРєР»СЋС‡РµРЅРёСЏ Firebase:', error?.message || error);
                 }
                 return;
             }
 
             if (attempts >= safeMaxAttempts) {
-                console.warn('⚠️ Firebase не инициализирован, recovery остановлен');
+                console.warn('вљ пёЏ Firebase РЅРµ РёРЅРёС†РёР°Р»РёР·РёСЂРѕРІР°РЅ, recovery РѕСЃС‚Р°РЅРѕРІР»РµРЅ');
                 return;
             }
 
@@ -300,6 +305,7 @@ class AdvancedApp {
         this.hamburgerBtn = document.getElementById('hamburger-btn');
         this.menuDropdown = document.getElementById('menu-dropdown');
         this.themeToggleMenu = document.getElementById('theme-toggle-menu');
+        this.accountSwitchMenu = document.getElementById('account-switch-menu');
         this.adminMenu = document.getElementById('admin-menu');
         this.logoutMenu = document.getElementById('logout-menu');
         this.searchViewInput = document.getElementById('search-view-input');
@@ -341,6 +347,7 @@ class AdvancedApp {
         this.stickerToggleBtn = document.getElementById('sticker-toggle-btn');
         this.videoCircleBtn = document.getElementById('video-circle-btn');
         this.videoCallBtn = document.getElementById('video-call-btn');
+        this.audioCallBtn = document.getElementById('audio-call-btn');
         this.attachFileBtn = document.getElementById('attach-file-btn');
         this.chatVideoCircleInput = document.getElementById('chat-video-circle-input');
         this.chatFileInput = document.getElementById('chat-file-input');
@@ -373,11 +380,18 @@ class AdvancedApp {
         this.clearDraftBtn = document.getElementById('clear-draft-btn');
         this.uploadDraftNote = document.getElementById('upload-draft-note');
 
-        this.profileCoinsBadge = document.getElementById('profile-coins-badge');
         this.profilePrivateToggle = document.getElementById('profile-private-account-toggle');
         this.profileAdultToggle = document.getElementById('profile-adult-feed-toggle');
         this.profileFollowRequestsBtn = document.getElementById('profile-follow-requests-btn');
+        this.profileRequestsMenu = document.getElementById('profile-requests-menu');
+        this.profileRequestsMenuText = document.getElementById('profile-requests-menu-text');
+        this.profileBackBtn = document.getElementById('profile-back-btn');
         this.openLiveBtn = document.getElementById('open-live-btn');
+        this.profileSearchBtn = document.getElementById('profile-search-btn');
+        this.profileMediaTabs = document.getElementById('profile-media-tabs');
+        this.profileMediaTabButtons = this.profileMediaTabs
+            ? Array.from(this.profileMediaTabs.querySelectorAll('[data-profile-tab]'))
+            : [];
 
         this.liveSessionsStrip = document.getElementById('live-sessions-strip');
         this.liveSessionsList = document.getElementById('live-sessions-list');
@@ -412,19 +426,19 @@ class AdvancedApp {
         this.storyViewerAuthor = document.getElementById('story-viewer-author');
         this.storyViewerTime = document.getElementById('story-viewer-time');
         this.storyViewerAvatar = document.getElementById('story-viewer-avatar');
+        this.storyViewerProgressTrack = document.getElementById('story-viewer-progress-track');
         this.storyViewerProgressFill = document.getElementById('story-viewer-progress-fill');
+        if (!this.storyViewerProgressTrack && this.storyViewerProgressFill && this.storyViewerProgressFill.parentNode) {
+            this.storyViewerProgressTrack = this.storyViewerProgressFill.parentNode;
+        }
         this.storyViewerCloseBtn = document.getElementById('story-viewer-close');
         this.storyViewerPrevBtn = document.getElementById('story-viewer-prev');
         this.storyViewerNextBtn = document.getElementById('story-viewer-next');
+        this.storyViewerSurface = this.storyViewerModal && this.storyViewerModal.querySelector
+            ? this.storyViewerModal.querySelector('.story-viewer-surface')
+            : null;
         this.addStoryBtn = document.getElementById('add-story-btn');
         this.storyFileInput = document.getElementById('story-file-input');
-
-        this.giftSheet = document.getElementById('gift-sheet');
-        this.giftTargetLabel = document.getElementById('gift-target-label');
-        this.giftAmountGrid = document.getElementById('gift-amount-grid');
-        this.giftMessageInput = document.getElementById('gift-message-input');
-        this.giftSendBtn = document.getElementById('gift-send-btn');
-        this.giftCloseBtn = document.getElementById('gift-close-btn');
 
         this.securityMenu = document.getElementById('security-menu');
         this.securityView = document.getElementById('security-view');
@@ -434,9 +448,6 @@ class AdvancedApp {
         this.securityCurrentDevice = document.getElementById('security-current-device');
         this.securitySessionList = document.getElementById('security-session-list');
         this.securitySessionCount = document.getElementById('security-session-count');
-        this.seasonThemeMenu = document.getElementById('season-theme-menu');
-        this.seasonThemeText = document.getElementById('season-theme-text');
-        this.seasonalBanner = document.getElementById('seasonal-banner');
     }
 
     setupAppViewportHeight() {
@@ -471,7 +482,7 @@ class AdvancedApp {
                 const strip = document.createElement('div');
                 strip.id = 'stories-strip';
                 strip.className = 'stories-strip';
-                strip.innerHTML = '<div class="stories-loading">Загрузка историй...</div>';
+                strip.innerHTML = '<div class="stories-loading">Р—Р°РіСЂСѓР·РєР° РёСЃС‚РѕСЂРёР№...</div>';
                 const tabs = document.getElementById('feed-filter-tabs');
                 if (tabs && tabs.parentNode === feedView) {
                     feedView.insertBefore(strip, tabs);
@@ -480,22 +491,7 @@ class AdvancedApp {
                 }
             }
 
-            if (!document.getElementById('seasonal-banner')) {
-                const banner = document.createElement('div');
-                banner.id = 'seasonal-banner';
-                banner.className = 'seasonal-banner hidden';
-                banner.setAttribute('role', 'status');
-                const stories = document.getElementById('stories-strip');
-                if (stories && stories.parentNode === feedView && stories.nextSibling) {
-                    feedView.insertBefore(banner, stories.nextSibling);
-                } else if (stories && stories.parentNode === feedView) {
-                    feedView.appendChild(banner);
-                } else {
-                    feedView.insertBefore(banner, feedView.firstChild);
-                }
-            }
-
-            // Legacy live strip removed: live sessions are available via top tab "Эфиры".
+            // Legacy live strip removed: live sessions are available via top tab "Р­С„РёСЂС‹".
             const legacyLiveStrip = document.getElementById('live-sessions-strip');
             if (legacyLiveStrip && legacyLiveStrip.parentNode) {
                 legacyLiveStrip.parentNode.removeChild(legacyLiveStrip);
@@ -519,7 +515,7 @@ class AdvancedApp {
                 addStoryBtn.className = 'primary-btn';
                 addStoryBtn.id = 'add-story-btn';
                 addStoryBtn.type = 'button';
-                addStoryBtn.textContent = 'История';
+                addStoryBtn.textContent = 'РСЃС‚РѕСЂРёСЏ';
                 addStoryBtn.style.padding = '10px 20px';
                 addStoryBtn.style.fontSize = '13px';
                 addStoryBtn.style.width = 'auto';
@@ -532,7 +528,7 @@ class AdvancedApp {
                 openLiveBtn.className = 'primary-btn';
                 openLiveBtn.id = 'open-live-btn';
                 openLiveBtn.type = 'button';
-                openLiveBtn.textContent = 'Эфир';
+                openLiveBtn.textContent = 'Р­С„РёСЂ';
                 openLiveBtn.style.padding = '10px 20px';
                 openLiveBtn.style.fontSize = '13px';
                 openLiveBtn.style.width = 'auto';
@@ -548,51 +544,32 @@ class AdvancedApp {
                 fileInput.style.display = 'none';
                 profileHeader.appendChild(fileInput);
             }
-
-            if (!document.getElementById('profile-coins-badge')) {
-                const coinsBadge = document.createElement('div');
-                coinsBadge.id = 'profile-coins-badge';
-                coinsBadge.className = 'profile-coins-badge';
-                coinsBadge.textContent = 'Монеты: 0';
-                profileHeader.appendChild(coinsBadge);
-            }
-
-            if (!document.getElementById('profile-feature-toggles')) {
-                const toggles = document.createElement('div');
-                toggles.id = 'profile-feature-toggles';
-                toggles.className = 'profile-feature-toggles';
-                toggles.innerHTML = `
-                    <label class="profile-toggle-item" for="profile-private-account-toggle">
-                        <input type="checkbox" id="profile-private-account-toggle">
-                        <span>Приватный аккаунт</span>
-                    </label>
-                    <label class="profile-toggle-item" for="profile-adult-feed-toggle">
-                        <input type="checkbox" id="profile-adult-feed-toggle">
-                        <span>Показывать 18+</span>
-                    </label>
-                    <button type="button" class="secondary-btn profile-requests-btn" id="profile-follow-requests-btn">Заявки: 0</button>
-                `;
-                profileHeader.appendChild(toggles);
-            }
         }
 
         const menuDropdown = document.getElementById('menu-dropdown');
         if (menuDropdown) {
-            if (!document.getElementById('season-theme-menu')) {
-                const seasonalItem = document.createElement('div');
-                seasonalItem.className = 'menu-item';
-                seasonalItem.id = 'season-theme-menu';
-                seasonalItem.innerHTML = `
+            if (!document.getElementById('profile-requests-menu')) {
+                const requestsItem = document.createElement('div');
+                requestsItem.className = 'menu-item';
+                requestsItem.id = 'profile-requests-menu';
+                requestsItem.style.display = 'none';
+                requestsItem.innerHTML = `
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-                        <path d="M12 3a9 9 0 0 0 0 18 9 9 0 0 0 0-18zm0 2a7 7 0 0 1 5.66 11.12A6 6 0 0 0 7.88 6.34 6.96 6.96 0 0 1 12 5z"/>
+                        <path d="M12 3c4.97 0 9 3.58 9 8 0 4.42-4.03 8-9 8a10.6 10.6 0 0 1-3.73-.67L3 21l1.49-3.58A7.2 7.2 0 0 1 3 11c0-4.42 4.03-8 9-8zm0 2c-3.86 0-7 2.69-7 6 0 1.7.85 3.24 2.22 4.33l.58.46-.84 2 2.43-1.24.49.18c.71.26 1.4.39 2.12.39 3.86 0 7-2.69 7-6s-3.14-6-7-6zm-3 5h6v2H9v-2zm0 3h4v2H9v-2z"/>
                     </svg>
-                    <span id="season-theme-text">Сезонная тема: ВКЛ</span>
+                    <span id="profile-requests-menu-text">\u0417\u0430\u044f\u0432\u043a\u0438: 0</span>
                 `;
-                const themeItem = document.getElementById('theme-toggle-menu');
-                if (themeItem && themeItem.parentNode === menuDropdown) {
-                    themeItem.insertAdjacentElement('afterend', seasonalItem);
+                const securityMenu = document.getElementById('security-menu');
+                const adminMenu = document.getElementById('admin-menu');
+                const logoutMenu = document.getElementById('logout-menu');
+                if (securityMenu && securityMenu.parentNode === menuDropdown) {
+                    securityMenu.insertAdjacentElement('beforebegin', requestsItem);
+                } else if (adminMenu && adminMenu.parentNode === menuDropdown) {
+                    adminMenu.insertAdjacentElement('beforebegin', requestsItem);
+                } else if (logoutMenu && logoutMenu.parentNode === menuDropdown) {
+                    logoutMenu.insertAdjacentElement('beforebegin', requestsItem);
                 } else {
-                    menuDropdown.insertBefore(seasonalItem, menuDropdown.firstChild || null);
+                    menuDropdown.appendChild(requestsItem);
                 }
             }
 
@@ -604,7 +581,7 @@ class AdvancedApp {
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                         <path d="M12 2l7 4v6c0 5-3.4 9.74-7 11-3.6-1.26-7-6-7-11V6l7-4zm0 6a3 3 0 0 0-3 3v1H8a1 1 0 0 0-1 1v4a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-4a1 1 0 0 0-1-1h-1v-1a3 3 0 0 0-3-3zm-1 4v-1a1 1 0 1 1 2 0v1h-2z"/>
                     </svg>
-                    <span>Безопасность</span>
+                    <span>\u0411\u0435\u0437\u043e\u043f\u0430\u0441\u043d\u043e\u0441\u0442\u044c</span>
                 `;
                 const adminMenu = document.getElementById('admin-menu');
                 if (adminMenu && adminMenu.parentNode === menuDropdown) {
@@ -622,23 +599,23 @@ class AdvancedApp {
             securityView.innerHTML = `
                 <div class="security-view-container">
                     <div class="security-header">
-                        <button class="security-back-btn" id="security-back-btn" type="button" aria-label="Назад в профиль">
+                        <button class="security-back-btn" id="security-back-btn" type="button" aria-label="РќР°Р·Р°Рґ РІ РїСЂРѕС„РёР»СЊ">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                                 <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"></path>
                             </svg>
-                            <span>Профиль</span>
+                            <span>РџСЂРѕС„РёР»СЊ</span>
                         </button>
-                        <h3>Центр безопасности</h3>
-                        <button class="security-refresh-btn" id="security-refresh-btn" type="button">Обновить</button>
+                        <h3>Р¦РµРЅС‚СЂ Р±РµР·РѕРїР°СЃРЅРѕСЃС‚Рё</h3>
+                        <button class="security-refresh-btn" id="security-refresh-btn" type="button">РћР±РЅРѕРІРёС‚СЊ</button>
                     </div>
                     <section class="security-card">
-                        <h4>Текущее устройство</h4>
-                        <div class="security-current-device" id="security-current-device">Загрузка...</div>
-                        <button class="primary-btn" id="security-logout-others-btn" type="button">Выйти с других устройств</button>
+                        <h4>РўРµРєСѓС‰РµРµ СѓСЃС‚СЂРѕР№СЃС‚РІРѕ</h4>
+                        <div class="security-current-device" id="security-current-device">Р—Р°РіСЂСѓР·РєР°...</div>
+                        <button class="primary-btn" id="security-logout-others-btn" type="button">Р’С‹Р№С‚Рё СЃ РґСЂСѓРіРёС… СѓСЃС‚СЂРѕР№СЃС‚РІ</button>
                     </section>
                     <section class="security-card">
                         <div class="security-card-head">
-                            <h4>Сеансы и устройства</h4>
+                            <h4>РЎРµР°РЅСЃС‹ Рё СѓСЃС‚СЂРѕР№СЃС‚РІР°</h4>
                             <span id="security-session-count">0</span>
                         </div>
                         <div class="security-session-list" id="security-session-list"></div>
@@ -663,43 +640,34 @@ class AdvancedApp {
             storyModal.className = 'story-viewer-modal';
             storyModal.innerHTML = `
                 <div class="story-viewer-surface">
-                    <div class="story-viewer-progress-track">
-                        <div class="story-viewer-progress-fill" id="story-viewer-progress-fill"></div>
-                    </div>
-                    <button class="story-viewer-close" id="story-viewer-close" type="button" aria-label="Закрыть историю">×</button>
+                    <div class="story-viewer-progress-track" id="story-viewer-progress-track"></div>
+                    <button class="story-viewer-close" id="story-viewer-close" type="button" aria-label="Close story">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                            <path d="M18 6L6 18"></path>
+                            <path d="M6 6l12 12"></path>
+                        </svg>
+                    </button>
                     <div class="story-viewer-meta">
-                        <img id="story-viewer-avatar" class="story-viewer-avatar" src="https://ui-avatars.com/api/?name=User&background=random&size=64" alt="@user">
+                        <img id="story-viewer-avatar" class="story-viewer-avatar" src="assets/default-avatar.svg" alt="@user">
                         <div class="story-viewer-meta-text">
                             <div class="story-viewer-author" id="story-viewer-author">@user</div>
-                            <div class="story-viewer-time" id="story-viewer-time">только что</div>
+                            <div class="story-viewer-time" id="story-viewer-time">\u0442\u043e\u043b\u044c\u043a\u043e \u0447\u0442\u043e</div>
                         </div>
                     </div>
                     <div class="story-viewer-stage" id="story-viewer-stage"></div>
-                    <button class="story-nav-btn prev" id="story-viewer-prev" type="button" aria-label="Предыдущая история">‹</button>
-                    <button class="story-nav-btn next" id="story-viewer-next" type="button" aria-label="Следующая история">›</button>
+                    <button class="story-nav-btn prev" id="story-viewer-prev" type="button" aria-label="Previous story">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                            <path d="M15 18l-6-6 6-6"></path>
+                        </svg>
+                    </button>
+                    <button class="story-nav-btn next" id="story-viewer-next" type="button" aria-label="Next story">
+                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                            <path d="M9 18l6-6-6-6"></path>
+                        </svg>
+                    </button>
                 </div>
             `;
             appRoot.appendChild(storyModal);
-        }
-
-        if (!document.getElementById('gift-sheet')) {
-            const giftSheet = document.createElement('div');
-            giftSheet.id = 'gift-sheet';
-            giftSheet.className = 'gift-sheet';
-            giftSheet.innerHTML = `
-                <div class="gift-sheet-panel">
-                    <div class="gift-sheet-header">
-                        <h4>Отправить подарок</h4>
-                        <button id="gift-close-btn" type="button" class="gift-close-btn" aria-label="Закрыть">×</button>
-                    </div>
-                    <div class="gift-target" id="gift-target-label">Автор</div>
-                    <div class="gift-amount-grid" id="gift-amount-grid"></div>
-                    <label class="gift-message-label" for="gift-message-input">Сообщение (необязательно)</label>
-                    <input id="gift-message-input" type="text" maxlength="160" placeholder="Например: Спасибо за крутое видео!">
-                    <button class="primary-btn" id="gift-send-btn" type="button">Отправить подарок</button>
-                </div>
-            `;
-            appRoot.appendChild(giftSheet);
         }
 
         if (!document.getElementById('live-sheet')) {
@@ -708,17 +676,17 @@ class AdvancedApp {
             liveSheet.className = 'bottom-sheet';
             liveSheet.innerHTML = `
                 <div class="sheet-header">
-                    <h4>Прямые эфиры</h4>
-                    <button class="close-sheet" id="close-live-sheet">✕</button>
+                    <h4>РџСЂСЏРјС‹Рµ СЌС„РёСЂС‹</h4>
+                    <button class="close-sheet" id="close-live-sheet">вњ•</button>
                 </div>
                 <div class="live-sheet-content">
                     <div class="live-create-row">
-                        <input type="text" id="live-title-input" class="form-input" placeholder="Название эфира" maxlength="80">
-                        <button type="button" class="primary-btn" id="live-start-btn">Старт</button>
+                        <input type="text" id="live-title-input" class="form-input" placeholder="РќР°Р·РІР°РЅРёРµ СЌС„РёСЂР°" maxlength="80">
+                        <button type="button" class="primary-btn" id="live-start-btn">РЎС‚Р°СЂС‚</button>
                     </div>
-                    <button type="button" class="secondary-btn live-refresh-btn" id="live-refresh-btn">Обновить список</button>
+                    <button type="button" class="secondary-btn live-refresh-btn" id="live-refresh-btn">РћР±РЅРѕРІРёС‚СЊ СЃРїРёСЃРѕРє</button>
                     <div class="live-sheet-list" id="live-sheet-list">
-                        <div class="live-sessions-empty">Сейчас нет активных эфиров</div>
+                        <div class="live-sessions-empty">РЎРµР№С‡Р°СЃ РЅРµС‚ Р°РєС‚РёРІРЅС‹С… СЌС„РёСЂРѕРІ</div>
                     </div>
                 </div>
             `;
@@ -763,96 +731,6 @@ class AdvancedApp {
         return !!(this.storySeenMap && this.storySeenMap[id]);
     }
 
-    restoreSeasonThemePrefs() {
-        try {
-            const raw = localStorage.getItem(this.seasonThemePrefsKey);
-            if (!raw) return;
-            const parsed = JSON.parse(raw);
-            if (parsed && typeof parsed.enabled === 'boolean') {
-                this.seasonThemeEnabled = parsed.enabled;
-            }
-        } catch (_) {}
-    }
-
-    persistSeasonThemePrefs() {
-        try {
-            localStorage.setItem(this.seasonThemePrefsKey, JSON.stringify({
-                enabled: this.seasonThemeEnabled !== false
-            }));
-        } catch (_) {}
-    }
-
-    detectActiveSeason() {
-        const now = new Date();
-        const month = now.getMonth();
-
-        if (month === 11 || month === 0 || month === 1) {
-            return {
-                id: 'winter',
-                title: 'Зимний сезон',
-                banner: '❄️ Зимний режим включен',
-                subtitle: 'Теплые акценты и праздничное настроение'
-            };
-        }
-        if (month >= 2 && month <= 4) {
-            return {
-                id: 'spring',
-                title: 'Весенний сезон',
-                banner: '🌿 Весенний режим включен',
-                subtitle: 'Свежая палитра и легкий контраст'
-            };
-        }
-        if (month >= 5 && month <= 7) {
-            return {
-                id: 'summer',
-                title: 'Летний сезон',
-                banner: '☀️ Летний режим включен',
-                subtitle: 'Яркие оттенки и теплые акценты'
-            };
-        }
-        return {
-            id: 'autumn',
-            title: 'Осенний сезон',
-            banner: '🍂 Осенний режим включен',
-            subtitle: 'Глубокие тона и мягкая атмосфера'
-        };
-    }
-
-    applySeasonTheme() {
-        const body = document.body;
-        if (!body) return;
-
-        this.activeSeasonMeta = this.detectActiveSeason();
-        if (this.seasonThemeEnabled) {
-            body.dataset.seasonTheme = this.activeSeasonMeta.id;
-        } else {
-            delete body.dataset.seasonTheme;
-        }
-        this.refreshSeasonBanner();
-        this.updateSeasonMenuText();
-    }
-
-    updateSeasonMenuText() {
-        const textNode = document.getElementById('season-theme-text');
-        if (!textNode) return;
-        textNode.textContent = `Сезонная тема: ${this.seasonThemeEnabled ? 'ВКЛ' : 'ВЫКЛ'}`;
-    }
-
-    refreshSeasonBanner() {
-        const banner = document.getElementById('seasonal-banner');
-        if (!banner) return;
-        if (!this.seasonThemeEnabled || !this.activeSeasonMeta) {
-            banner.classList.add('hidden');
-            banner.textContent = '';
-            return;
-        }
-        banner.classList.remove('hidden');
-        banner.innerHTML = `
-            <span class="seasonal-banner-title">${this.escapeHtml(this.activeSeasonMeta.banner || '')}</span>
-            <span class="seasonal-banner-sub">${this.escapeHtml(this.activeSeasonMeta.subtitle || '')}</span>
-        `;
-    }
-
     escapeHtml(value) {
         return String(value ?? '')
             .replace(/&/g, '&amp;')
@@ -868,12 +746,627 @@ class AdvancedApp {
         return `<span style="display:inline-flex;align-items:center;gap:6px;">@${safeName}${badge}</span>`;
     }
 
+    updateProfileDisplayNameUi(rawName = '', isVerified = false) {
+        const nameEl = document.getElementById('profile-display-name');
+        if (nameEl) {
+            const normalized = String(rawName || '').replace(/^@+/, '').trim();
+            nameEl.textContent = normalized || 'guest';
+            nameEl.classList.toggle('is-verified', !!isVerified);
+        }
+
+        const badgeEl = document.getElementById('profile-display-verified-badge');
+        if (badgeEl) {
+            badgeEl.style.display = isVerified ? 'inline-block' : 'none';
+            badgeEl.setAttribute('aria-hidden', isVerified ? 'false' : 'true');
+        }
+    }
+
+    setProfileTopHandle(rawName = '') {
+        const handleEl = document.getElementById('profile-top-handle');
+        if (!handleEl) return;
+        const normalized = String(rawName || '').replace(/^@+/, '').trim();
+        handleEl.textContent = normalized || 'guest';
+    }
+
+    setProfileViewMode(mode = 'guest') {
+        const profileView = document.getElementById('profile-view');
+        if (!profileView) return;
+        profileView.dataset.profileMode = mode || 'guest';
+    }
+
+    renderProfileGridPlaceholders(gridEl) {
+        if (!gridEl) return;
+        const isOwn = !!(this.profileViewContext && this.profileViewContext.isOwn);
+        const tones = ['cool', 'warm', 'violet', 'neutral', 'cool', 'warm'];
+        gridEl.innerHTML = tones.map((tone, index) => `
+            <div class="profile-grid-placeholder${isOwn && index === 0 ? ' is-upload' : ''}" ${isOwn && index === 0 ? 'data-action="upload"' : ''} data-tone="${tone}">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M8 6.5v11l9-5.5-9-5.5z" fill="currentColor"/>
+                </svg>
+                <span class="profile-grid-placeholder-badge">${isOwn && index === 0 ? 'Новый ролик' : 'Видео'}</span>
+            </div>
+        `).join('');
+
+        const uploadPlaceholder = gridEl.querySelector('.profile-grid-placeholder[data-action="upload"]');
+        if (uploadPlaceholder) {
+            const openUpload = () => this.navigateTo('upload-view');
+            uploadPlaceholder.addEventListener('click', openUpload);
+            uploadPlaceholder.addEventListener('keydown', (event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') return;
+                event.preventDefault();
+                openUpload();
+            });
+            uploadPlaceholder.tabIndex = 0;
+            uploadPlaceholder.setAttribute('role', 'button');
+            uploadPlaceholder.setAttribute('aria-label', 'Загрузить новое видео');
+        }
+    }
+
+    getVideoStorageId(video) {
+        if (!video || typeof video !== 'object') return '';
+        const firestoreId = String(video.firestoreId || '').trim();
+        if (firestoreId) return `f:${firestoreId}`;
+        const videoId = String(video.id || '').trim();
+        if (videoId) return `i:${videoId}`;
+        return '';
+    }
+
+    getSavedVideosStorageKey() {
+        const current = (typeof firebaseService !== 'undefined' && firebaseService && firebaseService.getCurrentUser)
+            ? firebaseService.getCurrentUser()
+            : null;
+        const uid = current && current.uid ? String(current.uid) : 'guest';
+        return `${this.savedVideosKey}_${uid}`;
+    }
+
+    readSavedVideosStorage() {
+        try {
+            const raw = localStorage.getItem(this.getSavedVideosStorageKey());
+            if (!raw) return [];
+            const parsed = JSON.parse(raw);
+            if (!Array.isArray(parsed)) return [];
+            return parsed.filter((entry) => entry && typeof entry === 'object' && typeof entry.key === 'string');
+        } catch (_) {
+            return [];
+        }
+    }
+
+    writeSavedVideosStorage(entries = []) {
+        try {
+            const safeEntries = Array.isArray(entries)
+                ? entries.filter((entry) => entry && typeof entry === 'object' && typeof entry.key === 'string')
+                : [];
+            localStorage.setItem(this.getSavedVideosStorageKey(), JSON.stringify(safeEntries.slice(0, 400)));
+        } catch (_) {}
+    }
+
+    createProfileVideoSnapshot(video) {
+        if (!video || typeof video !== 'object') return null;
+        return {
+            id: video.id || Date.now(),
+            firestoreId: video.firestoreId || null,
+            uid: video.uid || null,
+            author: video.author || 'user',
+            avatar: video.avatar || 'assets/default-avatar.svg',
+            authorVerified: !!video.authorVerified,
+            url: video.url || '',
+            thumbnail: video.thumbnail || '',
+            desc: video.desc || '',
+            likes: parseInt(video.likes, 10) || 0,
+            commentsCount: Number.isFinite(parseInt(video.commentsCount, 10))
+                ? (parseInt(video.commentsCount, 10) || 0)
+                : (Array.isArray(video.comments) ? video.comments.length : 0),
+            views: parseInt(video.views, 10) || 0,
+            shares: parseInt(video.shares, 10) || 0,
+            tags: video.tags || '',
+            hashtags: Array.isArray(video.hashtags) ? [...video.hashtags] : [],
+            filter: video.filter || 'none',
+            mediaType: video.mediaType || 'video',
+            carouselItems: Array.isArray(video.carouselItems) ? [...video.carouselItems] : [],
+            private: video.private === true,
+            ageRestricted: video.ageRestricted === true,
+            videoTemplate: typeof video.videoTemplate === 'string' ? video.videoTemplate : 'none',
+            coverText: typeof video.coverText === 'string' ? video.coverText : '',
+            coverSticker: typeof video.coverSticker === 'string' ? video.coverSticker : '',
+            coverColor: typeof video.coverColor === 'string' ? video.coverColor : '#1cb8ff',
+            timestamp: Number.isFinite(parseInt(video.timestamp, 10)) ? (parseInt(video.timestamp, 10) || Date.now()) : Date.now()
+        };
+    }
+
+    isVideoSaved(video) {
+        const key = this.getVideoStorageId(video);
+        if (!key) return false;
+        return this.readSavedVideosStorage().some((entry) => entry.key === key);
+    }
+
+    toggleSaveVideo(video) {
+        const key = this.getVideoStorageId(video);
+        if (!key) return false;
+
+        const entries = this.readSavedVideosStorage();
+        const index = entries.findIndex((entry) => entry.key === key);
+        let saved = false;
+
+        if (index >= 0) {
+            entries.splice(index, 1);
+            saved = false;
+            AdvancedViewRenderer.showToast('Удалено из сохраненных', 'info');
+        } else {
+            const snapshot = this.createProfileVideoSnapshot(video);
+            if (!snapshot) return false;
+            entries.unshift({
+                key,
+                savedAt: Date.now(),
+                video: snapshot
+            });
+            saved = true;
+            AdvancedViewRenderer.showToast('Сохранено', 'success');
+        }
+
+        this.writeSavedVideosStorage(entries);
+
+        if (this.state.activeViewId === 'profile-view' && this.state.profileGridTab === 'saved') {
+            this.renderActiveProfileGrid();
+        }
+        return saved;
+    }
+
+    getSavedProfileVideos() {
+        const entries = this.readSavedVideosStorage();
+        if (!entries.length) return [];
+
+        const localFeed = Array.isArray(this.dataService?.userVideos) ? this.dataService.userVideos : [];
+        const freshByKey = new Map();
+        localFeed.forEach((video) => {
+            const key = this.getVideoStorageId(video);
+            if (key) freshByKey.set(key, video);
+        });
+
+        return entries
+            .map((entry) => {
+                const fresh = freshByKey.get(entry.key);
+                const fallback = entry.video && typeof entry.video === 'object' ? entry.video : null;
+                const merged = fresh
+                    ? this.createProfileVideoSnapshot(fresh)
+                    : (fallback ? { ...fallback } : null);
+                if (!merged) return null;
+                merged.__savedAt = Number.isFinite(parseInt(entry.savedAt, 10)) ? (parseInt(entry.savedAt, 10) || 0) : 0;
+                return merged;
+            })
+            .filter(Boolean)
+            .sort((a, b) => (b.__savedAt || 0) - (a.__savedAt || 0));
+    }
+
+    getDraftProfileVideos() {
+        try {
+            const raw = localStorage.getItem(this.uploadDraftKey);
+            if (!raw) return [];
+            const draft = JSON.parse(raw);
+            if (!draft || typeof draft !== 'object') return [];
+            const updatedAt = Number.isFinite(parseInt(draft.updatedAt, 10))
+                ? (parseInt(draft.updatedAt, 10) || Date.now())
+                : Date.now();
+
+            return [{
+                id: `draft-${updatedAt}`,
+                desc: String(draft.desc || '').trim(),
+                tags: String(draft.tags || '').trim(),
+                timestamp: updatedAt,
+                __tabType: 'draft'
+            }];
+        } catch (_) {
+            return [];
+        }
+    }
+
+    async getLikedProfileVideos() {
+        const current = firebaseService && firebaseService.getCurrentUser ? firebaseService.getCurrentUser() : null;
+        const uid = current && current.uid ? String(current.uid) : '';
+
+        if (uid
+            && firebaseService
+            && firebaseService.isInitialized
+            && firebaseService.isInitialized()
+            && typeof firebaseService.getLikedVideosByUid === 'function') {
+            try {
+                const liked = await firebaseService.getLikedVideosByUid(uid, { limit: 150 });
+                if (Array.isArray(liked)) {
+                    return liked;
+                }
+            } catch (error) {
+                console.warn('Не удалось загрузить лайкнутые видео из Firestore:', error?.message || error);
+            }
+        }
+
+        const fallback = Array.isArray(this.dataService?.userVideos)
+            ? this.dataService.userVideos.filter((video) => !!(video && video.isLiked))
+            : [];
+
+        return fallback.sort((a, b) => (parseInt(b.timestamp, 10) || 0) - (parseInt(a.timestamp, 10) || 0));
+    }
+
+    setProfileGridTab(tab = 'videos', { rerender = true } = {}) {
+        const normalized = ['videos', 'saved', 'liked', 'drafts'].includes(tab) ? tab : 'videos';
+        this.state.profileGridTab = normalized;
+
+        if (!this.profileMediaTabButtons || !this.profileMediaTabButtons.length) {
+            const tabsRoot = document.getElementById('profile-media-tabs');
+            this.profileMediaTabButtons = tabsRoot
+                ? Array.from(tabsRoot.querySelectorAll('[data-profile-tab]'))
+                : [];
+        }
+
+        this.profileMediaTabButtons.forEach((btn) => {
+            const active = btn.dataset.profileTab === normalized;
+            btn.classList.toggle('active', active);
+            btn.setAttribute('aria-selected', active ? 'true' : 'false');
+        });
+
+        if (rerender) {
+            this.renderActiveProfileGrid();
+        }
+    }
+
+    applyProfileMediaTabsVisibility({ isOwn = true } = {}) {
+        const tabsRoot = document.getElementById('profile-media-tabs');
+        if (!tabsRoot) return;
+
+        if (!this.profileMediaTabButtons || !this.profileMediaTabButtons.length) {
+            this.profileMediaTabButtons = Array.from(tabsRoot.querySelectorAll('[data-profile-tab]'));
+        }
+
+        tabsRoot.style.display = isOwn ? 'grid' : 'none';
+        tabsRoot.setAttribute('aria-hidden', isOwn ? 'false' : 'true');
+        const allowed = isOwn ? new Set(['videos', 'saved', 'liked', 'drafts']) : new Set(['videos']);
+        this.profileMediaTabButtons.forEach((btn) => {
+            const key = btn.dataset.profileTab;
+            const visible = allowed.has(key);
+            btn.style.display = visible ? '' : 'none';
+            btn.disabled = !visible;
+        });
+
+        if (!allowed.has(this.state.profileGridTab)) {
+            this.state.profileGridTab = 'videos';
+        }
+        this.setProfileGridTab(this.state.profileGridTab, { rerender: false });
+    }
+
+    renderProfileGridMessage(gridEl, text = '') {
+        if (!gridEl) return;
+        const safeText = this.escapeHtml(text || '');
+        gridEl.innerHTML = `
+            <div class="profile-grid-empty" style="grid-column: 1 / -1;">
+                <p>${safeText}</p>
+            </div>
+        `;
+    }
+
+    formatProfileDraftTime(timestamp) {
+        const value = parseInt(timestamp, 10) || Date.now();
+        try {
+            return new Date(value).toLocaleString('ru-RU', {
+                day: '2-digit',
+                month: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        } catch (_) {
+            return '';
+        }
+    }
+
+    renderProfileVideoGrid(videos = [], { allowDelete = false, usePlaceholders = false, emptyText = 'Пока пусто' } = {}) {
+        const grid = document.getElementById('profile-grid');
+        if (!grid) return;
+
+        const list = Array.isArray(videos) ? videos : [];
+        if (!list.length) {
+            if (usePlaceholders) {
+                this.renderProfileGridPlaceholders(grid);
+            } else {
+                this.renderProfileGridMessage(grid, emptyText);
+            }
+            return;
+        }
+
+        grid.innerHTML = '';
+
+        list.forEach((video) => {
+            const gridItem = document.createElement('div');
+            gridItem.className = 'grid-item';
+
+            const isDraft = !!(video && video.__tabType === 'draft');
+            if (!isDraft) {
+                gridItem.dataset.id = video.id;
+                if (video.firestoreId) gridItem.dataset.firestoreId = video.firestoreId;
+            } else {
+                gridItem.classList.add('profile-draft-item');
+            }
+
+            const commentsCount = Number.isFinite(parseInt(video?.commentsCount, 10))
+                ? (parseInt(video.commentsCount, 10) || 0)
+                : (Array.isArray(video?.comments) ? video.comments.length : 0);
+
+            const safeUrl = this.escapeHtml(video?.url || '');
+            const safePoster = this.escapeHtml(video?.thumbnail || '');
+            const posterAttr = safePoster ? ` poster="${safePoster}"` : '';
+            const carouselItems = Array.isArray(video?.carouselItems) ? video.carouselItems : [];
+            const isCarousel = !isDraft && (String(video?.mediaType || '') === 'carousel' || carouselItems.length > 0);
+            const carouselThumb = carouselItems[0] && carouselItems[0].url
+                ? this.escapeHtml(carouselItems[0].url)
+                : (safePoster || safeUrl);
+            const mediaHtml = isDraft
+                ? `<div class="profile-draft-media">
+                        <div class="profile-draft-title">Черновик</div>
+                        <div class="profile-draft-subtitle">${this.escapeHtml(video?.desc || 'Нажмите, чтобы продолжить редактирование')}</div>
+                   </div>`
+                : (isCarousel
+                    ? `<img src="${carouselThumb}" alt="карусель" loading="lazy">`
+                    : (safeUrl
+                        ? `<video muted playsinline preload="none" data-src="${safeUrl}"${posterAttr}></video>`
+                        : (safePoster
+                            ? `<img src="${safePoster}" alt="превью" loading="lazy">`
+                            : `<div class="profile-grid-media-fallback">Нет превью</div>`)));
+
+            const overlayContent = isDraft
+                ? `<div style="display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 11px;">
+                        <span>Черновик</span>
+                        <span>${this.escapeHtml(this.formatProfileDraftTime(video?.timestamp))}</span>
+                   </div>`
+                : `<div style="display: flex; align-items: center; gap: 8px; font-size: 11px;">
+                        <span>Лайки ${AdvancedViewRenderer.formatNumber(parseInt(video?.likes, 10) || 0)}</span>
+                        <span>Комм. ${AdvancedViewRenderer.formatNumber(commentsCount)}</span>
+                   </div>`;
+
+            const canDelete = !!(allowDelete && !isDraft && this.canCurrentUserDeleteVideo(video));
+            gridItem.innerHTML = `
+                ${mediaHtml}
+                ${canDelete ? `
+                    <button class="grid-delete-btn" type="button" title="Удалить" aria-label="Удалить видео">
+                        <svg viewBox="0 0 24 24">
+                            <path d="M6 7h12l-1 14H7L6 7zm3-3h6l1 2H8l1-2zM4 7h16v2H4V7z"></path>
+                        </svg>
+                    </button>
+                ` : ''}
+                <div class="grid-overlay">
+                    ${overlayContent}
+                </div>
+            `;
+
+            gridItem.querySelector('.grid-delete-btn')?.addEventListener('click', async (event) => {
+                event.stopPropagation();
+                const ok = await this.deleteVideoWithConfirm(video);
+                if (!ok) return;
+
+                const idx = list.findIndex((v) => this.getVideoStorageId(v) === this.getVideoStorageId(video));
+                if (idx !== -1) list.splice(idx, 1);
+                if (list.length === 0) {
+                    this.renderActiveProfileGrid();
+                } else {
+                    gridItem.remove();
+                }
+            });
+
+            gridItem.addEventListener('click', () => {
+                if (isDraft) {
+                    this.navigateTo('upload-view');
+                    this.restoreUploadDraft();
+                    AdvancedViewRenderer.showToast('Открыт черновик', 'info');
+                    return;
+                }
+
+                const playableList = list.filter((item) => !!(item && item.__tabType !== 'draft'));
+                const targetKey = this.getVideoStorageId(video);
+                const startIndex = playableList.findIndex((item) => this.getVideoStorageId(item) === targetKey);
+                if (startIndex < 0) return;
+                this.enterCustomFeedMode(playableList, { startIndex, returnViewId: 'profile-view' });
+            });
+
+            grid.appendChild(gridItem);
+        });
+
+        this.setupProfileGridPreviews(grid);
+    }
+
+    async renderActiveProfileGrid() {
+        const grid = document.getElementById('profile-grid');
+        if (!grid) return;
+
+        const tab = this.state.profileGridTab || 'videos';
+        const context = this.profileViewContext || {};
+        const isOwn = !!context.isOwn;
+
+        if (!isOwn && tab !== 'videos') {
+            this.renderProfileGridMessage(grid, 'Этот раздел доступен только владельцу профиля');
+            return;
+        }
+
+        if (tab === 'videos') {
+            if (context.loading) {
+                this.renderProfileGridMessage(grid, 'Загрузка видео...');
+                return;
+            }
+            const emptyText = isOwn ? 'У вас пока нет публикаций' : 'У пользователя пока нет видео';
+            this.renderProfileVideoGrid(context.baseVideos || [], {
+                allowDelete: isOwn,
+                usePlaceholders: true,
+                emptyText
+            });
+            return;
+        }
+
+        if (tab === 'saved') {
+            this.renderProfileVideoGrid(this.getSavedProfileVideos(), {
+                allowDelete: false,
+                usePlaceholders: false,
+                emptyText: 'Сохраненных видео пока нет'
+            });
+            return;
+        }
+
+        if (tab === 'drafts') {
+            this.renderProfileVideoGrid(this.getDraftProfileVideos(), {
+                allowDelete: false,
+                usePlaceholders: false,
+                emptyText: 'Черновиков пока нет'
+            });
+            return;
+        }
+
+        if (tab === 'liked') {
+            const requestToken = ++this.profileLikedRequestToken;
+            this.renderProfileGridMessage(grid, 'Загрузка лайкнутых...');
+            const likedVideos = await this.getLikedProfileVideos();
+            if (requestToken !== this.profileLikedRequestToken) return;
+            if (this.state.profileGridTab !== 'liked') return;
+            this.renderProfileVideoGrid(likedVideos, {
+                allowDelete: false,
+                usePlaceholders: false,
+                emptyText: 'Лайкнутых видео пока нет'
+            });
+            return;
+        }
+
+        this.renderProfileGridMessage(grid, 'Раздел пока недоступен');
+    }
+
+    setupVerifiedBadgeInteractions() {
+        if (this._verifiedBadgeHandlersBound) return;
+        this._verifiedBadgeHandlersBound = true;
+
+        const tryOpenFromBadge = (badge, event) => {
+            if (!badge || !badge.classList || !badge.classList.contains('verified-badge')) return;
+            if (badge.closest('.verified-info-header')) return;
+            if (event) {
+                event.preventDefault();
+                event.stopPropagation();
+                if (typeof event.stopImmediatePropagation === 'function') {
+                    event.stopImmediatePropagation();
+                }
+            }
+            this.animateVerifiedBadge(badge);
+            this.openVerifiedInfoModal(badge);
+        };
+
+        document.addEventListener('click', (event) => {
+            const badge = event.target && event.target.closest
+                ? event.target.closest('.verified-badge')
+                : null;
+            if (!badge) return;
+            tryOpenFromBadge(badge, event);
+        }, true);
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            const active = document.activeElement;
+            if (!active || !active.classList || !active.classList.contains('verified-badge')) return;
+            tryOpenFromBadge(active, event);
+        });
+    }
+
+    animateVerifiedBadge(badge) {
+        if (!badge || !badge.classList) return;
+        badge.classList.remove('verified-badge-spin-pop');
+        void badge.offsetWidth;
+        badge.classList.add('verified-badge-spin-pop');
+        setTimeout(() => {
+            badge.classList.remove('verified-badge-spin-pop');
+        }, 650);
+    }
+
+    ensureVerifiedInfoModal() {
+        if (this.verifiedInfoModal && document.body.contains(this.verifiedInfoModal)) {
+            return this.verifiedInfoModal;
+        }
+
+        const modal = document.createElement('div');
+        modal.id = 'verified-info-modal';
+        modal.className = 'verified-info-modal';
+        modal.setAttribute('aria-hidden', 'true');
+        modal.innerHTML = `
+            <div class="verified-info-backdrop" data-close-verified="1"></div>
+            <div class="verified-info-card" role="dialog" aria-modal="true" aria-labelledby="verified-info-title">
+                <button type="button" class="verified-info-close" data-close-verified="1" aria-label="Закрыть">✕</button>
+                <div class="verified-info-header">
+                    <img class="verified-info-icon" src="assets/verified.png" alt="">
+                    <h3 id="verified-info-title">Верифицированный пользователь</h3>
+                </div>
+                <p class="verified-info-text">
+                    Этот значок подтверждает подлинность аккаунта. Платформа проверила, что профиль принадлежит
+                    известной личности, бренду или публичному проекту.
+                </p>
+                <ul class="verified-info-list">
+                    <li>Личность или бренд подтверждены.</li>
+                    <li>Риск подделки профиля снижен.</li>
+                    <li>Проверка периодически обновляется.</li>
+                </ul>
+                <p class="verified-info-note">
+                    Верификация подтверждает подлинность, но не является гарантией качества или одобрения контента.
+                </p>
+            </div>
+        `;
+
+        modal.addEventListener('click', (event) => {
+            const closeTarget = event.target && event.target.closest
+                ? event.target.closest('[data-close-verified="1"]')
+                : null;
+            if (!closeTarget) return;
+            event.preventDefault();
+            this.closeVerifiedInfoModal();
+        });
+
+        if (!this._verifiedInfoEscapeBound) {
+            this._verifiedInfoEscapeBound = true;
+            document.addEventListener('keydown', (event) => {
+                if (event.key !== 'Escape') return;
+                if (!this.verifiedInfoModal || !this.verifiedInfoModal.classList.contains('open')) return;
+                this.closeVerifiedInfoModal();
+            });
+        }
+
+        document.body.appendChild(modal);
+        this.verifiedInfoModal = modal;
+        return modal;
+    }
+
+    openVerifiedInfoModal(triggerBadge = null) {
+        const modal = this.ensureVerifiedInfoModal();
+        if (!modal) return;
+
+        this.verifiedInfoLastTrigger = triggerBadge || null;
+        modal.classList.add('open');
+        modal.setAttribute('aria-hidden', 'false');
+        document.body.classList.add('verified-info-open');
+
+        const closeBtn = modal.querySelector('.verified-info-close');
+        if (closeBtn && typeof closeBtn.focus === 'function') {
+            setTimeout(() => closeBtn.focus(), 20);
+        }
+    }
+
+    closeVerifiedInfoModal() {
+        const modal = this.verifiedInfoModal || document.getElementById('verified-info-modal');
+        if (!modal) return;
+        if (!modal.classList.contains('open')) return;
+
+        modal.classList.remove('open');
+        modal.setAttribute('aria-hidden', 'true');
+        document.body.classList.remove('verified-info-open');
+
+        const trigger = this.verifiedInfoLastTrigger;
+        if (trigger && typeof trigger.focus === 'function') {
+            trigger.focus();
+        }
+        this.verifiedInfoLastTrigger = null;
+    }
+
     syncUserMetaInUi(profile) {
         const user = profile || {};
         const uid = user && user.uid ? String(user.uid) : null;
         if (!uid) return;
 
         const name = typeof user.name === 'string' ? user.name : null;
+        const displayName = typeof user.displayName === 'string' ? user.displayName : null;
         const avatar = typeof user.avatar === 'string' ? user.avatar : null;
         const verified = !!user.verified;
 
@@ -889,6 +1382,42 @@ class AdvancedApp {
             if (typeof this.dataService.syncFeedCacheWithLocal === 'function') {
                 this.dataService.syncFeedCacheWithLocal();
             }
+        }
+
+        // Keep stories strip and active story queue in sync with profile edits.
+        if (Array.isArray(this.storiesByAuthor)) {
+            this.storiesByAuthor = this.storiesByAuthor.map((group) => {
+                if (!group || String(group.uid || '') !== uid) return group;
+                const nextGroup = { ...group };
+                if (name) nextGroup.author = name;
+                if (displayName) nextGroup.displayName = displayName;
+                if (avatar) nextGroup.avatar = avatar;
+                if (Array.isArray(nextGroup.stories)) {
+                    nextGroup.stories = nextGroup.stories.map((story) => {
+                        if (!story) return story;
+                        return {
+                            ...story,
+                            author: name || story.author,
+                            displayName: displayName || story.displayName || story.author,
+                            avatar: avatar || story.avatar
+                        };
+                    });
+                }
+                return nextGroup;
+            });
+            this.renderStoriesStrip();
+        }
+
+        if (Array.isArray(this.activeStoryQueue) && this.activeStoryQueue.length) {
+            this.activeStoryQueue = this.activeStoryQueue.map((story) => {
+                if (!story || String(story.uid || '') !== uid) return story;
+                return {
+                    ...story,
+                    author: name || story.author,
+                    displayName: displayName || story.displayName || story.author,
+                    avatar: avatar || story.avatar
+                };
+            });
         }
 
         // Update currently rendered feed items so name/avatar change is visible instantly.
@@ -920,14 +1449,14 @@ class AdvancedApp {
 
             const musicSpan = item.querySelector('.music-row span');
             if (musicSpan && name) {
-                musicSpan.textContent = `Оригинальный звук - ${name}`;
+                musicSpan.textContent = `РћСЂРёРіРёРЅР°Р»СЊРЅС‹Р№ Р·РІСѓРє - ${name}`;
             }
         });
     }
 
-    // ==================== НАДЁЖНЫЙ ПЕРЕКЛЮЧАТЕЛЬ ФОРМ ====================
+    // ==================== РќРђР”РЃР–РќР«Р™ РџР•Р Р•РљР›Р®Р§РђРўР•Р›Р¬ Р¤РћР Рњ ====================
     setupAuthSwitchListeners() {
-        console.log('🔄 Переподключаем переключатели форм');
+        console.log('рџ”„ РџРµСЂРµРїРѕРґРєР»СЋС‡Р°РµРј РїРµСЂРµРєР»СЋС‡Р°С‚РµР»Рё С„РѕСЂРј');
         const switchToReg = document.getElementById('switch-to-reg');
         const switchToLogin = document.getElementById('switch-to-login');
 
@@ -953,7 +1482,9 @@ class AdvancedApp {
         document.documentElement.setAttribute('data-theme', theme);
         
         const themeText = document.getElementById('theme-text');
-        themeText.textContent = theme === 'dark' ? 'Светлая тема' : 'Темная тема';
+        themeText.textContent = theme === 'dark'
+            ? '\u0421\u0432\u0435\u0442\u043b\u0430\u044f \u0442\u0435\u043c\u0430'
+            : '\u0422\u0435\u043c\u043d\u0430\u044f \u0442\u0435\u043c\u0430';
         
         this.hamburgerBtn.addEventListener('click', () => {
             this.hamburgerBtn.classList.toggle('active');
@@ -975,47 +1506,33 @@ class AdvancedApp {
             this.dataService.saveSettings();
             
             const themeText = document.getElementById('theme-text');
-            themeText.textContent = newTheme === 'dark' ? 'Светлая тема' : 'Темная тема';
+            themeText.textContent = newTheme === 'dark'
+                ? '\u0421\u0432\u0435\u0442\u043b\u0430\u044f \u0442\u0435\u043c\u0430'
+                : '\u0422\u0435\u043c\u043d\u0430\u044f \u0442\u0435\u043c\u0430';
             
-            AdvancedViewRenderer.showToast(`Тема изменена на ${newTheme === 'dark' ? 'темную' : 'светлую'}`, 'success');
+            AdvancedViewRenderer.showToast(
+                `\u0422\u0435\u043c\u0430 \u0438\u0437\u043c\u0435\u043d\u0435\u043d\u0430: ${newTheme === 'dark' ? '\u0442\u0435\u043c\u043d\u0430\u044f' : '\u0441\u0432\u0435\u0442\u043b\u0430\u044f'}`,
+                'success'
+            );
             this.hamburgerBtn.classList.remove('active');
             this.menuDropdown.classList.remove('active');
         });
         
         this.logoutMenu.addEventListener('click', async () => {
-            if (confirm('Вы уверены, что хотите выйти из аккаунта?')) {
+            if (confirm('\u0412\u044b \u0443\u0432\u0435\u0440\u0435\u043d\u044b, \u0447\u0442\u043e \u0445\u043e\u0442\u0438\u0442\u0435 \u0432\u044b\u0439\u0442\u0438 \u0438\u0437 \u0430\u043a\u043a\u0430\u0443\u043d\u0442\u0430?')) {
                 try {
                     const ready = await waitForFirebaseService(5000);
                     if (!ready || !firebaseService || !firebaseService.isInitialized()) {
-                        throw new Error('Firebase не готов.');
+                        throw new Error('Firebase \u043d\u0435 \u0433\u043e\u0442\u043e\u0432.');
                     }
                     await firebaseService.logout();
-                    AdvancedViewRenderer.showToast('Вы вышли из аккаунта', 'success');
+                    AdvancedViewRenderer.showToast('\u0412\u044b \u0432\u044b\u0448\u043b\u0438 \u0438\u0437 \u0430\u043a\u043a\u0430\u0443\u043d\u0442\u0430', 'success');
                     this.navigateTo('auth-view');
                 } catch (error) {
-                    AdvancedViewRenderer.showToast('Ошибка при выходе: ' + error.message, 'error');
+                    AdvancedViewRenderer.showToast('\u041e\u0448\u0438\u0431\u043a\u0430 \u043f\u0440\u0438 \u0432\u044b\u0445\u043e\u0434\u0435: ' + error.message, 'error');
                 }
             }
         });
-    }
-
-    setupSeasonThemeEvents() {
-        if (!this.seasonThemeMenu || this.seasonThemeMenu.dataset.bound === '1') {
-            this.updateSeasonMenuText();
-            return;
-        }
-
-        this.seasonThemeMenu.dataset.bound = '1';
-        this.seasonThemeMenu.addEventListener('click', () => {
-            this.seasonThemeEnabled = !this.seasonThemeEnabled;
-            this.persistSeasonThemePrefs();
-            this.applySeasonTheme();
-            AdvancedViewRenderer.showToast(
-                this.seasonThemeEnabled ? 'Сезонная тема включена' : 'Сезонная тема выключена',
-                'info'
-            );
-        });
-        this.updateSeasonMenuText();
     }
 
     setupSecurityEvents() {
@@ -1052,31 +1569,31 @@ class AdvancedApp {
             this.securityLogoutOthersBtn.dataset.bound = '1';
             this.securityLogoutOthersBtn.addEventListener('click', async () => {
                 if (!(firebaseService && firebaseService.isInitialized && firebaseService.isInitialized())) {
-                    AdvancedViewRenderer.showToast('Firebase еще не готов', 'warning');
+                    AdvancedViewRenderer.showToast('Firebase РµС‰Рµ РЅРµ РіРѕС‚РѕРІ', 'warning');
                     return;
                 }
                 if (typeof firebaseService.revokeOtherSessions !== 'function') {
-                    AdvancedViewRenderer.showToast('API управления сессиями недоступен', 'warning');
+                    AdvancedViewRenderer.showToast('API СѓРїСЂР°РІР»РµРЅРёСЏ СЃРµСЃСЃРёСЏРјРё РЅРµРґРѕСЃС‚СѓРїРµРЅ', 'warning');
                     return;
                 }
 
-                const ok = confirm('Завершить все другие сеансы на устройствах?');
+                const ok = confirm('Р—Р°РІРµСЂС€РёС‚СЊ РІСЃРµ РґСЂСѓРіРёРµ СЃРµР°РЅСЃС‹ РЅР° СѓСЃС‚СЂРѕР№СЃС‚РІР°С…?');
                 if (!ok) return;
 
                 const btn = this.securityLogoutOthersBtn;
                 const prev = btn.textContent;
                 btn.disabled = true;
-                btn.textContent = 'Завершаем...';
+                btn.textContent = 'Р—Р°РІРµСЂС€Р°РµРј...';
                 try {
                     const revoked = await firebaseService.revokeOtherSessions();
                     await this.loadSecuritySessions({ showToast: false });
                     AdvancedViewRenderer.showToast(
-                        revoked > 0 ? `Завершено сеансов: ${revoked}` : 'Других активных сеансов не найдено',
+                        revoked > 0 ? `Р—Р°РІРµСЂС€РµРЅРѕ СЃРµР°РЅСЃРѕРІ: ${revoked}` : 'Р”СЂСѓРіРёС… Р°РєС‚РёРІРЅС‹С… СЃРµР°РЅСЃРѕРІ РЅРµ РЅР°Р№РґРµРЅРѕ',
                         'success'
                     );
                 } catch (error) {
                     console.error(error);
-                    AdvancedViewRenderer.showToast(error?.message || 'Не удалось завершить сеансы', 'error');
+                    AdvancedViewRenderer.showToast(error?.message || 'РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РІРµСЂС€РёС‚СЊ СЃРµР°РЅСЃС‹', 'error');
                 } finally {
                     btn.disabled = false;
                     btn.textContent = prev;
@@ -1101,10 +1618,10 @@ class AdvancedApp {
                 try {
                     await firebaseService.revokeSession(sessionId);
                     await this.loadSecuritySessions({ showToast: false });
-                    AdvancedViewRenderer.showToast('Сеанс завершен', 'success');
+                    AdvancedViewRenderer.showToast('РЎРµР°РЅСЃ Р·Р°РІРµСЂС€РµРЅ', 'success');
                 } catch (error) {
                     console.error(error);
-                    AdvancedViewRenderer.showToast(error?.message || 'Не удалось завершить сеанс', 'error');
+                    AdvancedViewRenderer.showToast(error?.message || 'РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РІРµСЂС€РёС‚СЊ СЃРµР°РЅСЃ', 'error');
                 } finally {
                     revokeBtn.disabled = false;
                 }
@@ -1114,13 +1631,13 @@ class AdvancedApp {
 
     formatRelativeTime(timestamp) {
         const normalized = this.normalizeTimestampValue(timestamp);
-        if (!normalized) return 'только что';
+        if (!normalized) return 'С‚РѕР»СЊРєРѕ С‡С‚Рѕ';
 
         const diff = Date.now() - normalized;
-        if (diff < 60 * 1000) return 'только что';
-        if (diff < 60 * 60 * 1000) return `${Math.floor(diff / (60 * 1000))} мин назад`;
-        if (diff < 24 * 60 * 60 * 1000) return `${Math.floor(diff / (60 * 60 * 1000))} ч назад`;
-        if (diff < 7 * 24 * 60 * 60 * 1000) return `${Math.floor(diff / (24 * 60 * 60 * 1000))} дн назад`;
+        if (diff < 60 * 1000) return 'С‚РѕР»СЊРєРѕ С‡С‚Рѕ';
+        if (diff < 60 * 60 * 1000) return `${Math.floor(diff / (60 * 1000))} РјРёРЅ РЅР°Р·Р°Рґ`;
+        if (diff < 24 * 60 * 60 * 1000) return `${Math.floor(diff / (60 * 60 * 1000))} С‡ РЅР°Р·Р°Рґ`;
+        if (diff < 7 * 24 * 60 * 60 * 1000) return `${Math.floor(diff / (24 * 60 * 60 * 1000))} РґРЅ РЅР°Р·Р°Рґ`;
         return new Date(normalized).toLocaleDateString('ru-RU');
     }
 
@@ -1129,25 +1646,25 @@ class AdvancedApp {
 
         const currentUser = this.dataService.getCurrentUser();
         if (!currentUser) {
-            this.securityCurrentDevice.textContent = 'Сначала войдите в аккаунт';
-            this.securitySessionList.innerHTML = '<div class="security-empty">Нет активного аккаунта</div>';
+            this.securityCurrentDevice.textContent = 'РЎРЅР°С‡Р°Р»Р° РІРѕР№РґРёС‚Рµ РІ Р°РєРєР°СѓРЅС‚';
+            this.securitySessionList.innerHTML = '<div class="security-empty">РќРµС‚ Р°РєС‚РёРІРЅРѕРіРѕ Р°РєРєР°СѓРЅС‚Р°</div>';
             if (this.securitySessionCount) this.securitySessionCount.textContent = '0';
             return;
         }
 
         if (!(firebaseService && firebaseService.isInitialized && firebaseService.isInitialized())) {
-            this.securityCurrentDevice.textContent = 'Ожидание подключения Firebase...';
-            this.securitySessionList.innerHTML = '<div class="security-empty">Список сеансов временно недоступен</div>';
+            this.securityCurrentDevice.textContent = 'РћР¶РёРґР°РЅРёРµ РїРѕРґРєР»СЋС‡РµРЅРёСЏ Firebase...';
+            this.securitySessionList.innerHTML = '<div class="security-empty">РЎРїРёСЃРѕРє СЃРµР°РЅСЃРѕРІ РІСЂРµРјРµРЅРЅРѕ РЅРµРґРѕСЃС‚СѓРїРµРЅ</div>';
             if (this.securitySessionCount) this.securitySessionCount.textContent = '0';
             return;
         }
         if (typeof firebaseService.getUserSessions !== 'function') {
-            this.securitySessionList.innerHTML = '<div class="security-empty">API сеансов недоступен</div>';
+            this.securitySessionList.innerHTML = '<div class="security-empty">API СЃРµР°РЅСЃРѕРІ РЅРµРґРѕСЃС‚СѓРїРµРЅ</div>';
             if (this.securitySessionCount) this.securitySessionCount.textContent = '0';
             return;
         }
 
-        this.securitySessionList.innerHTML = '<div class="security-empty">Загрузка устройств...</div>';
+        this.securitySessionList.innerHTML = '<div class="security-empty">Р—Р°РіСЂСѓР·РєР° СѓСЃС‚СЂРѕР№СЃС‚РІ...</div>';
 
         try {
             const sessions = await firebaseService.getUserSessions(80);
@@ -1160,31 +1677,31 @@ class AdvancedApp {
             if (current) {
                 const lastActiveText = this.formatRelativeTime(current.lastActive || current.updatedAt || current.createdAt);
                 this.securityCurrentDevice.innerHTML = `
-                    <div class="security-device-title">${this.escapeHtml(current.deviceName || 'Текущее устройство')}</div>
-                    <div class="security-device-sub">${this.escapeHtml(current.platform || 'Платформа не определена')} • ${this.escapeHtml(lastActiveText)}</div>
+                    <div class="security-device-title">${this.escapeHtml(current.deviceName || 'РўРµРєСѓС‰РµРµ СѓСЃС‚СЂРѕР№СЃС‚РІРѕ')}</div>
+                    <div class="security-device-sub">${this.escapeHtml(current.platform || 'РџР»Р°С‚С„РѕСЂРјР° РЅРµ РѕРїСЂРµРґРµР»РµРЅР°')} вЂў ${this.escapeHtml(lastActiveText)}</div>
                 `;
             } else {
-                this.securityCurrentDevice.textContent = 'Устройство не определено';
+                this.securityCurrentDevice.textContent = 'РЈСЃС‚СЂРѕР№СЃС‚РІРѕ РЅРµ РѕРїСЂРµРґРµР»РµРЅРѕ';
             }
 
             this.securitySessionList.innerHTML = '';
             if (!list.length) {
-                this.securitySessionList.innerHTML = '<div class="security-empty">Сеансы не найдены</div>';
-                if (showToast) AdvancedViewRenderer.showToast('Сеансы не найдены', 'info');
+                this.securitySessionList.innerHTML = '<div class="security-empty">РЎРµР°РЅСЃС‹ РЅРµ РЅР°Р№РґРµРЅС‹</div>';
+                if (showToast) AdvancedViewRenderer.showToast('РЎРµР°РЅСЃС‹ РЅРµ РЅР°Р№РґРµРЅС‹', 'info');
                 return;
             }
 
             list.forEach((row) => {
                 const item = document.createElement('div');
                 item.className = `security-session-row${row.isCurrent ? ' is-current' : ''}`;
-                const activeText = row.online ? 'в сети' : `активность ${this.formatRelativeTime(row.lastActive || row.updatedAt)}`;
+                const activeText = row.online ? 'РІ СЃРµС‚Рё' : `Р°РєС‚РёРІРЅРѕСЃС‚СЊ ${this.formatRelativeTime(row.lastActive || row.updatedAt)}`;
                 const pill = row.isCurrent
-                    ? '<span class="security-session-pill">Текущий</span>'
-                    : `<button type="button" class="security-session-revoke" data-session-id="${this.escapeHtml(String(row.sessionId || ''))}">Завершить</button>`;
+                    ? '<span class="security-session-pill">РўРµРєСѓС‰РёР№</span>'
+                    : `<button type="button" class="security-session-revoke" data-session-id="${this.escapeHtml(String(row.sessionId || ''))}">Р—Р°РІРµСЂС€РёС‚СЊ</button>`;
 
                 item.innerHTML = `
                     <div class="security-session-main">
-                        <div class="security-session-title">${this.escapeHtml(row.deviceName || 'Устройство')}</div>
+                        <div class="security-session-title">${this.escapeHtml(row.deviceName || 'РЈСЃС‚СЂРѕР№СЃС‚РІРѕ')}</div>
                         <div class="security-session-sub">${this.escapeHtml(activeText)}</div>
                     </div>
                     ${pill}
@@ -1193,13 +1710,13 @@ class AdvancedApp {
             });
 
             if (showToast) {
-                AdvancedViewRenderer.showToast(`Сеансов загружено: ${list.length}`, 'success');
+                AdvancedViewRenderer.showToast(`РЎРµР°РЅСЃРѕРІ Р·Р°РіСЂСѓР¶РµРЅРѕ: ${list.length}`, 'success');
             }
         } catch (error) {
-            console.error('Ошибка загрузки сеансов безопасности:', error);
-            this.securitySessionList.innerHTML = '<div class="security-empty">Не удалось загрузить сеансы</div>';
+            console.error('РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё СЃРµР°РЅСЃРѕРІ Р±РµР·РѕРїР°СЃРЅРѕСЃС‚Рё:', error);
+            this.securitySessionList.innerHTML = '<div class="security-empty">РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ СЃРµР°РЅСЃС‹</div>';
             if (showToast) {
-                AdvancedViewRenderer.showToast(error?.message || 'Ошибка загрузки сеансов', 'error');
+                AdvancedViewRenderer.showToast(error?.message || 'РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё СЃРµР°РЅСЃРѕРІ', 'error');
             }
         }
     }
@@ -1269,6 +1786,60 @@ class AdvancedApp {
             });
         }
 
+        if (this.storyViewerStage && this.storyViewerStage.dataset.bound !== '1') {
+            this.storyViewerStage.dataset.bound = '1';
+            const isInteractiveTarget = (target) => {
+                if (!target || !target.closest) return false;
+                return !!target.closest('button, a, input, textarea, [data-no-story-nav="1"]');
+            };
+            const finishPress = (event) => {
+                const press = this.storyPressState;
+                if (!press) return;
+                if (event && typeof event.pointerId === 'number' && press.pointerId !== event.pointerId) return;
+                this.storyPressState = null;
+                this.resumeStoryAutoplay();
+
+                if (!event || press.moved) return;
+                const elapsed = Date.now() - press.startedAt;
+                if (elapsed > 260) return;
+                const rect = this.storyViewerStage.getBoundingClientRect();
+                if (!rect || !rect.width) return;
+                const ratio = (event.clientX - rect.left) / rect.width;
+                if (ratio <= 0.36) {
+                    this.stepStory(-1);
+                } else if (ratio >= 0.64) {
+                    this.stepStory(1);
+                }
+            };
+
+            this.storyViewerStage.addEventListener('pointerdown', (event) => {
+                if (!this.storyViewerModal || !this.storyViewerModal.classList.contains('open')) return;
+                if (event.pointerType === 'mouse' && event.button !== 0) return;
+                if (isInteractiveTarget(event.target)) return;
+                this.storyPressState = {
+                    pointerId: event.pointerId,
+                    x: event.clientX,
+                    y: event.clientY,
+                    startedAt: Date.now(),
+                    moved: false
+                };
+                this.pauseStoryAutoplay();
+            });
+
+            this.storyViewerStage.addEventListener('pointermove', (event) => {
+                const press = this.storyPressState;
+                if (!press || press.pointerId !== event.pointerId) return;
+                if (Math.abs(event.clientX - press.x) > 10 || Math.abs(event.clientY - press.y) > 10) {
+                    press.moved = true;
+                }
+            });
+
+            this.storyViewerStage.addEventListener('pointerup', finishPress);
+            this.storyViewerStage.addEventListener('pointercancel', finishPress);
+            this.storyViewerStage.addEventListener('pointerleave', finishPress);
+            this.storyViewerStage.addEventListener('contextmenu', (event) => event.preventDefault());
+        }
+
         if (!this.storyViewerKeyBound) {
             this.storyViewerKeyBound = true;
             document.addEventListener('keydown', (e) => {
@@ -1315,7 +1886,8 @@ class AdvancedApp {
             return {
                 uid,
                 author: latest.author || 'user',
-                avatar: latest.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(latest.author || 'user')}&background=random&size=72`,
+                displayName: latest.displayName || latest.author || 'user',
+                avatar: latest.avatar || 'assets/default-avatar.svg',
                 stories: storiesForAuthor,
                 latestCreatedAt: parseInt(latest.createdAt, 10) || 0,
                 hasUnseen: storiesForAuthor.some(story => !this.hasStorySeen(story.id))
@@ -1335,7 +1907,7 @@ class AdvancedApp {
 
         this.storiesStrip.innerHTML = '';
         if (!groups.length && !currentUid) {
-            this.storiesStrip.innerHTML = '<div class="stories-empty">Войдите, чтобы публиковать истории</div>';
+            this.storiesStrip.innerHTML = '<div class="stories-empty">Р’РѕР№РґРёС‚Рµ, С‡С‚РѕР±С‹ РїСѓР±Р»РёРєРѕРІР°С‚СЊ РёСЃС‚РѕСЂРёРё</div>';
             if (feedView) feedView.classList.remove('has-stories');
             return;
         }
@@ -1348,10 +1920,10 @@ class AdvancedApp {
             addBtn.type = 'button';
             addBtn.innerHTML = `
                 <span class="story-avatar-ring">
-                    <img src="${this.escapeHtml(current.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(current.name || 'you')}&background=random&size=72`)}" alt="@${this.escapeHtml(current.name || 'you')}" class="story-avatar">
+                    <img src="${this.escapeHtml(current.avatar || 'assets/default-avatar.svg')}" alt="@${this.escapeHtml(current.name || 'you')}" class="story-avatar">
                     <span class="story-add-plus">+</span>
                 </span>
-                <span class="story-name">Добавить</span>
+                <span class="story-name">${this.escapeHtml('\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c')}</span>
             `;
             frag.appendChild(addBtn);
         }
@@ -1365,7 +1937,7 @@ class AdvancedApp {
                 <span class="story-avatar-ring">
                     <img src="${this.escapeHtml(group.avatar)}" alt="@${this.escapeHtml(group.author || 'user')}" class="story-avatar">
                 </span>
-                <span class="story-name">${this.escapeHtml(group.author || 'user')}</span>
+                <span class="story-name">${this.escapeHtml(group.displayName || group.author || 'user')}</span>
             `;
             frag.appendChild(chip);
         });
@@ -1389,9 +1961,9 @@ class AdvancedApp {
             }
         } catch (error) {
             perfStatus = 'error';
-            console.error('Ошибка загрузки историй:', error);
+            console.error('РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё РёСЃС‚РѕСЂРёР№:', error);
             if (!silent) {
-                AdvancedViewRenderer.showToast(error?.message || 'Не удалось загрузить истории', 'error');
+                AdvancedViewRenderer.showToast(error?.message || 'РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ РёСЃС‚РѕСЂРёРё', 'error');
             }
         }
 
@@ -1424,7 +1996,53 @@ class AdvancedApp {
         this.activeStoryIndex = safeIndex;
         this.storyViewerModal.classList.add('open');
         document.body.classList.add('story-viewer-open');
+        this.renderStoryProgressSegments();
         this.renderActiveStory();
+    }
+
+    renderStoryProgressSegments() {
+        const track = this.storyViewerProgressTrack;
+        if (!track) return;
+
+        const queueLength = Array.isArray(this.activeStoryQueue) ? this.activeStoryQueue.length : 0;
+        const count = Math.max(1, queueLength);
+        const fragment = document.createDocumentFragment();
+        this.storyProgressSegments = [];
+
+        for (let i = 0; i < count; i += 1) {
+            const segment = document.createElement('div');
+            segment.className = 'story-viewer-progress-segment';
+            const fill = document.createElement('div');
+            fill.className = 'story-viewer-progress-fill';
+            fill.style.width = '0%';
+            segment.appendChild(fill);
+            fragment.appendChild(segment);
+            this.storyProgressSegments.push(fill);
+        }
+
+        track.innerHTML = '';
+        track.appendChild(fragment);
+        this.storyViewerProgressFill = this.storyProgressSegments[0] || null;
+        this.updateStoryProgressUi(0);
+    }
+
+    updateStoryProgressUi(activeProgress = 0) {
+        const progress = Math.max(0, Math.min(1, Number(activeProgress) || 0));
+        if (!Array.isArray(this.storyProgressSegments) || !this.storyProgressSegments.length) {
+            if (this.storyViewerProgressFill) {
+                this.storyViewerProgressFill.style.width = `${Math.round(progress * 100)}%`;
+            }
+            return;
+        }
+
+        const activeIndex = Math.max(0, parseInt(this.activeStoryIndex, 10) || 0);
+        this.storyProgressSegments.forEach((fill, index) => {
+            if (!fill) return;
+            let width = 0;
+            if (index < activeIndex) width = 100;
+            else if (index === activeIndex) width = Math.round(progress * 100);
+            fill.style.width = `${width}%`;
+        });
     }
 
     renderActiveStory() {
@@ -1444,10 +2062,11 @@ class AdvancedApp {
         this.storyViewerStage.innerHTML = '';
 
         const author = story.author || 'user';
-        const avatar = story.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(author)}&background=random&size=72`;
+        const avatar = story.avatar || 'assets/default-avatar.svg';
         if (this.storyViewerAuthor) this.storyViewerAuthor.textContent = `@${author}`;
         if (this.storyViewerAvatar) this.storyViewerAvatar.src = avatar;
         if (this.storyViewerTime) this.storyViewerTime.textContent = this.formatRelativeTime(story.createdAt);
+        this.updateStoryProgressUi(0);
 
         const mime = String(story.mediaMime || '').toLowerCase();
         const isVideo = mime.startsWith('video/');
@@ -1483,7 +2102,7 @@ class AdvancedApp {
             const img = document.createElement('img');
             img.className = 'story-media story-media-image';
             img.src = story.mediaUrl || '';
-            img.alt = `История @${author}`;
+            img.alt = `Story @${author}`;
             this.storyViewerStage.appendChild(img);
             this.startStoryAutoplay(5000);
         }
@@ -1503,32 +2122,39 @@ class AdvancedApp {
     }
 
     startStoryAutoplay(durationMs = 5000) {
-        this.clearStoryAutoplay();
+        this.clearStoryAutoplay({ pauseVideo: false, resetState: true });
         const safeDuration = Math.max(1200, parseInt(durationMs, 10) || 5000);
         this.storyAutoplayDuration = safeDuration;
+        this.storyAutoplayElapsed = 0;
         this.storyAutoplayStartedAt = Date.now();
+        this.storyAutoplayPaused = false;
+        if (this.storyViewerSurface) this.storyViewerSurface.classList.remove('story-paused');
 
-        if (this.storyViewerProgressFill) {
-            this.storyViewerProgressFill.style.width = '0%';
-            const tick = () => {
-                const elapsed = Date.now() - this.storyAutoplayStartedAt;
-                const progress = Math.max(0, Math.min(1, elapsed / this.storyAutoplayDuration));
-                if (this.storyViewerProgressFill) {
-                    this.storyViewerProgressFill.style.width = `${Math.round(progress * 100)}%`;
-                }
-                if (progress < 1) {
-                    this.storyAutoplayRaf = window.requestAnimationFrame(tick);
-                }
-            };
-            this.storyAutoplayRaf = window.requestAnimationFrame(tick);
-        }
-
-        this.storyAutoplayTimer = setTimeout(() => {
-            this.stepStory(1);
-        }, safeDuration + 40);
+        const tick = () => {
+            if (this.storyAutoplayPaused) return;
+            const elapsed = this.storyAutoplayElapsed + (Date.now() - this.storyAutoplayStartedAt);
+            const progress = Math.max(0, Math.min(1, elapsed / this.storyAutoplayDuration));
+            this.updateStoryProgressUi(progress);
+            if (progress < 1) {
+                this.storyAutoplayRaf = window.requestAnimationFrame(tick);
+            }
+        };
+        this.updateStoryProgressUi(0);
+        this.storyAutoplayRaf = window.requestAnimationFrame(tick);
+        this.storyAutoplayTimer = setTimeout(() => this.stepStory(1), safeDuration + 40);
     }
 
-    clearStoryAutoplay() {
+    pauseStoryAutoplay() {
+        if (this.storyAutoplayPaused) return;
+        if (!Array.isArray(this.activeStoryQueue) || !this.activeStoryQueue.length) return;
+
+        this.storyAutoplayElapsed = Math.min(
+            this.storyAutoplayDuration,
+            this.storyAutoplayElapsed + Math.max(0, Date.now() - (this.storyAutoplayStartedAt || Date.now()))
+        );
+        this.storyAutoplayPaused = true;
+        if (this.storyViewerSurface) this.storyViewerSurface.classList.add('story-paused');
+
         if (this.storyAutoplayTimer) {
             clearTimeout(this.storyAutoplayTimer);
             this.storyAutoplayTimer = null;
@@ -1538,9 +2164,62 @@ class AdvancedApp {
             this.storyAutoplayRaf = null;
         }
         if (this.activeStoryVideoEl) {
+            try { this.activeStoryVideoEl.pause(); } catch (_) {}
+        }
+    }
+
+    resumeStoryAutoplay() {
+        if (!this.storyAutoplayPaused) return;
+        if (!Array.isArray(this.activeStoryQueue) || !this.activeStoryQueue.length) return;
+
+        const remaining = Math.max(0, this.storyAutoplayDuration - this.storyAutoplayElapsed);
+        if (remaining <= 40) {
+            this.stepStory(1);
+            return;
+        }
+
+        this.storyAutoplayPaused = false;
+        this.storyAutoplayStartedAt = Date.now();
+        if (this.storyViewerSurface) this.storyViewerSurface.classList.remove('story-paused');
+
+        if (this.activeStoryVideoEl) {
+            this.activeStoryVideoEl.play().catch(() => {});
+        }
+
+        const tick = () => {
+            if (this.storyAutoplayPaused) return;
+            const elapsed = this.storyAutoplayElapsed + (Date.now() - this.storyAutoplayStartedAt);
+            const progress = Math.max(0, Math.min(1, elapsed / this.storyAutoplayDuration));
+            this.updateStoryProgressUi(progress);
+            if (progress < 1) {
+                this.storyAutoplayRaf = window.requestAnimationFrame(tick);
+            }
+        };
+        this.storyAutoplayRaf = window.requestAnimationFrame(tick);
+        this.storyAutoplayTimer = setTimeout(() => this.stepStory(1), remaining + 40);
+    }
+
+    clearStoryAutoplay({ pauseVideo = true, resetState = false } = {}) {
+        if (this.storyAutoplayTimer) {
+            clearTimeout(this.storyAutoplayTimer);
+            this.storyAutoplayTimer = null;
+        }
+        if (this.storyAutoplayRaf) {
+            cancelAnimationFrame(this.storyAutoplayRaf);
+            this.storyAutoplayRaf = null;
+        }
+        if (pauseVideo && this.activeStoryVideoEl) {
             try {
                 this.activeStoryVideoEl.pause();
             } catch (_) {}
+        }
+        if (resetState) {
+            this.storyAutoplayElapsed = 0;
+            this.storyAutoplayStartedAt = 0;
+            this.storyAutoplayPaused = false;
+            if (this.storyViewerSurface) this.storyViewerSurface.classList.remove('story-paused');
+        }
+        if (pauseVideo) {
             this.activeStoryVideoEl = null;
         }
     }
@@ -1566,213 +2245,58 @@ class AdvancedApp {
             this.storyViewerModal.classList.remove('open');
         }
         document.body.classList.remove('story-viewer-open');
-        this.clearStoryAutoplay();
+        this.clearStoryAutoplay({ pauseVideo: true, resetState: true });
+        this.storyPressState = null;
         this.activeStoryQueue = [];
         this.activeStoryIndex = -1;
+        this.storyProgressSegments = [];
         if (this.storyViewerStage) this.storyViewerStage.innerHTML = '';
-        if (this.storyViewerProgressFill) this.storyViewerProgressFill.style.width = '0%';
+        if (this.storyViewerProgressTrack) this.storyViewerProgressTrack.innerHTML = '';
     }
 
     async uploadStoryFromFile(file) {
         if (!file) return;
         const mime = String(file.type || '').toLowerCase();
         if (!(mime.startsWith('image/') || mime.startsWith('video/'))) {
-            AdvancedViewRenderer.showToast('Поддерживаются только фото и видео', 'warning');
+            AdvancedViewRenderer.showToast('\u041f\u043e\u0434\u0434\u0435\u0440\u0436\u0438\u0432\u0430\u044e\u0442\u0441\u044f \u0442\u043e\u043b\u044c\u043a\u043e \u0444\u043e\u0442\u043e \u0438 \u0432\u0438\u0434\u0435\u043e', 'warning');
             return;
         }
         if ((file.size || 0) > 20 * 1024 * 1024) {
-            AdvancedViewRenderer.showToast('Файл слишком большой (макс. 20MB)', 'warning');
+            AdvancedViewRenderer.showToast('\u0424\u0430\u0439\u043b \u0441\u043b\u0438\u0448\u043a\u043e\u043c \u0431\u043e\u043b\u044c\u0448\u043e\u0439 (\u043c\u0430\u043a\u0441. 20MB)', 'warning');
             return;
         }
 
         if (!(firebaseService && firebaseService.isInitialized && firebaseService.isInitialized())) {
-            AdvancedViewRenderer.showToast('Firebase еще не готов', 'warning');
+            AdvancedViewRenderer.showToast('Firebase \u0435\u0449\u0435 \u043d\u0435 \u0433\u043e\u0442\u043e\u0432', 'warning');
             return;
         }
         if (typeof firebaseService.uploadStory !== 'function') {
-            AdvancedViewRenderer.showToast('Публикация историй пока недоступна', 'warning');
+            AdvancedViewRenderer.showToast('\u041f\u0443\u0431\u043b\u0438\u043a\u0430\u0446\u0438\u044f \u0438\u0441\u0442\u043e\u0440\u0438\u0439 \u043f\u043e\u043a\u0430 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0430', 'warning');
             return;
         }
 
-        const caption = prompt('Подпись к истории (необязательно):', '') || '';
+        const caption = prompt('\u041f\u043e\u0434\u043f\u0438\u0441\u044c \u043a \u0438\u0441\u0442\u043e\u0440\u0438\u0438 (\u043d\u0435\u043e\u0431\u044f\u0437\u0430\u0442\u0435\u043b\u044c\u043d\u043e):', '') || '';
         const button = this.addStoryBtn;
         const prevText = button ? button.textContent : '';
         if (button) {
             button.disabled = true;
-            button.textContent = 'Публикуем...';
+            button.textContent = '\u041f\u0443\u0431\u043b\u0438\u043a\u0443\u0435\u043c...';
         }
 
         try {
             await firebaseService.uploadStory(file, { caption: String(caption || '').trim() });
             await this.loadStories({ silent: true });
-            AdvancedViewRenderer.showToast('История опубликована', 'success');
+            AdvancedViewRenderer.showToast('\u0418\u0441\u0442\u043e\u0440\u0438\u044f \u043e\u043f\u0443\u0431\u043b\u0438\u043a\u043e\u0432\u0430\u043d\u0430', 'success');
         } catch (error) {
-            console.error('Ошибка публикации истории:', error);
-            AdvancedViewRenderer.showToast(error?.message || 'Не удалось опубликовать историю', 'error');
+            console.error('\u041e\u0448\u0438\u0431\u043a\u0430 \u043f\u0443\u0431\u043b\u0438\u043a\u0430\u0446\u0438\u0438 \u0438\u0441\u0442\u043e\u0440\u0438\u0438:', error);
+            AdvancedViewRenderer.showToast(
+                error?.message || '\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043e\u043f\u0443\u0431\u043b\u0438\u043a\u043e\u0432\u0430\u0442\u044c \u0438\u0441\u0442\u043e\u0440\u0438\u044e',
+                'error'
+            );
         } finally {
             if (button) {
                 button.disabled = false;
-                button.textContent = prevText || 'История';
-            }
-        }
-    }
-
-    setupGiftEvents() {
-        this.renderGiftAmountButtons();
-        this.setSelectedGiftAmount(this.selectedGiftAmount || this.giftAmounts[0]);
-
-        if (this.giftAmountGrid && this.giftAmountGrid.dataset.bound !== '1') {
-            this.giftAmountGrid.dataset.bound = '1';
-            this.giftAmountGrid.addEventListener('click', (e) => {
-                const btn = e.target && e.target.closest ? e.target.closest('.gift-amount-btn') : null;
-                if (!btn) return;
-                const amount = parseInt(btn.dataset.amount, 10) || 0;
-                this.setSelectedGiftAmount(amount);
-            });
-        }
-
-        if (this.giftCloseBtn && this.giftCloseBtn.dataset.bound !== '1') {
-            this.giftCloseBtn.dataset.bound = '1';
-            this.giftCloseBtn.addEventListener('click', () => this.hideGiftSheet());
-        }
-
-        if (this.giftSheet && this.giftSheet.dataset.bound !== '1') {
-            this.giftSheet.dataset.bound = '1';
-            this.giftSheet.addEventListener('click', (e) => {
-                if (e.target === this.giftSheet) {
-                    this.hideGiftSheet();
-                }
-            });
-        }
-
-        if (this.giftSendBtn && this.giftSendBtn.dataset.bound !== '1') {
-            this.giftSendBtn.dataset.bound = '1';
-            this.giftSendBtn.addEventListener('click', async () => {
-                await this.sendGiftFromSheet();
-            });
-        }
-    }
-
-    renderGiftAmountButtons() {
-        if (!this.giftAmountGrid) return;
-        this.giftAmountGrid.innerHTML = '';
-        const amounts = Array.isArray(this.giftAmounts) ? this.giftAmounts : [];
-        amounts.forEach((amount) => {
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'gift-amount-btn';
-            btn.dataset.amount = String(amount);
-            btn.textContent = `${amount} ₽`;
-            this.giftAmountGrid.appendChild(btn);
-        });
-    }
-
-    setSelectedGiftAmount(amount) {
-        const normalized = Math.max(1, parseInt(amount, 10) || 0);
-        if (!normalized) return;
-        this.selectedGiftAmount = normalized;
-        if (!this.giftAmountGrid) return;
-        this.giftAmountGrid.querySelectorAll('.gift-amount-btn').forEach((btn) => {
-            const value = parseInt(btn.dataset.amount || '0', 10) || 0;
-            btn.classList.toggle('active', value === normalized);
-        });
-    }
-
-    showGiftSheet(videoId, fallback = null) {
-        if (!this.giftSheet) return;
-
-        const current = this.dataService.getCurrentUser();
-        if (!current) {
-            this.navigateTo('auth-view');
-            return;
-        }
-
-        const id = String(videoId || '').trim();
-        const localVideo = (this.dataService && Array.isArray(this.dataService.userVideos))
-            ? this.dataService.userVideos.find((row) => String(row.id || '') === id)
-            : null;
-
-        const toUid = (localVideo && localVideo.uid)
-            ? String(localVideo.uid)
-            : (fallback && fallback.authorUid ? String(fallback.authorUid) : '');
-        const toUser = (localVideo && localVideo.author)
-            ? String(localVideo.author)
-            : (fallback && fallback.author ? String(fallback.author) : 'author');
-        const firestoreId = (localVideo && localVideo.firestoreId)
-            ? String(localVideo.firestoreId)
-            : (fallback && fallback.firestoreId ? String(fallback.firestoreId) : null);
-
-        if (!toUid) {
-            AdvancedViewRenderer.showToast('Не удалось определить автора', 'warning');
-            return;
-        }
-        if (current.uid && String(current.uid) === String(toUid)) {
-            AdvancedViewRenderer.showToast('Нельзя отправить подарок себе', 'warning');
-            return;
-        }
-
-        this.pendingGiftContext = {
-            videoId: id || null,
-            firestoreId: firestoreId || null,
-            toUid: String(toUid),
-            toUser: String(toUser || 'author')
-        };
-
-        if (this.giftTargetLabel) {
-            this.giftTargetLabel.textContent = `@${this.pendingGiftContext.toUser}`;
-        }
-        if (this.giftMessageInput) this.giftMessageInput.value = '';
-        this.setSelectedGiftAmount(this.selectedGiftAmount || this.giftAmounts[0]);
-        this.giftSheet.classList.add('open');
-        document.body.classList.add('gift-sheet-open');
-    }
-
-    hideGiftSheet() {
-        if (this.giftSheet) this.giftSheet.classList.remove('open');
-        document.body.classList.remove('gift-sheet-open');
-        if (this.giftMessageInput) this.giftMessageInput.value = '';
-        this.pendingGiftContext = null;
-    }
-
-    async sendGiftFromSheet() {
-        if (!this.pendingGiftContext) return;
-        if (!(firebaseService && firebaseService.isInitialized && firebaseService.isInitialized())) {
-            AdvancedViewRenderer.showToast('Firebase еще не готов', 'warning');
-            return;
-        }
-        if (typeof firebaseService.sendGift !== 'function') {
-            AdvancedViewRenderer.showToast('Отправка подарков пока недоступна', 'warning');
-            return;
-        }
-
-        const button = this.giftSendBtn;
-        const prevText = button ? button.textContent : '';
-        if (button) {
-            button.disabled = true;
-            button.textContent = 'Отправляем...';
-        }
-
-        try {
-            const message = this.giftMessageInput ? this.giftMessageInput.value.trim() : '';
-            const payload = {
-                toUid: this.pendingGiftContext.toUid,
-                toUser: this.pendingGiftContext.toUser,
-                amount: this.selectedGiftAmount,
-                message,
-                sourceVideoId: this.pendingGiftContext.videoId,
-                sourceVideoFirestoreId: this.pendingGiftContext.firestoreId,
-                context: 'video'
-            };
-            await firebaseService.sendGift(payload);
-            this.hideGiftSheet();
-            AdvancedViewRenderer.showToast(`Подарок ${this.selectedGiftAmount} ₽ отправлен`, 'success');
-        } catch (error) {
-            console.error('Ошибка отправки подарка:', error);
-            AdvancedViewRenderer.showToast(error?.message || 'Не удалось отправить подарок', 'error');
-        } finally {
-            if (button) {
-                button.disabled = false;
-                button.textContent = prevText || 'Отправить подарок';
+                button.textContent = prevText || '\u0418\u0441\u0442\u043e\u0440\u0438\u044f';
             }
         }
     }
@@ -1799,7 +2323,7 @@ class AdvancedApp {
             this.adminMenu.dataset.bound = '1';
             this.adminMenu.addEventListener('click', async () => {
                 if (!this.isCurrentUserAdmin()) {
-                    AdvancedViewRenderer.showToast('Доступ только для администратора', 'warning');
+                    AdvancedViewRenderer.showToast('Р”РѕСЃС‚СѓРї С‚РѕР»СЊРєРѕ РґР»СЏ Р°РґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂР°', 'warning');
                     this.updateAdminMenuVisibility();
                     return;
                 }
@@ -1844,19 +2368,19 @@ class AdvancedApp {
         if (!this.isCurrentUserAdmin()) {
             this.updateAdminMenuVisibility();
             if (this.adminUsersList) {
-                this.adminUsersList.innerHTML = '<div class="admin-empty">Требуются права администратора.</div>';
+                this.adminUsersList.innerHTML = '<div class="admin-empty">РўСЂРµР±СѓСЋС‚СЃСЏ РїСЂР°РІР° Р°РґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂР°.</div>';
             }
             return;
         }
 
         if (!(firebaseService && firebaseService.isInitialized && firebaseService.isInitialized())) {
-            if (showToast) AdvancedViewRenderer.showToast('Firebase еще не готов', 'warning');
+            if (showToast) AdvancedViewRenderer.showToast('Firebase РµС‰Рµ РЅРµ РіРѕС‚РѕРІ', 'warning');
             return;
         }
 
         try {
             if (this.adminUsersList) {
-                this.adminUsersList.innerHTML = '<div class="admin-empty">Загрузка пользователей...</div>';
+                this.adminUsersList.innerHTML = '<div class="admin-empty">Р—Р°РіСЂСѓР·РєР° РїРѕР»СЊР·РѕРІР°С‚РµР»РµР№...</div>';
             }
 
             let users = [];
@@ -1871,16 +2395,16 @@ class AdvancedApp {
             this.populateAdminExportUsers();
 
             if (showToast) {
-                AdvancedViewRenderer.showToast(`Загружено пользователей: ${this.adminUsers.length}`, 'success');
+                AdvancedViewRenderer.showToast(`Р—Р°РіСЂСѓР¶РµРЅРѕ РїРѕР»СЊР·РѕРІР°С‚РµР»РµР№: ${this.adminUsers.length}`, 'success');
             }
         } catch (error) {
             console.error('Admin panel load error:', error);
             this.adminUsers = [];
             if (this.adminUsersList) {
-                this.adminUsersList.innerHTML = '<div class="admin-empty">Не удалось загрузить пользователей.</div>';
+                this.adminUsersList.innerHTML = '<div class="admin-empty">РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ РїРѕР»СЊР·РѕРІР°С‚РµР»РµР№.</div>';
             }
             if (showToast) {
-                AdvancedViewRenderer.showToast(error.message || 'Ошибка админки', 'error');
+                AdvancedViewRenderer.showToast(error.message || 'РћС€РёР±РєР° Р°РґРјРёРЅРєРё', 'error');
             }
         }
     }
@@ -1900,7 +2424,7 @@ class AdvancedApp {
 
         this.adminUsersList.innerHTML = '';
         if (!filtered.length) {
-            this.adminUsersList.innerHTML = '<div class="admin-empty">Пользователи не найдены.</div>';
+            this.adminUsersList.innerHTML = '<div class="admin-empty">РџРѕР»СЊР·РѕРІР°С‚РµР»Рё РЅРµ РЅР°Р№РґРµРЅС‹.</div>';
             return;
         }
 
@@ -1920,18 +2444,18 @@ class AdvancedApp {
             const subEl = document.createElement('div');
             subEl.className = 'admin-user-sub';
             const flags = [];
-            if (user?.isAdmin) flags.push('админ');
-            if (user?.verified) flags.push('галочка');
-            subEl.textContent = `${user?.uid || 'без uid'}${flags.length ? ` • ${flags.join(' • ')}` : ''}`;
+            if (user?.isAdmin) flags.push('Р°РґРјРёРЅ');
+            if (user?.verified) flags.push('РіР°Р»РѕС‡РєР°');
+            subEl.textContent = `${user?.uid || 'Р±РµР· uid'}${flags.length ? ` вЂў ${flags.join(' вЂў ')}` : ''}`;
             meta.appendChild(nameEl);
             meta.appendChild(subEl);
 
             const adminBtn = document.createElement('button');
             adminBtn.className = `admin-toggle-btn${user?.isAdmin ? ' is-on' : ''}`;
-            adminBtn.textContent = user?.isAdmin ? 'Админ: ВКЛ' : 'Сделать админом';
+            adminBtn.textContent = user?.isAdmin ? 'РђРґРјРёРЅ: Р’РљР›' : 'РЎРґРµР»Р°С‚СЊ Р°РґРјРёРЅРѕРј';
             if (currentUid && user?.uid === currentUid) {
                 adminBtn.disabled = true;
-                adminBtn.title = 'Нельзя изменить свою роль';
+                adminBtn.title = 'РќРµР»СЊР·СЏ РёР·РјРµРЅРёС‚СЊ СЃРІРѕСЋ СЂРѕР»СЊ';
             }
             adminBtn.addEventListener('click', async () => {
                 await this.adminToggleUserAdmin(user);
@@ -1939,7 +2463,7 @@ class AdvancedApp {
 
             const verifyBtn = document.createElement('button');
             verifyBtn.className = `admin-toggle-btn${user?.verified ? ' is-verified' : ''}`;
-            verifyBtn.textContent = user?.verified ? 'Галочка: ВКЛ' : 'Выдать галочку';
+            verifyBtn.textContent = user?.verified ? 'Р“Р°Р»РѕС‡РєР°: Р’РљР›' : 'Р’С‹РґР°С‚СЊ РіР°Р»РѕС‡РєСѓ';
             verifyBtn.addEventListener('click', async () => {
                 await this.adminToggleUserVerification(user);
             });
@@ -1963,7 +2487,7 @@ class AdvancedApp {
 
             const placeholder = document.createElement('option');
             placeholder.value = '';
-            placeholder.textContent = 'Выберите пользователя';
+            placeholder.textContent = 'Р’С‹Р±РµСЂРёС‚Рµ РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ';
             selectEl.appendChild(placeholder);
 
             users.forEach((user) => {
@@ -1987,7 +2511,7 @@ class AdvancedApp {
         if (!user || !user.uid) return;
         if (!(firebaseService && firebaseService.isInitialized && firebaseService.isInitialized())) return;
         if (typeof firebaseService.setUserAdmin !== 'function') {
-            AdvancedViewRenderer.showToast('API роли администратора недоступен', 'warning');
+            AdvancedViewRenderer.showToast('API СЂРѕР»Рё Р°РґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂР° РЅРµРґРѕСЃС‚СѓРїРµРЅ', 'warning');
             return;
         }
 
@@ -2007,10 +2531,10 @@ class AdvancedApp {
             if (currentUid && user.uid === currentUid) {
                 this.updateProfileUI();
             }
-            AdvancedViewRenderer.showToast(!user.isAdmin ? 'Права администратора выданы' : 'Права администратора сняты', 'success');
+            AdvancedViewRenderer.showToast(!user.isAdmin ? 'РџСЂР°РІР° Р°РґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂР° РІС‹РґР°РЅС‹' : 'РџСЂР°РІР° Р°РґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂР° СЃРЅСЏС‚С‹', 'success');
         } catch (error) {
             console.error(error);
-            AdvancedViewRenderer.showToast(error.message || 'Не удалось изменить роль администратора', 'error');
+            AdvancedViewRenderer.showToast(error.message || 'РќРµ СѓРґР°Р»РѕСЃСЊ РёР·РјРµРЅРёС‚СЊ СЂРѕР»СЊ Р°РґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂР°', 'error');
         }
     }
 
@@ -2018,7 +2542,7 @@ class AdvancedApp {
         if (!user || !user.uid) return;
         if (!(firebaseService && firebaseService.isInitialized && firebaseService.isInitialized())) return;
         if (typeof firebaseService.setUserVerified !== 'function') {
-            AdvancedViewRenderer.showToast('API верификации недоступен', 'warning');
+            AdvancedViewRenderer.showToast('API РІРµСЂРёС„РёРєР°С†РёРё РЅРµРґРѕСЃС‚СѓРїРµРЅ', 'warning');
             return;
         }
 
@@ -2036,20 +2560,20 @@ class AdvancedApp {
             if (currentUid && user.uid === currentUid) {
                 this.updateProfileUI();
             }
-            AdvancedViewRenderer.showToast(!user.verified ? 'Галочка выдана' : 'Галочка снята', 'success');
+            AdvancedViewRenderer.showToast(!user.verified ? 'Р“Р°Р»РѕС‡РєР° РІС‹РґР°РЅР°' : 'Р“Р°Р»РѕС‡РєР° СЃРЅСЏС‚Р°', 'success');
         } catch (error) {
             console.error(error);
-            AdvancedViewRenderer.showToast(error.message || 'Не удалось изменить верификацию', 'error');
+            AdvancedViewRenderer.showToast(error.message || 'РќРµ СѓРґР°Р»РѕСЃСЊ РёР·РјРµРЅРёС‚СЊ РІРµСЂРёС„РёРєР°С†РёСЋ', 'error');
         }
     }
 
     async exportAdminChatHistory() {
         if (!(firebaseService && firebaseService.isInitialized && firebaseService.isInitialized())) {
-            AdvancedViewRenderer.showToast('Firebase еще не готов', 'warning');
+            AdvancedViewRenderer.showToast('Firebase РµС‰Рµ РЅРµ РіРѕС‚РѕРІ', 'warning');
             return;
         }
         if (typeof firebaseService.exportChatHistoryForLegalRequest !== 'function') {
-            AdvancedViewRenderer.showToast('API выгрузки чата недоступен', 'warning');
+            AdvancedViewRenderer.showToast('API РІС‹РіСЂСѓР·РєРё С‡Р°С‚Р° РЅРµРґРѕСЃС‚СѓРїРµРЅ', 'warning');
             return;
         }
 
@@ -2057,11 +2581,11 @@ class AdvancedApp {
         const uidB = this.adminExportUserB ? this.adminExportUserB.value : '';
 
         if (!uidA || !uidB) {
-            AdvancedViewRenderer.showToast('Выберите двух пользователей для выгрузки', 'warning');
+            AdvancedViewRenderer.showToast('Р’С‹Р±РµСЂРёС‚Рµ РґРІСѓС… РїРѕР»СЊР·РѕРІР°С‚РµР»РµР№ РґР»СЏ РІС‹РіСЂСѓР·РєРё', 'warning');
             return;
         }
         if (uidA === uidB) {
-            AdvancedViewRenderer.showToast('Пользователи должны быть разными', 'warning');
+            AdvancedViewRenderer.showToast('РџРѕР»СЊР·РѕРІР°С‚РµР»Рё РґРѕР»Р¶РЅС‹ Р±С‹С‚СЊ СЂР°Р·РЅС‹РјРё', 'warning');
             return;
         }
 
@@ -2073,7 +2597,7 @@ class AdvancedApp {
         const originalText = button ? button.textContent : '';
         if (button) {
             button.disabled = true;
-            button.textContent = 'Выгрузка...';
+            button.textContent = 'Р’С‹РіСЂСѓР·РєР°...';
         }
 
         try {
@@ -2090,13 +2614,13 @@ class AdvancedApp {
             this.downloadAdminJson(payload, fileName);
 
             if (this.adminLastExport) {
-                this.adminLastExport.textContent = `Последняя выгрузка: ${new Date().toLocaleString()} (${payload.messageCount} сообщений)`;
+                this.adminLastExport.textContent = `РџРѕСЃР»РµРґРЅСЏСЏ РІС‹РіСЂСѓР·РєР°: ${new Date().toLocaleString()} (${payload.messageCount} СЃРѕРѕР±С‰РµРЅРёР№)`;
             }
 
-            AdvancedViewRenderer.showToast(`Выгрузка завершена (${payload.messageCount} сообщений)`, 'success');
+            AdvancedViewRenderer.showToast(`Р’С‹РіСЂСѓР·РєР° Р·Р°РІРµСЂС€РµРЅР° (${payload.messageCount} СЃРѕРѕР±С‰РµРЅРёР№)`, 'success');
         } catch (error) {
             console.error(error);
-            AdvancedViewRenderer.showToast(error.message || 'Не удалось выгрузить чат', 'error');
+            AdvancedViewRenderer.showToast(error.message || 'РќРµ СѓРґР°Р»РѕСЃСЊ РІС‹РіСЂСѓР·РёС‚СЊ С‡Р°С‚', 'error');
         } finally {
             if (button) {
                 button.disabled = false;
@@ -2162,13 +2686,27 @@ class AdvancedApp {
         this.setupEditProfileEvents();
         this.setupProfileStatsEvents();
         this.setupProfileFeatureEvents();
+        this.setupProfileHeaderEvents();
         this.setupUserListSheetEvents();
         this.setupStoriesEvents();
         this.setupLiveEvents();
-        this.setupGiftEvents();
         this.setupSecurityEvents();
-        this.setupSeasonThemeEvents();
         this.setupAdminEvents();
+        this.setupVerifiedBadgeInteractions();
+
+        this.profileBackBtn?.addEventListener('click', () => {
+            if (this.state.feedMode === 'custom') {
+                this.exitCustomFeedMode({ navigateBack: true });
+                return;
+            }
+
+            this.state.viewingProfileUid = null;
+            if (window.location.hash && window.location.hash.startsWith('#profile-')) {
+                const cleanUrl = `${window.location.pathname}${window.location.search}`;
+                window.history.replaceState(null, '', cleanUrl);
+            }
+            this.navigateTo('feed-view');
+        });
 
         this.feedContainer.addEventListener('scroll', () => {
             if (this.state.feedMode !== 'global') return;
@@ -2235,6 +2773,29 @@ class AdvancedApp {
 
     setupAuthEvents() {
         this.setupAuthSwitchListeners();
+        const registerBirthDateInput = document.getElementById('register-birth-date');
+
+        if (registerBirthDateInput) {
+            const now = new Date();
+            const maxDate = now.toISOString().slice(0, 10);
+            registerBirthDateInput.min = '1900-01-01';
+            registerBirthDateInput.max = maxDate;
+        }
+
+        const calculateAgeYears = (dateValue) => {
+            if (!dateValue) return null;
+            const birthDate = new Date(dateValue);
+            if (Number.isNaN(birthDate.getTime())) return null;
+
+            const now = new Date();
+            let age = now.getFullYear() - birthDate.getFullYear();
+            const monthDiff = now.getMonth() - birthDate.getMonth();
+            const dayDiff = now.getDate() - birthDate.getDate();
+            if (monthDiff < 0 || (monthDiff === 0 && dayDiff < 0)) {
+                age -= 1;
+            }
+            return age;
+        };
 
         // LOGIN
         document.getElementById('login-btn').addEventListener('click', async () => {
@@ -2242,22 +2803,22 @@ class AdvancedApp {
             const password = document.getElementById('login-pass').value.trim();
             
             if (!email || !password) {
-                AdvancedViewRenderer.showToast('Заполните все поля', 'warning');
+                AdvancedViewRenderer.showToast('Р—Р°РїРѕР»РЅРёС‚Рµ РІСЃРµ РїРѕР»СЏ', 'warning');
                 return;
             }
             
             const btn = document.getElementById('login-btn');
             const btnText = document.getElementById('login-btn-text');
-            btnText.textContent = 'Вход...';
+            btnText.textContent = 'Р’С…РѕРґ...';
             btn.disabled = true;
             
             try {
                 const fbReady = await waitForFirebaseService(5000);
                 if (!fbReady || !firebaseService || !firebaseService.isInitialized()) {
-                    throw new Error('Firebase не готов. Обновите страницу.');
+                    throw new Error('Firebase РЅРµ РіРѕС‚РѕРІ. РћР±РЅРѕРІРёС‚Рµ СЃС‚СЂР°РЅРёС†Сѓ.');
                 }
                 await firebaseService.login(email, password);
-                AdvancedViewRenderer.showToast('Вход через Firebase успешен!', 'success');
+                AdvancedViewRenderer.showToast('Р’С…РѕРґ С‡РµСЂРµР· Firebase СѓСЃРїРµС€РµРЅ!', 'success');
 
                 this.navigateTo('feed-view');
                 this.updateProfileUI();
@@ -2268,7 +2829,7 @@ class AdvancedApp {
             } catch (error) {
                 AdvancedViewRenderer.showToast(error.message, 'error');
             } finally {
-                btnText.textContent = 'Войти';
+                btnText.textContent = 'Р’РѕР№С‚Рё';
                 btn.disabled = false;
             }
         });
@@ -2279,38 +2840,56 @@ class AdvancedApp {
             const password = document.getElementById('register-pass').value.trim();
             const passwordConfirm = document.getElementById('register-pass-confirm').value.trim();
             const userName = document.getElementById('register-username').value.trim();
+            const displayNameInput = document.getElementById('register-display-name');
+            const displayName = displayNameInput ? displayNameInput.value.trim() : '';
+            const birthDate = registerBirthDateInput ? registerBirthDateInput.value.trim() : '';
 
-            if (!email || !password || !passwordConfirm || !userName) {
-                AdvancedViewRenderer.showToast('Заполните все поля', 'warning');
+            if (!email || !password || !passwordConfirm || !userName || !birthDate) {
+                AdvancedViewRenderer.showToast('Р—Р°РїРѕР»РЅРёС‚Рµ РІСЃРµ РїРѕР»СЏ', 'warning');
                 return;
             }
+
+            const ageYears = calculateAgeYears(birthDate);
+            if (ageYears === null) {
+                AdvancedViewRenderer.showToast('Укажите корректную дату рождения', 'warning');
+                return;
+            }
+            if (ageYears < 13) {
+                AdvancedViewRenderer.showToast('Регистрация доступна с 13 лет', 'warning');
+                return;
+            }
+
             if (password !== passwordConfirm) {
-                AdvancedViewRenderer.showToast('Пароли не совпадают', 'warning');
+                AdvancedViewRenderer.showToast('РџР°СЂРѕР»Рё РЅРµ СЃРѕРІРїР°РґР°СЋС‚', 'warning');
                 return;
             }
             if (password.length < 6) {
-                AdvancedViewRenderer.showToast('Пароль должен содержать минимум 6 символов', 'warning');
+                AdvancedViewRenderer.showToast('РџР°СЂРѕР»СЊ РґРѕР»Р¶РµРЅ СЃРѕРґРµСЂР¶Р°С‚СЊ РјРёРЅРёРјСѓРј 6 СЃРёРјРІРѕР»РѕРІ', 'warning');
                 return;
             }
 
             const btn = document.getElementById('register-btn');
             const btnText = document.getElementById('register-btn-text');
             const originalText = btnText.textContent;
-            btnText.textContent = 'Регистрация...';
+            btnText.textContent = 'Р РµРіРёСЃС‚СЂР°С†РёСЏ...';
             btn.disabled = true;
 
             try {
                 if (!firebaseService || !firebaseService.isInitialized()) {
-                    AdvancedViewRenderer.showToast('Подождите, Firebase загружается...', 'info');
+                    AdvancedViewRenderer.showToast('РџРѕРґРѕР¶РґРёС‚Рµ, Firebase Р·Р°РіСЂСѓР¶Р°РµС‚СЃСЏ...', 'info');
                     const ready = await waitForFirebaseService(8000);
                     if (!ready) {
-                        AdvancedViewRenderer.showToast('Firebase не загрузился. Обновите страницу', 'error');
+                        AdvancedViewRenderer.showToast('Firebase РЅРµ Р·Р°РіСЂСѓР·РёР»СЃСЏ. РћР±РЅРѕРІРёС‚Рµ СЃС‚СЂР°РЅРёС†Сѓ', 'error');
                         return;
                     }
                 }
 
-                await firebaseService.register(email, password, userName);
-                AdvancedViewRenderer.showToast('🔥 Регистрация через Firebase успешна!', 'success');
+                await firebaseService.register(email, password, userName, displayName, {
+                    birthDate,
+                    ageYears,
+                    ageVerified: ageYears >= 18
+                });
+                AdvancedViewRenderer.showToast('рџ”Ґ Р РµРіРёСЃС‚СЂР°С†РёСЏ С‡РµСЂРµР· Firebase СѓСЃРїРµС€РЅР°!', 'success');
                 
                 document.getElementById('register-form').style.display = 'none';
                 document.getElementById('login-form').style.display = 'block';
@@ -2332,7 +2911,7 @@ class AdvancedApp {
                 }
                 this.openOnboardingModal({ force: true });
             } catch (error) {
-                AdvancedViewRenderer.showToast(error.message || 'Ошибка регистрации', 'error');
+                AdvancedViewRenderer.showToast(error.message || 'РћС€РёР±РєР° СЂРµРіРёСЃС‚СЂР°С†РёРё', 'error');
             } finally {
                 btnText.textContent = originalText;
                 btn.disabled = false;
@@ -2372,7 +2951,7 @@ class AdvancedApp {
             const file = e.target.files[0];
             if (file) {
                 this.previewVideo(file);
-                this.showUploadDraftNote('Файл выбран. Текст и настройки сохраняются в черновике автоматически.');
+                this.showUploadDraftNote('Р¤Р°Р№Р» РІС‹Р±СЂР°РЅ. РўРµРєСЃС‚ Рё РЅР°СЃС‚СЂРѕР№РєРё СЃРѕС…СЂР°РЅСЏСЋС‚СЃСЏ РІ С‡РµСЂРЅРѕРІРёРєРµ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё.');
             }
         });
         
@@ -2422,18 +3001,18 @@ class AdvancedApp {
             const desc = this.uploadDescInput ? this.uploadDescInput.value.trim() : '';
             
             if (!file && !this.state.recordedChunks.length) {
-                AdvancedViewRenderer.showToast('Выберите видео или запишите с камеры', 'warning');
+                AdvancedViewRenderer.showToast('Р’С‹Р±РµСЂРёС‚Рµ РІРёРґРµРѕ РёР»Рё Р·Р°РїРёС€РёС‚Рµ СЃ РєР°РјРµСЂС‹', 'warning');
                 return;
             }
             
             if (!desc) {
-                AdvancedViewRenderer.showToast('Добавьте описание', 'warning');
+                AdvancedViewRenderer.showToast('Р”РѕР±Р°РІСЊС‚Рµ РѕРїРёСЃР°РЅРёРµ', 'warning');
                 return;
             }
             
             const btn = document.getElementById('publish-btn');
             const btnText = document.getElementById('publish-btn-text');
-            btnText.textContent = 'Публикация...';
+            btnText.textContent = 'РџСѓР±Р»РёРєР°С†РёСЏ...';
             btn.disabled = true;
             
             try {
@@ -2473,7 +3052,7 @@ class AdvancedApp {
                     coverColor
                 });
                 
-                AdvancedViewRenderer.showToast('Видео опубликовано!', 'success');
+                AdvancedViewRenderer.showToast('Р’РёРґРµРѕ РѕРїСѓР±Р»РёРєРѕРІР°РЅРѕ!', 'success');
                 
                 fileInput.value = '';
                 if (this.uploadDescInput) this.uploadDescInput.value = '';
@@ -2497,10 +3076,10 @@ class AdvancedApp {
                 this.navigateTo('profile-view');
                 this.updateProfileUI();
             } catch (error) {
-                AdvancedViewRenderer.showToast(error.message || 'Ошибка при загрузке видео', 'error');
+                AdvancedViewRenderer.showToast(error.message || 'РћС€РёР±РєР° РїСЂРё Р·Р°РіСЂСѓР·РєРµ РІРёРґРµРѕ', 'error');
                 console.error(error);
             } finally {
-                btnText.textContent = 'Опубликовать';
+                btnText.textContent = 'РћРїСѓР±Р»РёРєРѕРІР°С‚СЊ';
                 btn.disabled = false;
             }
         });
@@ -2567,13 +3146,27 @@ class AdvancedApp {
                     this.navigateTo('auth-view');
                     return;
                 }
+                this.state.avatarData = null;
+                this.state.avatarFile = null;
                 AdvancedViewRenderer.renderEditProfileForm(user);
                 this.setupProfileFormListeners();
             });
         }
 
-        if (closeBtn) closeBtn.addEventListener('click', () => AdvancedViewRenderer.closeEditProfileModal());
-        if (cancelBtn) cancelBtn.addEventListener('click', () => AdvancedViewRenderer.closeEditProfileModal());
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => {
+                this.state.avatarData = null;
+                this.state.avatarFile = null;
+                AdvancedViewRenderer.closeEditProfileModal();
+            });
+        }
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', () => {
+                this.state.avatarData = null;
+                this.state.avatarFile = null;
+                AdvancedViewRenderer.closeEditProfileModal();
+            });
+        }
 
         if (avatarPreview) {
             avatarPreview.addEventListener('click', () => avatarFileInput.click());
@@ -2584,9 +3177,10 @@ class AdvancedApp {
                 const file = e.target.files[0];
                 if (file && file.type.startsWith('image/')) {
                     if (file.size > 5 * 1024 * 1024) {
-                        AdvancedViewRenderer.showToast('Изображение слишком большое (макс. 5MB)', 'warning');
+                        AdvancedViewRenderer.showToast('РР·РѕР±СЂР°Р¶РµРЅРёРµ СЃР»РёС€РєРѕРј Р±РѕР»СЊС€РѕРµ (РјР°РєСЃ. 5MB)', 'warning');
                         return;
                     }
+                    this.state.avatarFile = file;
                     const reader = new FileReader();
                     reader.onload = (event) => {
                         document.getElementById('avatar-img-large').src = event.target.result;
@@ -2632,6 +3226,27 @@ class AdvancedApp {
         }
     }
 
+    setupProfileHeaderEvents() {
+        if (this.profileSearchBtn && this.profileSearchBtn.dataset.bound !== '1') {
+            this.profileSearchBtn.dataset.bound = '1';
+            this.profileSearchBtn.addEventListener('click', () => {
+                this.navigateTo('search-view');
+            });
+        }
+
+        if (this.profileMediaTabs && this.profileMediaTabs.dataset.bound !== '1') {
+            this.profileMediaTabs.dataset.bound = '1';
+            this.profileMediaTabs.addEventListener('click', (event) => {
+                const btn = event.target && event.target.closest
+                    ? event.target.closest('[data-profile-tab]')
+                    : null;
+                if (!btn || btn.disabled) return;
+                const tab = btn.dataset.profileTab || 'videos';
+                this.setProfileGridTab(tab, { rerender: true });
+            });
+        }
+    }
+
     setupProfileFeatureEvents() {
         if (this.profilePrivateToggle && this.profilePrivateToggle.dataset.bound !== '1') {
             this.profilePrivateToggle.dataset.bound = '1';
@@ -2645,7 +3260,7 @@ class AdvancedApp {
                 }
                 if (!(firebaseService && firebaseService.isInitialized && firebaseService.isInitialized())) {
                     this.profilePrivateToggle.checked = !checked;
-                    AdvancedViewRenderer.showToast('Профиль недоступен без подключения базы', 'warning');
+                    AdvancedViewRenderer.showToast('РџСЂРѕС„РёР»СЊ РЅРµРґРѕСЃС‚СѓРїРµРЅ Р±РµР· РїРѕРґРєР»СЋС‡РµРЅРёСЏ Р±Р°Р·С‹', 'warning');
                     return;
                 }
 
@@ -2653,7 +3268,7 @@ class AdvancedApp {
                     await firebaseService.updateUserProfile(current.uid, {
                         privateAccount: checked
                     });
-                    AdvancedViewRenderer.showToast(checked ? 'Включен приватный аккаунт' : 'Профиль снова публичный', 'success');
+                    AdvancedViewRenderer.showToast(checked ? 'Р’РєР»СЋС‡РµРЅ РїСЂРёРІР°С‚РЅС‹Р№ Р°РєРєР°СѓРЅС‚' : 'РџСЂРѕС„РёР»СЊ СЃРЅРѕРІР° РїСѓР±Р»РёС‡РЅС‹Р№', 'success');
                     this.updateProfileUI();
                     if (this.state.feedMode === 'global') {
                         await this.loadFeed(true);
@@ -2661,7 +3276,7 @@ class AdvancedApp {
                 } catch (error) {
                     console.error(error);
                     this.profilePrivateToggle.checked = !checked;
-                    AdvancedViewRenderer.showToast(error?.message || 'Не удалось изменить приватность', 'error');
+                    AdvancedViewRenderer.showToast(error?.message || 'РќРµ СѓРґР°Р»РѕСЃСЊ РёР·РјРµРЅРёС‚СЊ РїСЂРёРІР°С‚РЅРѕСЃС‚СЊ', 'error');
                 }
             });
         }
@@ -2678,13 +3293,13 @@ class AdvancedApp {
                 }
                 if (!(firebaseService && firebaseService.isInitialized && firebaseService.isInitialized())) {
                     this.profileAdultToggle.checked = !checked;
-                    AdvancedViewRenderer.showToast('Профиль недоступен без подключения базы', 'warning');
+                    AdvancedViewRenderer.showToast('РџСЂРѕС„РёР»СЊ РЅРµРґРѕСЃС‚СѓРїРµРЅ Р±РµР· РїРѕРґРєР»СЋС‡РµРЅРёСЏ Р±Р°Р·С‹', 'warning');
                     return;
                 }
 
                 let ageVerified = !!current.ageVerified;
                 if (checked && !ageVerified) {
-                    const confirmed = window.confirm('Подтвердите, что вам исполнилось 18 лет.');
+                    const confirmed = window.confirm('РџРѕРґС‚РІРµСЂРґРёС‚Рµ, С‡С‚Рѕ РІР°Рј РёСЃРїРѕР»РЅРёР»РѕСЃСЊ 18 Р»РµС‚.');
                     if (!confirmed) {
                         this.profileAdultToggle.checked = false;
                         return;
@@ -2697,7 +3312,7 @@ class AdvancedApp {
                         allowAdultContent: checked,
                         ageVerified
                     });
-                    AdvancedViewRenderer.showToast(checked ? 'Контент 18+ включен' : 'Контент 18+ скрыт', 'success');
+                    AdvancedViewRenderer.showToast(checked ? 'РљРѕРЅС‚РµРЅС‚ 18+ РІРєР»СЋС‡РµРЅ' : 'РљРѕРЅС‚РµРЅС‚ 18+ СЃРєСЂС‹С‚', 'success');
                     this.updateProfileUI();
                     if (this.state.feedMode === 'global') {
                         await this.loadFeed(true);
@@ -2705,14 +3320,17 @@ class AdvancedApp {
                 } catch (error) {
                     console.error(error);
                     this.profileAdultToggle.checked = !checked;
-                    AdvancedViewRenderer.showToast(error?.message || 'Не удалось обновить 18+ режим', 'error');
+                    AdvancedViewRenderer.showToast(error?.message || 'РќРµ СѓРґР°Р»РѕСЃСЊ РѕР±РЅРѕРІРёС‚СЊ 18+ СЂРµР¶РёРј', 'error');
                 }
             });
         }
 
-        if (this.profileFollowRequestsBtn && this.profileFollowRequestsBtn.dataset.bound !== '1') {
-            this.profileFollowRequestsBtn.dataset.bound = '1';
-            this.profileFollowRequestsBtn.addEventListener('click', () => {
+        const requestsTrigger = this.profileRequestsMenu || this.profileFollowRequestsBtn;
+        if (requestsTrigger && requestsTrigger.dataset.bound !== '1') {
+            requestsTrigger.dataset.bound = '1';
+            requestsTrigger.addEventListener('click', () => {
+                if (this.hamburgerBtn) this.hamburgerBtn.classList.remove('active');
+                if (this.menuDropdown) this.menuDropdown.classList.remove('active');
                 this.openUserListSheet('requests');
             });
         }
@@ -2797,7 +3415,7 @@ class AdvancedApp {
             this.renderLiveSessionsStrip();
             this.renderLiveSheetList();
             if (!silent) {
-                AdvancedViewRenderer.showToast('Live доступен после подключения базы', 'warning');
+                AdvancedViewRenderer.showToast('Live РґРѕСЃС‚СѓРїРµРЅ РїРѕСЃР»Рµ РїРѕРґРєР»СЋС‡РµРЅРёСЏ Р±Р°Р·С‹', 'warning');
             }
             return;
         }
@@ -2808,9 +3426,9 @@ class AdvancedApp {
             this.renderLiveSessionsStrip();
             this.renderLiveSheetList();
         } catch (error) {
-            console.error('Ошибка обновления live-сессий:', error);
+            console.error('РћС€РёР±РєР° РѕР±РЅРѕРІР»РµРЅРёСЏ live-СЃРµСЃСЃРёР№:', error);
             if (!silent) {
-                AdvancedViewRenderer.showToast(error?.message || 'Не удалось обновить эфиры', 'error');
+                AdvancedViewRenderer.showToast(error?.message || 'РќРµ СѓРґР°Р»РѕСЃСЊ РѕР±РЅРѕРІРёС‚СЊ СЌС„РёСЂС‹', 'error');
             }
         }
     }
@@ -2822,7 +3440,7 @@ class AdvancedApp {
         if (!this.liveSessionsList) return;
         const sessions = Array.isArray(this.liveSessions) ? this.liveSessions.slice(0, 8) : [];
         if (!sessions.length) {
-            this.liveSessionsList.innerHTML = '<div class="live-sessions-empty">Сейчас нет активных эфиров</div>';
+            this.liveSessionsList.innerHTML = '<div class="live-sessions-empty">РЎРµР№С‡Р°СЃ РЅРµС‚ Р°РєС‚РёРІРЅС‹С… СЌС„РёСЂРѕРІ</div>';
             return;
         }
 
@@ -2855,10 +3473,10 @@ class AdvancedApp {
         root.className = 'live-feed-root';
         root.innerHTML = `
             <div class="live-feed-head">
-                <div class="live-feed-title">Прямые эфиры</div>
+                <div class="live-feed-title">РџСЂСЏРјС‹Рµ СЌС„РёСЂС‹</div>
                 <div class="live-feed-head-actions">
-                    <button type="button" class="secondary-btn live-feed-refresh">Обновить</button>
-                    <button type="button" class="primary-btn live-feed-open">Мои эфиры</button>
+                    <button type="button" class="secondary-btn live-feed-refresh">РћР±РЅРѕРІРёС‚СЊ</button>
+                    <button type="button" class="primary-btn live-feed-open">РњРѕРё СЌС„РёСЂС‹</button>
                 </div>
             </div>
             <div class="live-feed-list"></div>
@@ -2884,8 +3502,8 @@ class AdvancedApp {
         if (!sessions.length) {
             listEl.innerHTML = `
                 <div class="live-feed-empty">
-                    <h3>Сейчас нет активных эфиров</h3>
-                    <p>Нажмите "Мои эфиры", чтобы запустить трансляцию.</p>
+                    <h3>РЎРµР№С‡Р°СЃ РЅРµС‚ Р°РєС‚РёРІРЅС‹С… СЌС„РёСЂРѕРІ</h3>
+                    <p>РќР°Р¶РјРёС‚Рµ "РњРѕРё СЌС„РёСЂС‹", С‡С‚РѕР±С‹ Р·Р°РїСѓСЃС‚РёС‚СЊ С‚СЂР°РЅСЃР»СЏС†РёСЋ.</p>
                 </div>
             `;
             this.feedContainer.appendChild(root);
@@ -2899,14 +3517,14 @@ class AdvancedApp {
             const isOwner = !!(currentUid && String(session.ownerUid || '') === currentUid);
             const canJoinAsCoHost = !isOwner && Array.isArray(session.coHosts) && session.coHosts.length < 2;
             const coHostsCount = Array.isArray(session.coHosts) ? session.coHosts.length : 0;
-            const avatar = this.escapeHtml(session.ownerAvatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(session.ownerName || 'user')}&background=random&size=72`);
+            const avatar = this.escapeHtml(session.ownerAvatar || 'assets/default-avatar.svg');
 
             row.innerHTML = `
                 <div class="live-feed-meta">
                     <img class="live-feed-avatar" src="${avatar}" alt="@${this.escapeHtml(session.ownerName || 'user')}">
                     <div class="live-feed-text">
-                        <div class="live-feed-row-title">${this.escapeHtml(session.title || 'Прямой эфир')}</div>
-                        <div class="live-feed-row-sub">@${this.escapeHtml(session.ownerName || 'user')} · зрителей: ${AdvancedViewRenderer.formatNumber(session.viewersCount || 0)} · co-host: ${coHostsCount}/2</div>
+                        <div class="live-feed-row-title">${this.escapeHtml(session.title || 'РџСЂСЏРјРѕР№ СЌС„РёСЂ')}</div>
+                        <div class="live-feed-row-sub">@${this.escapeHtml(session.ownerName || 'user')} В· Р·СЂРёС‚РµР»РµР№: ${AdvancedViewRenderer.formatNumber(session.viewersCount || 0)} В· co-host: ${coHostsCount}/2</div>
                     </div>
                 </div>
                 <div class="live-feed-actions"></div>
@@ -2918,18 +3536,18 @@ class AdvancedApp {
                     const endBtn = document.createElement('button');
                     endBtn.type = 'button';
                     endBtn.className = 'secondary-btn';
-                    endBtn.textContent = 'Завершить';
+                    endBtn.textContent = 'Р—Р°РІРµСЂС€РёС‚СЊ';
                     endBtn.addEventListener('click', async () => {
                         try {
                             await firebaseService.endLiveSession(session.id);
-                            AdvancedViewRenderer.showToast('Эфир завершен', 'success');
+                            AdvancedViewRenderer.showToast('Р­С„РёСЂ Р·Р°РІРµСЂС€РµРЅ', 'success');
                             await this.refreshLiveSessions({ silent: true });
                             if (this.state.feedSource === 'live' && this.state.feedMode === 'global') {
                                 this.renderLiveFeedList();
                             }
                         } catch (error) {
                             console.error(error);
-                            AdvancedViewRenderer.showToast(error?.message || 'Не удалось завершить эфир', 'error');
+                            AdvancedViewRenderer.showToast(error?.message || 'РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РІРµСЂС€РёС‚СЊ СЌС„РёСЂ', 'error');
                         }
                     });
                     actions.appendChild(endBtn);
@@ -2937,7 +3555,7 @@ class AdvancedApp {
                     const joinBtn = document.createElement('button');
                     joinBtn.type = 'button';
                     joinBtn.className = 'secondary-btn';
-                    joinBtn.textContent = 'Войти';
+                    joinBtn.textContent = 'Р’РѕР№С‚Рё';
                     joinBtn.addEventListener('click', () => this.joinLiveSession(session.id, { asCoHost: false }));
                     actions.appendChild(joinBtn);
 
@@ -2963,7 +3581,7 @@ class AdvancedApp {
         const currentUid = firebaseService && firebaseService.getCurrentUid ? String(firebaseService.getCurrentUid() || '') : '';
 
         if (!sessions.length) {
-            this.liveSheetList.innerHTML = '<div class="live-sessions-empty">Сейчас нет активных эфиров</div>';
+            this.liveSheetList.innerHTML = '<div class="live-sessions-empty">РЎРµР№С‡Р°СЃ РЅРµС‚ Р°РєС‚РёРІРЅС‹С… СЌС„РёСЂРѕРІ</div>';
             return;
         }
 
@@ -2977,8 +3595,8 @@ class AdvancedApp {
 
             row.innerHTML = `
                 <div class="live-sheet-meta">
-                    <div class="live-sheet-title">${this.escapeHtml(session.title || 'Прямой эфир')}</div>
-                    <div class="live-sheet-sub">@${this.escapeHtml(session.ownerName || 'user')} · зрителей: ${AdvancedViewRenderer.formatNumber(session.viewersCount || 0)} · co-host: ${coHostsCount}/2</div>
+                    <div class="live-sheet-title">${this.escapeHtml(session.title || 'РџСЂСЏРјРѕР№ СЌС„РёСЂ')}</div>
+                    <div class="live-sheet-sub">@${this.escapeHtml(session.ownerName || 'user')} В· Р·СЂРёС‚РµР»РµР№: ${AdvancedViewRenderer.formatNumber(session.viewersCount || 0)} В· co-host: ${coHostsCount}/2</div>
                 </div>
                 <div class="live-sheet-actions"></div>
             `;
@@ -2989,15 +3607,15 @@ class AdvancedApp {
                     const endBtn = document.createElement('button');
                     endBtn.type = 'button';
                     endBtn.className = 'secondary-btn';
-                    endBtn.textContent = 'Завершить';
+                    endBtn.textContent = 'Р—Р°РІРµСЂС€РёС‚СЊ';
                     endBtn.addEventListener('click', async () => {
                         try {
                             await firebaseService.endLiveSession(session.id);
-                            AdvancedViewRenderer.showToast('Эфир завершен', 'success');
+                            AdvancedViewRenderer.showToast('Р­С„РёСЂ Р·Р°РІРµСЂС€РµРЅ', 'success');
                             await this.refreshLiveSessions({ silent: true });
                         } catch (error) {
                             console.error(error);
-                            AdvancedViewRenderer.showToast(error?.message || 'Не удалось завершить эфир', 'error');
+                            AdvancedViewRenderer.showToast(error?.message || 'РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РІРµСЂС€РёС‚СЊ СЌС„РёСЂ', 'error');
                         }
                     });
                     actions.appendChild(endBtn);
@@ -3005,7 +3623,7 @@ class AdvancedApp {
                     const joinBtn = document.createElement('button');
                     joinBtn.type = 'button';
                     joinBtn.className = 'secondary-btn';
-                    joinBtn.textContent = 'Войти';
+                    joinBtn.textContent = 'Р’РѕР№С‚Рё';
                     joinBtn.addEventListener('click', () => this.joinLiveSession(session.id, { asCoHost: false }));
                     actions.appendChild(joinBtn);
 
@@ -3041,7 +3659,7 @@ class AdvancedApp {
             return;
         }
         if (!(firebaseService && firebaseService.isInitialized && firebaseService.isInitialized() && typeof firebaseService.createLiveSession === 'function')) {
-            AdvancedViewRenderer.showToast('Live недоступен без подключения базы', 'warning');
+            AdvancedViewRenderer.showToast('Live РЅРµРґРѕСЃС‚СѓРїРµРЅ Р±РµР· РїРѕРґРєР»СЋС‡РµРЅРёСЏ Р±Р°Р·С‹', 'warning');
             return;
         }
 
@@ -3049,11 +3667,11 @@ class AdvancedApp {
         try {
             await firebaseService.createLiveSession({ title });
             if (this.liveTitleInput) this.liveTitleInput.value = '';
-            AdvancedViewRenderer.showToast('Эфир запущен', 'success');
+            AdvancedViewRenderer.showToast('Р­С„РёСЂ Р·Р°РїСѓС‰РµРЅ', 'success');
             await this.refreshLiveSessions({ silent: true });
         } catch (error) {
             console.error(error);
-            AdvancedViewRenderer.showToast(error?.message || 'Не удалось запустить эфир', 'error');
+            AdvancedViewRenderer.showToast(error?.message || 'РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РїСѓСЃС‚РёС‚СЊ СЌС„РёСЂ', 'error');
         }
     }
 
@@ -3064,18 +3682,18 @@ class AdvancedApp {
             return;
         }
         if (!(firebaseService && firebaseService.isInitialized && firebaseService.isInitialized() && typeof firebaseService.joinLiveSession === 'function')) {
-            AdvancedViewRenderer.showToast('Live недоступен без подключения базы', 'warning');
+            AdvancedViewRenderer.showToast('Live РЅРµРґРѕСЃС‚СѓРїРµРЅ Р±РµР· РїРѕРґРєР»СЋС‡РµРЅРёСЏ Р±Р°Р·С‹', 'warning');
             return;
         }
 
         try {
             const session = await firebaseService.joinLiveSession(sessionId, { asCoHost });
             this.state.activeLiveSessionId = session && session.id ? session.id : null;
-            AdvancedViewRenderer.showToast(asCoHost ? 'Вы присоединились как co-host' : 'Вы вошли в эфир', 'success');
+            AdvancedViewRenderer.showToast(asCoHost ? 'Р’С‹ РїСЂРёСЃРѕРµРґРёРЅРёР»РёСЃСЊ РєР°Рє co-host' : 'Р’С‹ РІРѕС€Р»Рё РІ СЌС„РёСЂ', 'success');
             await this.refreshLiveSessions({ silent: true });
         } catch (error) {
             console.error(error);
-            AdvancedViewRenderer.showToast(error?.message || 'Не удалось войти в эфир', 'error');
+            AdvancedViewRenderer.showToast(error?.message || 'РќРµ СѓРґР°Р»РѕСЃСЊ РІРѕР№С‚Рё РІ СЌС„РёСЂ', 'error');
         }
     }
 
@@ -3091,19 +3709,19 @@ class AdvancedApp {
         const targetUid = this.state.viewingProfileUid || currentUid;
 
         if (!targetUid) {
-            AdvancedViewRenderer.showToast('Сначала войдите в аккаунт', 'warning');
+            AdvancedViewRenderer.showToast('РЎРЅР°С‡Р°Р»Р° РІРѕР№РґРёС‚Рµ РІ Р°РєРєР°СѓРЅС‚', 'warning');
             return;
         }
 
         if (normalizedMode === 'requests' && String(targetUid) !== String(currentUid)) {
-            AdvancedViewRenderer.showToast('Заявки доступны только в вашем профиле', 'warning');
+            AdvancedViewRenderer.showToast('Р—Р°СЏРІРєРё РґРѕСЃС‚СѓРїРЅС‹ С‚РѕР»СЊРєРѕ РІ РІР°С€РµРј РїСЂРѕС„РёР»Рµ', 'warning');
             return;
         }
 
         this.userListTitle.textContent = normalizedMode === 'followers'
-            ? 'Подписчики'
-            : (normalizedMode === 'requests' ? 'Заявки' : 'Подписки');
-        this.userList.innerHTML = '<div class="user-list-empty">Загрузка...</div>';
+            ? 'РџРѕРґРїРёСЃС‡РёРєРё'
+            : (normalizedMode === 'requests' ? 'Р—Р°СЏРІРєРё' : 'РџРѕРґРїРёСЃРєРё');
+        this.userList.innerHTML = '<div class="user-list-empty">Р—Р°РіСЂСѓР·РєР°...</div>';
         this.userListSheet.classList.add('open');
 
         const requestId = `${Date.now()}_${Math.random()}`;
@@ -3117,13 +3735,13 @@ class AdvancedApp {
                 targetProfile = this.dataService.getUserProfile();
             }
         } catch (error) {
-            console.error('Ошибка загрузки профиля для списка пользователей:', error);
+            console.error('РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё РїСЂРѕС„РёР»СЏ РґР»СЏ СЃРїРёСЃРєР° РїРѕР»СЊР·РѕРІР°С‚РµР»РµР№:', error);
         }
 
         if (this.userListRequestId !== requestId) return;
 
         if (!targetProfile) {
-            this.userList.innerHTML = '<div class="user-list-empty">Не удалось загрузить список</div>';
+            this.userList.innerHTML = '<div class="user-list-empty">РќРµ СѓРґР°Р»РѕСЃСЊ Р·Р°РіСЂСѓР·РёС‚СЊ СЃРїРёСЃРѕРє</div>';
             return;
         }
 
@@ -3136,8 +3754,8 @@ class AdvancedApp {
 
         if (ids.length === 0) {
             const emptyText = normalizedMode === 'followers'
-                ? 'Подписчиков пока нет'
-                : (normalizedMode === 'requests' ? 'Новых заявок нет' : 'Подписок пока нет');
+                ? 'РџРѕРґРїРёСЃС‡РёРєРѕРІ РїРѕРєР° РЅРµС‚'
+                : (normalizedMode === 'requests' ? 'РќРѕРІС‹С… Р·Р°СЏРІРѕРє РЅРµС‚' : 'РџРѕРґРїРёСЃРѕРє РїРѕРєР° РЅРµС‚');
             this.userList.innerHTML = `<div class="user-list-empty">${emptyText}</div>`;
             return;
         }
@@ -3201,10 +3819,10 @@ class AdvancedApp {
             const name = profile && profile.name ? profile.name : 'user';
             const avatar = profile && profile.avatar
                 ? profile.avatar
-                : `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random&size=64`;
+                : 'assets/default-avatar.svg';
             const about = profile && profile.bio
                 ? this.escapeHtml(profile.bio)
-                : (profile && profile.email ? this.escapeHtml(profile.email) : 'Профиль Reelgram');
+                : (profile && profile.email ? this.escapeHtml(profile.email) : 'РџСЂРѕС„РёР»СЊ Reelgram');
 
             const item = document.createElement('div');
             item.className = 'user-list-item';
@@ -3220,49 +3838,49 @@ class AdvancedApp {
                 const actions = document.createElement('div');
                 actions.className = 'user-list-actions';
                 actions.innerHTML = `
-                    <button type="button" class="secondary-btn user-list-approve">Принять</button>
-                    <button type="button" class="secondary-btn user-list-reject">Отклонить</button>
+                    <button type="button" class="secondary-btn user-list-approve">РџСЂРёРЅСЏС‚СЊ</button>
+                    <button type="button" class="secondary-btn user-list-reject">РћС‚РєР»РѕРЅРёС‚СЊ</button>
                 `;
 
                 actions.querySelector('.user-list-approve')?.addEventListener('click', async (event) => {
                     event.stopPropagation();
                     if (!(firebaseService && firebaseService.isInitialized && firebaseService.isInitialized() && typeof firebaseService.approveFollowRequest === 'function')) {
-                        AdvancedViewRenderer.showToast('Функция заявок недоступна', 'warning');
+                        AdvancedViewRenderer.showToast('Р¤СѓРЅРєС†РёСЏ Р·Р°СЏРІРѕРє РЅРµРґРѕСЃС‚СѓРїРЅР°', 'warning');
                         return;
                     }
                     try {
                         await firebaseService.approveFollowRequest(uid);
                         item.remove();
-                        AdvancedViewRenderer.showToast('Заявка принята', 'success');
+                        AdvancedViewRenderer.showToast('Р—Р°СЏРІРєР° РїСЂРёРЅСЏС‚Р°', 'success');
                         const left = this.userList.querySelectorAll('.user-list-item').length;
                         if (!left) {
-                            this.userList.innerHTML = '<div class="user-list-empty">Новых заявок нет</div>';
+                            this.userList.innerHTML = '<div class="user-list-empty">РќРѕРІС‹С… Р·Р°СЏРІРѕРє РЅРµС‚</div>';
                         }
                         this.updateProfileUI();
                     } catch (error) {
                         console.error(error);
-                        AdvancedViewRenderer.showToast(error?.message || 'Не удалось принять заявку', 'error');
+                        AdvancedViewRenderer.showToast(error?.message || 'РќРµ СѓРґР°Р»РѕСЃСЊ РїСЂРёРЅСЏС‚СЊ Р·Р°СЏРІРєСѓ', 'error');
                     }
                 });
 
                 actions.querySelector('.user-list-reject')?.addEventListener('click', async (event) => {
                     event.stopPropagation();
                     if (!(firebaseService && firebaseService.isInitialized && firebaseService.isInitialized() && typeof firebaseService.rejectFollowRequest === 'function')) {
-                        AdvancedViewRenderer.showToast('Функция заявок недоступна', 'warning');
+                        AdvancedViewRenderer.showToast('Р¤СѓРЅРєС†РёСЏ Р·Р°СЏРІРѕРє РЅРµРґРѕСЃС‚СѓРїРЅР°', 'warning');
                         return;
                     }
                     try {
                         await firebaseService.rejectFollowRequest(uid);
                         item.remove();
-                        AdvancedViewRenderer.showToast('Заявка отклонена', 'info');
+                        AdvancedViewRenderer.showToast('Р—Р°СЏРІРєР° РѕС‚РєР»РѕРЅРµРЅР°', 'info');
                         const left = this.userList.querySelectorAll('.user-list-item').length;
                         if (!left) {
-                            this.userList.innerHTML = '<div class="user-list-empty">Новых заявок нет</div>';
+                            this.userList.innerHTML = '<div class="user-list-empty">РќРѕРІС‹С… Р·Р°СЏРІРѕРє РЅРµС‚</div>';
                         }
                         this.updateProfileUI();
                     } catch (error) {
                         console.error(error);
-                        AdvancedViewRenderer.showToast(error?.message || 'Не удалось отклонить заявку', 'error');
+                        AdvancedViewRenderer.showToast(error?.message || 'РќРµ СѓРґР°Р»РѕСЃСЊ РѕС‚РєР»РѕРЅРёС‚СЊ Р·Р°СЏРІРєСѓ', 'error');
                     }
                 });
 
@@ -3285,7 +3903,7 @@ class AdvancedApp {
                         }
                     } catch (_) {}
                 }
-                AdvancedViewRenderer.showToast('Не удалось открыть профиль', 'warning');
+                AdvancedViewRenderer.showToast('РќРµ СѓРґР°Р»РѕСЃСЊ РѕС‚РєСЂС‹С‚СЊ РїСЂРѕС„РёР»СЊ', 'warning');
             });
 
             this.userList.appendChild(item);
@@ -3298,17 +3916,58 @@ class AdvancedApp {
         const saveBtn = document.getElementById('save-profile');
         const originalText = saveBtn.textContent;
         saveBtn.disabled = true;
-        saveBtn.textContent = 'Сохранение...';
+        saveBtn.textContent = '\u0421\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u0438\u0435...';
 
         try {
             const currentProfile = this.dataService.getCurrentUser();
             if (!currentProfile) {
                 this.navigateTo('auth-view');
-                throw new Error('Нужно войти в аккаунт.');
+                throw new Error('\u041d\u0443\u0436\u043d\u043e \u0432\u043e\u0439\u0442\u0438 \u0432 \u0430\u043a\u043a\u0430\u0443\u043d\u0442.');
+            }
+
+            const ready = await waitForFirebaseService(5000);
+            if (!ready || !firebaseService || !firebaseService.isInitialized()) {
+                throw new Error('Firebase \u043d\u0435 \u0433\u043e\u0442\u043e\u0432.');
+            }
+            const currentUser = firebaseService.getCurrentUser();
+            if (!currentUser || !currentUser.uid) {
+                this.navigateTo('auth-view');
+                throw new Error('\u041d\u0443\u0436\u043d\u043e \u0432\u043e\u0439\u0442\u0438 \u0432 \u0430\u043a\u043a\u0430\u0443\u043d\u0442.');
+            }
+
+            let nextAvatar = currentProfile.avatar || 'assets/default-avatar.svg';
+            if (this.state.avatarFile && typeof firebaseService.uploadMedia === 'function') {
+                const uploaded = await firebaseService.uploadMedia(this.state.avatarFile, `avatars/${currentUser.uid}`, {
+                    uid: currentUser.uid,
+                    purpose: 'avatar'
+                });
+                if (uploaded && uploaded.url) {
+                    nextAvatar = uploaded.url;
+                }
+            } else if (typeof nextAvatar === 'string'
+                && nextAvatar.startsWith('data:')
+                && typeof firebaseService.uploadMedia === 'function') {
+                try {
+                    const response = await fetch(nextAvatar);
+                    const blob = await response.blob();
+                    const ext = blob.type && blob.type.includes('png') ? 'png' : 'jpg';
+                    const file = new File([blob], `avatar.${ext}`, { type: blob.type || 'image/jpeg' });
+                    const uploaded = await firebaseService.uploadMedia(file, `avatars/${currentUser.uid}`, {
+                        uid: currentUser.uid,
+                        purpose: 'avatar-migrate'
+                    });
+                    if (uploaded && uploaded.url) {
+                        nextAvatar = uploaded.url;
+                    }
+                } catch (migrateError) {
+                    console.warn('avatar migrate failed:', migrateError);
+                }
+            } else if (typeof this.state.avatarData === 'string' && this.state.avatarData.startsWith('http')) {
+                nextAvatar = this.state.avatarData;
             }
 
             const profileData = {
-                avatar: this.state.avatarData || currentProfile.avatar,
+                avatar: nextAvatar,
                 name: document.getElementById('edit-username').value.trim(),
                 bio: document.getElementById('edit-bio').value.trim(),
                 location: document.getElementById('edit-location').value.trim(),
@@ -3317,15 +3976,6 @@ class AdvancedApp {
                 gender: AdvancedViewRenderer.getActiveGender()
             };
 
-            const ready = await waitForFirebaseService(5000);
-            if (!ready || !firebaseService || !firebaseService.isInitialized()) {
-                throw new Error('Firebase не готов.');
-            }
-            const currentUser = firebaseService.getCurrentUser();
-            if (!currentUser || !currentUser.uid) {
-                this.navigateTo('auth-view');
-                throw new Error('Нужно войти в аккаунт.');
-            }
             await firebaseService.updateUserProfile(currentUser.uid, profileData);
 
             const updatedUser = firebaseService.getCurrentUser && firebaseService.getCurrentUser();
@@ -3335,11 +3985,13 @@ class AdvancedApp {
             
             this.updateProfileUI();
             AdvancedViewRenderer.closeEditProfileModal();
-            AdvancedViewRenderer.showToast('Профиль обновлен успешно!', 'success');
+            AdvancedViewRenderer.showToast('\u041f\u0440\u043e\u0444\u0438\u043b\u044c \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d', 'success');
             this.state.avatarData = null;
+            this.state.avatarFile = null;
         } catch (error) {
-            AdvancedViewRenderer.showToast('Ошибка при сохранении профиля', 'error');
+            AdvancedViewRenderer.showToast('\u041e\u0448\u0438\u0431\u043a\u0430 \u043f\u0440\u0438 \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u0438\u0438 \u043f\u0440\u043e\u0444\u0438\u043b\u044f', 'error');
         } finally {
+            this.state.avatarFile = null;
             saveBtn.disabled = false;
             saveBtn.textContent = originalText;
         }
@@ -3438,10 +4090,6 @@ class AdvancedApp {
         if (this.storiesStrip) {
             this.storiesStrip.classList.toggle('hidden', inCustomFeed || inLiveSource);
         }
-        if (this.seasonalBanner) {
-            const shouldShowSeasonal = this.seasonThemeEnabled && !!this.activeSeasonMeta && !inCustomFeed && !inLiveSource;
-            this.seasonalBanner.classList.toggle('hidden', !shouldShowSeasonal);
-        }
     }
 
     renderFeedEmptyState(source = 'for-you') {
@@ -3449,13 +4097,13 @@ class AdvancedApp {
         const isFollowing = source === 'following';
         const isLive = source === 'live';
         const title = isLive
-            ? 'Сейчас нет активных эфиров'
-            : (isFollowing ? 'Лента подписок пуста' : 'Пока нет подходящих видео');
+            ? 'РЎРµР№С‡Р°СЃ РЅРµС‚ Р°РєС‚РёРІРЅС‹С… СЌС„РёСЂРѕРІ'
+            : (isFollowing ? 'Р›РµРЅС‚Р° РїРѕРґРїРёСЃРѕРє РїСѓСЃС‚Р°' : 'РџРѕРєР° РЅРµС‚ РїРѕРґС…РѕРґСЏС‰РёС… РІРёРґРµРѕ');
         const subtitle = isLive
-            ? 'Запустите свой эфир или зайдите позже.'
+            ? 'Р—Р°РїСѓСЃС‚РёС‚Рµ СЃРІРѕР№ СЌС„РёСЂ РёР»Рё Р·Р°Р№РґРёС‚Рµ РїРѕР·Р¶Рµ.'
             : (isFollowing
-                ? 'Подпишитесь на авторов, чтобы видеть их видео здесь.'
-                : 'Смотрите ролики и отмечайте интересное, чтобы алгоритм подстроился.');
+                ? 'РџРѕРґРїРёС€РёС‚РµСЃСЊ РЅР° Р°РІС‚РѕСЂРѕРІ, С‡С‚РѕР±С‹ РІРёРґРµС‚СЊ РёС… РІРёРґРµРѕ Р·РґРµСЃСЊ.'
+                : 'РЎРјРѕС‚СЂРёС‚Рµ СЂРѕР»РёРєРё Рё РѕС‚РјРµС‡Р°Р№С‚Рµ РёРЅС‚РµСЂРµСЃРЅРѕРµ, С‡С‚РѕР±С‹ Р°Р»РіРѕСЂРёС‚Рј РїРѕРґСЃС‚СЂРѕРёР»СЃСЏ.');
         this.feedContainer.innerHTML = `
             <div class="feed-empty-state">
                 <h3>${this.escapeHtml(title)}</h3>
@@ -3472,7 +4120,7 @@ class AdvancedApp {
             .map((token) => token.trim().toLowerCase())
             .filter(Boolean)
             .map((token) => {
-                let clean = token.replace(/[^#\wа-яё-]/gi, '');
+                let clean = token.replace(/[^#\wР°-СЏС‘-]/gi, '');
                 if (!clean) return '';
                 if (!clean.startsWith('#')) clean = `#${clean}`;
                 return clean;
@@ -3485,7 +4133,7 @@ class AdvancedApp {
         if (!video) return [];
         const fromArray = Array.isArray(video.hashtags) ? video.hashtags : [];
         const joined = `${fromArray.join(' ')} ${video.tags || ''} ${video.desc || ''}`;
-        const matched = joined.match(/#[\wа-яё-]+/gi) || [];
+        const matched = joined.match(/#[\wР°-СЏС‘-]+/gi) || [];
         const normalized = matched
             .map(tag => String(tag).trim().toLowerCase())
             .filter(Boolean);
@@ -3712,7 +4360,7 @@ class AdvancedApp {
                     hiddenAuthors
                 });
             } catch (error) {
-                console.warn('⚠️ Не удалось сохранить модерацию в профиле:', error?.message || error);
+                console.warn('вљ пёЏ РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕС…СЂР°РЅРёС‚СЊ РјРѕРґРµСЂР°С†РёСЋ РІ РїСЂРѕС„РёР»Рµ:', error?.message || error);
             }
         }
     }
@@ -3743,11 +4391,11 @@ class AdvancedApp {
         const current = firebaseService && firebaseService.getCurrentUser ? firebaseService.getCurrentUser() : null;
         const authorUid = video && video.uid ? String(video.uid) : null;
         if (!authorUid) {
-            AdvancedViewRenderer.showToast('Не удалось определить автора', 'warning');
+            AdvancedViewRenderer.showToast('РќРµ СѓРґР°Р»РѕСЃСЊ РѕРїСЂРµРґРµР»РёС‚СЊ Р°РІС‚РѕСЂР°', 'warning');
             return;
         }
         if (current && current.uid && String(current.uid) === authorUid) {
-            AdvancedViewRenderer.showToast('Нельзя скрыть собственный аккаунт', 'info');
+            AdvancedViewRenderer.showToast('РќРµР»СЊР·СЏ СЃРєСЂС‹С‚СЊ СЃРѕР±СЃС‚РІРµРЅРЅС‹Р№ Р°РєРєР°СѓРЅС‚', 'info');
             return;
         }
 
@@ -3759,7 +4407,7 @@ class AdvancedApp {
         if (this.state.feedMode === 'global' && this.getFeedVideoItems().length === 0) {
             await this.loadFeed(true);
         }
-        AdvancedViewRenderer.showToast('Автор скрыт из вашей ленты', 'success');
+        AdvancedViewRenderer.showToast('РђРІС‚РѕСЂ СЃРєСЂС‹С‚ РёР· РІР°С€РµР№ Р»РµРЅС‚С‹', 'success');
     }
 
     async blockAuthorInFeed(video) {
@@ -3767,15 +4415,15 @@ class AdvancedApp {
         const currentUid = current && current.uid ? String(current.uid) : null;
         const authorUid = video && video.uid ? String(video.uid) : null;
         if (!authorUid) {
-            AdvancedViewRenderer.showToast('Не удалось определить автора', 'warning');
+            AdvancedViewRenderer.showToast('РќРµ СѓРґР°Р»РѕСЃСЊ РѕРїСЂРµРґРµР»РёС‚СЊ Р°РІС‚РѕСЂР°', 'warning');
             return;
         }
         if (currentUid && currentUid === authorUid) {
-            AdvancedViewRenderer.showToast('Нельзя заблокировать себя', 'info');
+            AdvancedViewRenderer.showToast('РќРµР»СЊР·СЏ Р·Р°Р±Р»РѕРєРёСЂРѕРІР°С‚СЊ СЃРµР±СЏ', 'info');
             return;
         }
 
-        if (!confirm('Заблокировать автора? Его видео больше не будут показываться.')) return;
+        if (!confirm('Р—Р°Р±Р»РѕРєРёСЂРѕРІР°С‚СЊ Р°РІС‚РѕСЂР°? Р•РіРѕ РІРёРґРµРѕ Р±РѕР»СЊС€Рµ РЅРµ Р±СѓРґСѓС‚ РїРѕРєР°Р·С‹РІР°С‚СЊСЃСЏ.')) return;
 
         if (!this.moderationPrefs.blockedUsers.includes(authorUid)) {
             this.moderationPrefs.blockedUsers.push(authorUid);
@@ -3807,12 +4455,12 @@ class AdvancedApp {
             this.state.viewingProfileUid = null;
             this.navigateTo('feed-view');
         }
-        AdvancedViewRenderer.showToast('Автор заблокирован', 'success');
+        AdvancedViewRenderer.showToast('РђРІС‚РѕСЂ Р·Р°Р±Р»РѕРєРёСЂРѕРІР°РЅ', 'success');
     }
 
     async reportVideo(video) {
         if (!video) return;
-        const reason = window.prompt('Причина жалобы (необязательно):', 'Неподходящий контент');
+        const reason = window.prompt('РџСЂРёС‡РёРЅР° Р¶Р°Р»РѕР±С‹ (РЅРµРѕР±СЏР·Р°С‚РµР»СЊРЅРѕ):', 'РќРµРїРѕРґС…РѕРґСЏС‰РёР№ РєРѕРЅС‚РµРЅС‚');
         if (reason === null) return;
 
         const current = firebaseService && firebaseService.getCurrentUser ? firebaseService.getCurrentUser() : null;
@@ -3837,7 +4485,7 @@ class AdvancedApp {
             localStorage.setItem(key, JSON.stringify(normalized.slice(0, 300)));
         } catch (_) {}
 
-        AdvancedViewRenderer.showToast('Жалоба отправлена', 'success');
+        AdvancedViewRenderer.showToast('Р–Р°Р»РѕР±Р° РѕС‚РїСЂР°РІР»РµРЅР°', 'success');
     }
 
     scheduleUploadDraftAutosave() {
@@ -3897,16 +4545,19 @@ class AdvancedApp {
             }
             localStorage.setItem(this.uploadDraftKey, JSON.stringify(draft));
             if (manual) {
-                this.showUploadDraftNote('Черновик сохранен');
-                AdvancedViewRenderer.showToast('Черновик сохранен', 'success');
+                this.showUploadDraftNote('Р§РµСЂРЅРѕРІРёРє СЃРѕС…СЂР°РЅРµРЅ');
+                AdvancedViewRenderer.showToast('Р§РµСЂРЅРѕРІРёРє СЃРѕС…СЂР°РЅРµРЅ', 'success');
             } else {
-                this.showUploadDraftNote('Черновик обновлен автоматически');
+                this.showUploadDraftNote('Р§РµСЂРЅРѕРІРёРє РѕР±РЅРѕРІР»РµРЅ Р°РІС‚РѕРјР°С‚РёС‡РµСЃРєРё');
+            }
+            if (this.state.activeViewId === 'profile-view' && this.state.profileGridTab === 'drafts') {
+                this.renderActiveProfileGrid();
             }
         } catch (error) {
             if (manual) {
-                AdvancedViewRenderer.showToast('Не удалось сохранить черновик', 'error');
+                AdvancedViewRenderer.showToast('РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕС…СЂР°РЅРёС‚СЊ С‡РµСЂРЅРѕРІРёРє', 'error');
             }
-            console.error('Ошибка сохранения черновика:', error);
+            console.error('РћС€РёР±РєР° СЃРѕС…СЂР°РЅРµРЅРёСЏ С‡РµСЂРЅРѕРІРёРєР°:', error);
         }
     }
 
@@ -3939,9 +4590,9 @@ class AdvancedApp {
                 previewVideo.style.filter = selected?.css || '';
             }
 
-            this.showUploadDraftNote('Черновик восстановлен');
+            this.showUploadDraftNote('Р§РµСЂРЅРѕРІРёРє РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅ');
         } catch (error) {
-            console.error('Ошибка восстановления черновика:', error);
+            console.error('РћС€РёР±РєР° РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ С‡РµСЂРЅРѕРІРёРєР°:', error);
         }
     }
 
@@ -3973,8 +4624,11 @@ class AdvancedApp {
             this.uploadDraftNote.style.display = 'none';
             this.uploadDraftNote.textContent = '';
         }
+        if (this.state.activeViewId === 'profile-view' && this.state.profileGridTab === 'drafts') {
+            this.renderActiveProfileGrid();
+        }
         if (showToast) {
-            AdvancedViewRenderer.showToast('Черновик удален', 'info');
+            AdvancedViewRenderer.showToast('Р§РµСЂРЅРѕРІРёРє СѓРґР°Р»РµРЅ', 'info');
         }
     }
 
@@ -4027,7 +4681,7 @@ class AdvancedApp {
     async saveOnboardingInterests({ skipped = false } = {}) {
         const selected = skipped ? [] : this.getSelectedOnboardingInterests();
         if (!skipped && selected.length === 0) {
-            AdvancedViewRenderer.showToast('Выберите хотя бы один интерес или нажмите "Пропустить"', 'warning');
+            AdvancedViewRenderer.showToast('Р’С‹Р±РµСЂРёС‚Рµ С…РѕС‚СЏ Р±С‹ РѕРґРёРЅ РёРЅС‚РµСЂРµСЃ РёР»Рё РЅР°Р¶РјРёС‚Рµ "РџСЂРѕРїСѓСЃС‚РёС‚СЊ"', 'warning');
             return;
         }
 
@@ -4048,15 +4702,15 @@ class AdvancedApp {
                 });
             }
         } catch (error) {
-            console.error('Ошибка сохранения onboarding:', error);
-            AdvancedViewRenderer.showToast('Не удалось сохранить интересы', 'error');
+            console.error('РћС€РёР±РєР° СЃРѕС…СЂР°РЅРµРЅРёСЏ onboarding:', error);
+            AdvancedViewRenderer.showToast('РќРµ СѓРґР°Р»РѕСЃСЊ СЃРѕС…СЂР°РЅРёС‚СЊ РёРЅС‚РµСЂРµСЃС‹', 'error');
             return;
         }
 
         this.closeOnboardingModal();
         this.updateProfileUI();
         await this.loadFeed(true);
-        AdvancedViewRenderer.showToast(skipped ? 'Можно настроить интересы позже в профиле' : 'Интересы сохранены', 'success');
+        AdvancedViewRenderer.showToast(skipped ? 'РњРѕР¶РЅРѕ РЅР°СЃС‚СЂРѕРёС‚СЊ РёРЅС‚РµСЂРµСЃС‹ РїРѕР·Р¶Рµ РІ РїСЂРѕС„РёР»Рµ' : 'РРЅС‚РµСЂРµСЃС‹ СЃРѕС…СЂР°РЅРµРЅС‹', 'success');
     }
 
     scheduleNotificationBadgeRefresh() {
@@ -4112,12 +4766,12 @@ class AdvancedApp {
         if (cameraPreview.style.display === 'none') {
             const ready = await this.setupCamera();
             if (!ready || !this.cameraStream) {
-                AdvancedViewRenderer.showToast('Нет доступа к камере', 'error');
+                AdvancedViewRenderer.showToast('РќРµС‚ РґРѕСЃС‚СѓРїР° Рє РєР°РјРµСЂРµ', 'error');
                 return;
             }
             cameraPreview.style.display = 'block';
             uploadArea.style.display = 'none';
-            AdvancedViewRenderer.showToast('Камера включена', 'success');
+            AdvancedViewRenderer.showToast('РљР°РјРµСЂР° РІРєР»СЋС‡РµРЅР°', 'success');
         } else {
             cameraPreview.style.display = 'none';
             uploadArea.style.display = 'flex';
@@ -4176,7 +4830,7 @@ class AdvancedApp {
         
         this.state.mediaRecorder.start(1000);
         this.state.isRecording = true;
-        AdvancedViewRenderer.showToast('Запись началась', 'info');
+        AdvancedViewRenderer.showToast('Р—Р°РїРёСЃСЊ РЅР°С‡Р°Р»Р°СЃСЊ', 'info');
     }
 
     stopRecording() {
@@ -4184,7 +4838,7 @@ class AdvancedApp {
             this.state.mediaRecorder.stop();
             this.recordBtn.classList.remove('recording');
             this.state.isRecording = false;
-            AdvancedViewRenderer.showToast('Запись завершена', 'success');
+            AdvancedViewRenderer.showToast('Р—Р°РїРёСЃСЊ Р·Р°РІРµСЂС€РµРЅР°', 'success');
         }
     }
 
@@ -4391,7 +5045,6 @@ class AdvancedApp {
             const video = item.querySelector('video');
             const likeBtn = item.querySelector('.like-btn');
             const commentBtn = item.querySelector('.comment-btn');
-            const giftBtn = item.querySelector('.gift-btn');
             const shareBtn = item.querySelector('.share-btn');
             const avatar = item.querySelector('.avatar-container');
             const hashtags = item.querySelectorAll('.hashtag');
@@ -4411,7 +5064,7 @@ class AdvancedApp {
                 e.stopPropagation();
                 if (!firebaseService.getCurrentUser()) {
                     this.navigateTo('auth-view');
-                    AdvancedViewRenderer.showToast('Войдите, чтобы ставить лайки', 'warning');
+                    AdvancedViewRenderer.showToast('Р’РѕР№РґРёС‚Рµ, С‡С‚РѕР±С‹ СЃС‚Р°РІРёС‚СЊ Р»Р°Р№РєРё', 'warning');
                     return;
                 }
 
@@ -4448,6 +5101,12 @@ class AdvancedApp {
                         }
 
                         likeBtn.classList.toggle('liked', !!isLiked);
+                        const likeIcon = likeBtn.querySelector('.action-icon');
+                        if (likeIcon) {
+                            const defaultIcon = likeBtn.dataset.iconDefault || 'assets/feed-like.svg';
+                            const activeIcon = likeBtn.dataset.iconActive || 'assets/feed-like-active.svg';
+                            likeIcon.src = isLiked ? activeIcon : defaultIcon;
+                        }
 
                         const countSpan = likeBtn.querySelector('.like-count');
                         if (countSpan) {
@@ -4462,10 +5121,10 @@ class AdvancedApp {
                             countSpan.textContent = AdvancedViewRenderer.formatNumber(nextLikes);
                         }
 
-                        AdvancedViewRenderer.showToast(isLiked ? 'Вам понравилось' : 'Лайк удален', isLiked ? 'success' : 'info');
+                        AdvancedViewRenderer.showToast(isLiked ? 'Р’Р°Рј РїРѕРЅСЂР°РІРёР»РѕСЃСЊ' : 'Р›Р°Р№Рє СѓРґР°Р»РµРЅ', isLiked ? 'success' : 'info');
                     } catch (err) {
-                        console.error('Ошибка лайка:', err);
-                        AdvancedViewRenderer.showToast(err?.message || 'Не удалось поставить лайк', 'error');
+                        console.error('РћС€РёР±РєР° Р»Р°Р№РєР°:', err);
+                        AdvancedViewRenderer.showToast(err?.message || 'РќРµ СѓРґР°Р»РѕСЃСЊ РїРѕСЃС‚Р°РІРёС‚СЊ Р»Р°Р№Рє', 'error');
                     } finally {
                         likeBtn.dataset.busy = '0';
                     }
@@ -4475,15 +5134,6 @@ class AdvancedApp {
             commentBtn?.addEventListener('click', (e) => {
                 e.stopPropagation();
                 this.openComments(videoId);
-            });
-
-            giftBtn?.addEventListener('click', (e) => {
-                e.stopPropagation();
-                this.showGiftSheet(videoId, {
-                    authorUid: item.dataset.uid || null,
-                    author: item.dataset.author || null,
-                    firestoreId: item.dataset.firestoreId || null
-                });
             });
             
             shareBtn?.addEventListener('click', (e) => {
@@ -4511,7 +5161,7 @@ class AdvancedApp {
                     if (targetUid) {
                         this.openUserProfileByUid(targetUid);
                     } else if (targetName) {
-                        AdvancedViewRenderer.showToast('Не удалось открыть профиль', 'warning');
+                        AdvancedViewRenderer.showToast('РќРµ СѓРґР°Р»РѕСЃСЊ РѕС‚РєСЂС‹С‚СЊ РїСЂРѕС„РёР»СЊ', 'warning');
                     }
                     return;
                 }
@@ -4524,11 +5174,11 @@ class AdvancedApp {
 
                     if (!currentUser) {
                         this.navigateTo('auth-view');
-                        AdvancedViewRenderer.showToast('Войдите, чтобы подписаться', 'warning');
+                        AdvancedViewRenderer.showToast('Р’РѕР№РґРёС‚Рµ, С‡С‚РѕР±С‹ РїРѕРґРїРёСЃР°С‚СЊСЃСЏ', 'warning');
                         return;
                     }
                     if (!authorUid) {
-                        AdvancedViewRenderer.showToast('Не удалось определить автора', 'warning');
+                        AdvancedViewRenderer.showToast('РќРµ СѓРґР°Р»РѕСЃСЊ РѕРїСЂРµРґРµР»РёС‚СЊ Р°РІС‚РѕСЂР°', 'warning');
                         return;
                     }
                     if (currentUid && currentUid === authorUid) {
@@ -4557,30 +5207,30 @@ class AdvancedApp {
                                 await firebaseService.unsubscribe(authorUid);
                                 followPlus.textContent = '+';
                                 followPlus.style.background = 'var(--accent-color)';
-                                AdvancedViewRenderer.showToast('Подписка отменена', 'info');
+                                AdvancedViewRenderer.showToast('РџРѕРґРїРёСЃРєР° РѕС‚РјРµРЅРµРЅР°', 'info');
                             } else if (hasPendingRequest) {
                                 await firebaseService.unsubscribe(authorUid);
                                 followPlus.textContent = '+';
                                 followPlus.style.background = 'var(--accent-color)';
-                                AdvancedViewRenderer.showToast('Заявка на подписку отменена', 'info');
+                                AdvancedViewRenderer.showToast('Р—Р°СЏРІРєР° РЅР° РїРѕРґРїРёСЃРєСѓ РѕС‚РјРµРЅРµРЅР°', 'info');
                             } else {
                                 const result = await firebaseService.subscribe(authorUid);
                                 if (result && result.status === 'requested') {
-                                    followPlus.textContent = '…';
+                                    followPlus.textContent = 'вЂ¦';
                                     followPlus.style.background = 'rgba(126, 148, 182, 0.95)';
-                                    AdvancedViewRenderer.showToast('Заявка на подписку отправлена', 'success');
+                                    AdvancedViewRenderer.showToast('Р—Р°СЏРІРєР° РЅР° РїРѕРґРїРёСЃРєСѓ РѕС‚РїСЂР°РІР»РµРЅР°', 'success');
                                 } else {
-                                    followPlus.textContent = '✓';
+                                    followPlus.textContent = 'вњ“';
                                     followPlus.style.background = 'var(--accent-secondary)';
-                                    AdvancedViewRenderer.showToast('Подписка оформлена', 'success');
+                                    AdvancedViewRenderer.showToast('РџРѕРґРїРёСЃРєР° РѕС„РѕСЂРјР»РµРЅР°', 'success');
                                 }
                             }
                         } else {
-                            AdvancedViewRenderer.showToast('Подписки доступны после подключения базы', 'warning');
+                            AdvancedViewRenderer.showToast('РџРѕРґРїРёСЃРєРё РґРѕСЃС‚СѓРїРЅС‹ РїРѕСЃР»Рµ РїРѕРґРєР»СЋС‡РµРЅРёСЏ Р±Р°Р·С‹', 'warning');
                         }
                     } catch (err) {
                         console.error(err);
-                        AdvancedViewRenderer.showToast(err?.message || 'Не удалось изменить подписку', 'error');
+                        AdvancedViewRenderer.showToast(err?.message || 'РќРµ СѓРґР°Р»РѕСЃСЊ РёР·РјРµРЅРёС‚СЊ РїРѕРґРїРёСЃРєСѓ', 'error');
                     }
                 }, 360);
             });
@@ -4595,7 +5245,7 @@ class AdvancedApp {
                         this.searchViewClear.style.display = 'flex';
                         this.performSearch(tag);
                     }, 100);
-                    AdvancedViewRenderer.showToast(`Поиск по ${tag}`, 'info');
+                    AdvancedViewRenderer.showToast(`РџРѕРёСЃРє РїРѕ ${tag}`, 'info');
                 });
             });
             
@@ -4681,11 +5331,11 @@ class AdvancedApp {
 
     previewVideo(file) {
         if (!file.type.startsWith('video/')) {
-            AdvancedViewRenderer.showToast('Выберите видео файл', 'warning');
+            AdvancedViewRenderer.showToast('Р’С‹Р±РµСЂРёС‚Рµ РІРёРґРµРѕ С„Р°Р№Р»', 'warning');
             return;
         }
         if (file.size > 100 * 1024 * 1024) {
-            AdvancedViewRenderer.showToast('Файл слишком большой (макс. 100MB)', 'error');
+            AdvancedViewRenderer.showToast('Р¤Р°Р№Р» СЃР»РёС€РєРѕРј Р±РѕР»СЊС€РѕР№ (РјР°РєСЃ. 100MB)', 'error');
             return;
         }
         
@@ -4700,12 +5350,11 @@ class AdvancedApp {
 
     navigateTo(viewId) {
         if (viewId === 'admin-view' && !this.isCurrentUserAdmin()) {
-            AdvancedViewRenderer.showToast('Доступ только для администратора', 'warning');
+            AdvancedViewRenderer.showToast('Р”РѕСЃС‚СѓРї С‚РѕР»СЊРєРѕ РґР»СЏ Р°РґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂР°', 'warning');
             viewId = 'profile-view';
         }
 
         document.querySelectorAll('video').forEach(v => v.pause());
-        if (viewId !== 'feed-view') this.hideGiftSheet();
         if (viewId !== 'feed-view') this.closeStoryViewer();
         this.state.activeViewId = viewId;
         if (viewId !== 'messages-view') {
@@ -4788,6 +5437,9 @@ class AdvancedApp {
             && !!currentUid;
 
         body.classList.toggle('show-profile-menu', !!isOwnProfileView);
+        if (this.accountSwitchMenu) {
+            this.accountSwitchMenu.style.display = isOwnProfileView ? 'flex' : 'none';
+        }
 
         if (!isOwnProfileView) {
             // Ensure menu is closed when hidden
@@ -4921,10 +5573,10 @@ class AdvancedApp {
 
     getMessagePreviewText(message = {}) {
         const msg = message || {};
-        if (msg.type === 'file') return `📎 ${msg.file?.name || 'Файл'}`;
-        if (msg.type === 'sticker') return '🪄 Стикер';
-        if (msg.type === 'video-circle') return '🎥 Видеокружок';
-        if (msg.type === 'call-event') return '📹 Видеозвонок';
+        if (msg.type === 'file') return `рџ“Ћ ${msg.file?.name || 'Р¤Р°Р№Р»'}`;
+        if (msg.type === 'sticker') return 'рџЄ„ РЎС‚РёРєРµСЂ';
+        if (msg.type === 'video-circle') return 'рџЋҐ Р’РёРґРµРѕРєСЂСѓР¶РѕРє';
+        if (msg.type === 'call-event') return 'рџ“№ Р’РёРґРµРѕР·РІРѕРЅРѕРє';
         return String(msg.content || '').trim();
     }
 
@@ -4946,14 +5598,14 @@ class AdvancedApp {
         const preview = this.getMessagePreviewText(msg);
 
         const trimmed = preview.length > 80 ? (preview.slice(0, 77) + '...') : preview;
-        const text = `💬 @${fromUser}: ${trimmed || 'сообщение'}`;
+        const text = `рџ’¬ @${fromUser}: ${trimmed || 'СЃРѕРѕР±С‰РµРЅРёРµ'}`;
 
         if ('Notification' in window
             && Notification.permission === 'granted'
             && document.visibilityState !== 'visible') {
             try {
-                new Notification(`Сообщение от @${fromUser}`, {
-                    body: trimmed || 'Новое сообщение',
+                new Notification(`РЎРѕРѕР±С‰РµРЅРёРµ РѕС‚ @${fromUser}`, {
+                    body: trimmed || 'РќРѕРІРѕРµ СЃРѕРѕР±С‰РµРЅРёРµ',
                     tag: chatId ? `chat-${chatId}` : undefined
                 });
             } catch (_) {}
@@ -4983,7 +5635,7 @@ class AdvancedApp {
 
     maybeShowIncomingCallToast(call) {
         const fromUser = call?.fromUser || 'user';
-        const text = `📹 Видеозвонок от @${fromUser}`;
+        const text = `рџ“№ Р’РёРґРµРѕР·РІРѕРЅРѕРє РѕС‚ @${fromUser}`;
         const toast = document.getElementById('toast');
         if (toast) {
             toast.dataset.chatId = '';
@@ -5060,7 +5712,7 @@ class AdvancedApp {
                     this.updateFeedCommentCount(id, remoteComments.length);
                 }
             } catch (error) {
-                console.error('Ошибка загрузки комментариев:', error);
+                console.error('РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё РєРѕРјРјРµРЅС‚Р°СЂРёРµРІ:', error);
             }
         }
     }
@@ -5071,7 +5723,7 @@ class AdvancedApp {
         
         if (!text) return;
         if (!this.dataService.getCurrentUser()) {
-            AdvancedViewRenderer.showToast('Войдите, чтобы комментировать', 'warning');
+            AdvancedViewRenderer.showToast('Р’РѕР№РґРёС‚Рµ, С‡С‚РѕР±С‹ РєРѕРјРјРµРЅС‚РёСЂРѕРІР°С‚СЊ', 'warning');
             return;
         }
 
@@ -5091,7 +5743,7 @@ class AdvancedApp {
             }
         }
         if (!video) {
-            AdvancedViewRenderer.showToast('Видео для комментария не найдено', 'warning');
+            AdvancedViewRenderer.showToast('Р’РёРґРµРѕ РґР»СЏ РєРѕРјРјРµРЅС‚Р°СЂРёСЏ РЅРµ РЅР°Р№РґРµРЅРѕ', 'warning');
             return;
         }
 
@@ -5109,13 +5761,13 @@ class AdvancedApp {
                     this.dataService.syncFeedCacheWithLocal();
                 }
             } catch (error) {
-                console.error('Ошибка добавления комментария:', error);
+                console.error('РћС€РёР±РєР° РґРѕР±Р°РІР»РµРЅРёСЏ РєРѕРјРјРµРЅС‚Р°СЂРёСЏ:', error);
                 comment = this.dataService.addComment(targetId, text);
                 if (!comment) {
-                    AdvancedViewRenderer.showToast('Не удалось отправить комментарий', 'error');
+                    AdvancedViewRenderer.showToast('РќРµ СѓРґР°Р»РѕСЃСЊ РѕС‚РїСЂР°РІРёС‚СЊ РєРѕРјРјРµРЅС‚Р°СЂРёР№', 'error');
                     return;
                 }
-                AdvancedViewRenderer.showToast('Сбой сети: комментарий сохранен локально', 'warning');
+                AdvancedViewRenderer.showToast('РЎР±РѕР№ СЃРµС‚Рё: РєРѕРјРјРµРЅС‚Р°СЂРёР№ СЃРѕС…СЂР°РЅРµРЅ Р»РѕРєР°Р»СЊРЅРѕ', 'warning');
             }
         } else {
             comment = this.dataService.addComment(targetId, text);
@@ -5129,19 +5781,19 @@ class AdvancedApp {
             const avatar = comment.avatar
                 || (firebaseService && firebaseService.getCurrentUser ? firebaseService.getCurrentUser()?.avatar : null)
                 || this.dataService.getCurrentUser()?.avatar
-                || `https://ui-avatars.com/api/?name=${encodeURIComponent(comment.user || 'user')}&background=random&size=32`;
+                || 'assets/default-avatar.svg';
             const newCommentHTML = `
                 <div class="comment-item">
                     <img src="${avatar}" class="comment-avatar">
                     <div class="comment-content">
                         <div class="comment-author">
                             @${comment.user}
-                            <span class="comment-time">только что</span>
+                            <span class="comment-time">С‚РѕР»СЊРєРѕ С‡С‚Рѕ</span>
                         </div>
                         <div class="comment-text">${comment.text}</div>
                         <div class="comment-actions">
-                            <span class="comment-action">💬 Ответить</span>
-                            <span class="comment-action">❤️ 0</span>
+                            <span class="comment-action">рџ’¬ РћС‚РІРµС‚РёС‚СЊ</span>
+                            <span class="comment-action">вќ¤пёЏ 0</span>
                         </div>
                     </div>
                 </div>
@@ -5155,7 +5807,7 @@ class AdvancedApp {
             this.updateFeedCommentCount(targetId, nextCount);
             
             input.value = '';
-            AdvancedViewRenderer.showToast('Комментарий добавлен', 'success');
+            AdvancedViewRenderer.showToast('РљРѕРјРјРµРЅС‚Р°СЂРёР№ РґРѕР±Р°РІР»РµРЅ', 'success');
         }
     }
 
@@ -5172,11 +5824,11 @@ class AdvancedApp {
         if (!video) return false;
 
         if (!this.canCurrentUserDeleteVideo(video)) {
-            AdvancedViewRenderer.showToast('Можно удалять только свои видео', 'warning');
+            AdvancedViewRenderer.showToast('РњРѕР¶РЅРѕ СѓРґР°Р»СЏС‚СЊ С‚РѕР»СЊРєРѕ СЃРІРѕРё РІРёРґРµРѕ', 'warning');
             return false;
         }
 
-        if (!confirm('Удалить это видео?')) return false;
+        if (!confirm('РЈРґР°Р»РёС‚СЊ СЌС‚Рѕ РІРёРґРµРѕ?')) return false;
 
         try {
             if (typeof waitForFirebaseService === 'function') {
@@ -5201,6 +5853,15 @@ class AdvancedApp {
                 this.dataService.userVideos = this.dataService.userVideos.filter(v => String(v.id) !== String(video.id));
                 if (typeof this.dataService.syncFeedCacheWithLocal === 'function') {
                     this.dataService.syncFeedCacheWithLocal();
+                }
+            }
+
+            const deletedKey = this.getVideoStorageId(video);
+            if (deletedKey) {
+                const savedEntries = this.readSavedVideosStorage();
+                const nextEntries = savedEntries.filter((entry) => entry.key !== deletedKey);
+                if (nextEntries.length !== savedEntries.length) {
+                    this.writeSavedVideosStorage(nextEntries);
                 }
             }
 
@@ -5238,11 +5899,15 @@ class AdvancedApp {
                 this.setActiveFeedIndex(index, { play: this.dataService.settings.autoplay });
             }
 
-            AdvancedViewRenderer.showToast('Видео удалено', 'success');
+            if (this.state.activeViewId === 'profile-view') {
+                this.renderActiveProfileGrid();
+            }
+
+            AdvancedViewRenderer.showToast('Р’РёРґРµРѕ СѓРґР°Р»РµРЅРѕ', 'success');
             return true;
         } catch (err) {
             console.error(err);
-            AdvancedViewRenderer.showToast(err?.message || 'Не удалось удалить видео', 'error');
+            AdvancedViewRenderer.showToast(err?.message || 'РќРµ СѓРґР°Р»РѕСЃСЊ СѓРґР°Р»РёС‚СЊ РІРёРґРµРѕ', 'error');
             return false;
         }
     }
@@ -5258,25 +5923,36 @@ class AdvancedApp {
         
         const shareModal = document.getElementById('share-modal');
         shareModal.innerHTML = AdvancedViewRenderer.renderShareOptions(video.id);
+        if (currentUid) {
+            const savedLabel = this.isVideoSaved(video) ? 'Удалить из сохраненных' : 'Сохранить';
+            shareModal.insertAdjacentHTML('afterbegin', `
+                <div class="share-option" data-action="save">
+                    <svg viewBox="0 0 24 24">
+                        <path d="M6 3h12a2 2 0 0 1 2 2v16l-8-4-8 4V5a2 2 0 0 1 2-2z"></path>
+                    </svg>
+                    <span>${savedLabel}</span>
+                </div>
+            `);
+        }
         if (!isOwnAuthor && authorUid) {
             shareModal.insertAdjacentHTML('beforeend', `
                 <div class="share-option" data-action="hide-author">
                     <svg viewBox="0 0 24 24">
                         <path d="M12 6a9.77 9.77 0 0 1 9 6 9.77 9.77 0 0 1-9 6 9.77 9.77 0 0 1-9-6 9.77 9.77 0 0 1 9-6m0-2C6.5 4 1.73 7.11 0 12c1.73 4.89 6.5 8 12 8s10.27-3.11 12-8c-1.73-4.89-6.5-8-12-8zm0 5a3 3 0 1 0 3 3 3 3 0 0 0-3-3z"></path>
                     </svg>
-                    <span>Скрыть автора</span>
+                    <span>РЎРєСЂС‹С‚СЊ Р°РІС‚РѕСЂР°</span>
                 </div>
                 <div class="share-option" data-action="block-author">
                     <svg viewBox="0 0 24 24">
                         <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm6.36 14.95L7.05 5.64A8 8 0 0 1 18.36 16.95zM5.64 7.05l11.31 11.31A8 8 0 0 1 5.64 7.05z"></path>
                     </svg>
-                    <span>Заблокировать</span>
+                    <span>Р—Р°Р±Р»РѕРєРёСЂРѕРІР°С‚СЊ</span>
                 </div>
                 <div class="share-option danger" data-action="report">
                     <svg viewBox="0 0 24 24">
                         <path d="M14.4 6 14 4H5v16h2v-6h5.6l.4 2H21V6z"></path>
                     </svg>
-                    <span>Пожаловаться</span>
+                    <span>РџРѕР¶Р°Р»РѕРІР°С‚СЊСЃСЏ</span>
                 </div>
             `);
         }
@@ -5286,7 +5962,7 @@ class AdvancedApp {
                     <svg viewBox="0 0 24 24">
                         <path d="M6 7h12l-1 14H7L6 7zm3-3h6l1 2H8l1-2zM4 7h16v2H4V7z"></path>
                     </svg>
-                    <span>Удалить</span>
+                    <span>РЈРґР°Р»РёС‚СЊ</span>
                 </div>
             `);
         }
@@ -5297,9 +5973,12 @@ class AdvancedApp {
                 const action = option.dataset.action;
                 
                 switch(action) {
+                    case 'save':
+                        this.toggleSaveVideo(video);
+                        break;
                     case 'copy':
                         navigator.clipboard.writeText(option.dataset.url || '')
-                            .then(() => AdvancedViewRenderer.showToast('Ссылка скопирована', 'success'));
+                            .then(() => AdvancedViewRenderer.showToast('РЎСЃС‹Р»РєР° СЃРєРѕРїРёСЂРѕРІР°РЅР°', 'success'));
                         break;
                     case 'whatsapp':
                         window.open(`https://wa.me/?text=${encodeURIComponent(video.desc + ' ' + (option.dataset.url || ''))}`, '_blank');
@@ -5360,7 +6039,7 @@ class AdvancedApp {
                     <circle cx="11" cy="11" r="8"></circle>
                     <path d="m21 21-4.35-4.35"></path>
                 </svg>
-                <p style="color: var(--secondary-text); margin-top: 15px;">Ничего не найдено</p>
+                <p style="color: var(--secondary-text); margin-top: 15px;">РќРёС‡РµРіРѕ РЅРµ РЅР°Р№РґРµРЅРѕ</p>
             `;
             return;
         }
@@ -5369,7 +6048,7 @@ class AdvancedApp {
             const profileItem = document.createElement('div');
             profileItem.className = 'search-result-item profile-result';
             profileItem.innerHTML = `
-                <img src="${profile.avatar || 'https://ui-avatars.com/api/?name=' + encodeURIComponent(profile.name)}" alt="Аватар" class="search-result-thumbnail">
+                <img src="${profile.avatar || 'assets/default-avatar.svg'}" alt="avatar" class="search-result-thumbnail">
                 <div class="search-result-info">
                     <div class="search-result-author">${this.renderUserLabel(profile.name, !!profile.verified)}</div>
                     <div class="search-result-desc">${profile.bio || ''}</div>
@@ -5388,11 +6067,11 @@ class AdvancedApp {
             resultItem.className = 'search-result-item';
             const isAuthorVerified = !!(video.authorVerified || video.verified || verifiedByName.get(video.author));
             resultItem.innerHTML = `
-                <img src="${video.thumbnail}" alt="Видео" class="search-result-thumbnail">
+                <img src="${video.thumbnail}" alt="Р’РёРґРµРѕ" class="search-result-thumbnail">
                 <div class="search-result-info">
                     <div class="search-result-author">${this.renderUserLabel(video.author, isAuthorVerified)}</div>
                     <div class="search-result-desc">${video.desc}</div>
-                    <div class="search-result-views">${video.views} просмотров</div>
+                    <div class="search-result-views">${video.views} РїСЂРѕСЃРјРѕС‚СЂРѕРІ</div>
                 </div>
             `;
             resultItem.addEventListener('click', () => {
@@ -5408,48 +6087,69 @@ class AdvancedApp {
     updateProfileUI() {
         const userProfile = this.dataService.getUserProfile();
         const addStoryBtn = document.getElementById('add-story-btn');
+        const editBtn = document.getElementById('edit-profile-btn');
+        const shareBtn = document.getElementById('share-profile-btn');
+        const followBtn = document.getElementById('follow-profile-btn');
+        const messageBtn = document.getElementById('message-profile-btn');
+        const avatarStatus = document.querySelector('#profile-view .profile-avatar-status');
         this.updateAdminMenuVisibility();
         if (!userProfile) {
+            this.setProfileViewMode('guest');
             if (addStoryBtn) addStoryBtn.style.display = 'none';
             if (this.openLiveBtn) this.openLiveBtn.style.display = 'none';
+            if (editBtn) editBtn.style.display = 'none';
+            if (shareBtn) shareBtn.style.display = 'none';
+            if (followBtn) followBtn.style.display = 'none';
+            if (messageBtn) messageBtn.style.display = 'none';
+            if (avatarStatus) avatarStatus.style.display = 'none';
             document.getElementById('profile-name').textContent = '@guest';
-            document.getElementById('profile-avatar-img').src = 'https://ui-avatars.com/api/?name=Guest&background=random&size=150';
+            document.getElementById('profile-avatar-img').src = 'assets/default-avatar.svg';
+            this.updateProfileDisplayNameUi('guest', false);
+            this.setProfileTopHandle('guest');
             document.getElementById('profile-bio').textContent = '';
             
             document.getElementById('following-stat').querySelector('.stat-num').textContent = '0';
             document.getElementById('followers-stat').querySelector('.stat-num').textContent = '0';
             document.getElementById('likes-stat').querySelector('.stat-num').textContent = '0';
-            if (this.profileCoinsBadge) this.profileCoinsBadge.textContent = 'Монеты: 0';
             if (this.profilePrivateToggle) this.profilePrivateToggle.checked = false;
             if (this.profileAdultToggle) this.profileAdultToggle.checked = false;
-            if (this.profileFollowRequestsBtn) this.profileFollowRequestsBtn.textContent = 'Заявки: 0';
-            
-            document.getElementById('profile-grid').innerHTML = `
-                <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--secondary-text);">
-                    <p>Войдите, чтобы увидеть свои видео</p>
-                </div>
-            `;
+            if (this.profileFollowRequestsBtn) this.profileFollowRequestsBtn.textContent = '\u0417\u0430\u044f\u0432\u043a\u0438: 0';
+            if (this.profileRequestsMenu) this.profileRequestsMenu.style.display = 'none';
+            if (this.profileRequestsMenuText) this.profileRequestsMenuText.textContent = '\u0417\u0430\u044f\u0432\u043a\u0438: 0';
+
+            this.profileViewContext = {
+                isOwn: false,
+                profileUid: null,
+                baseVideos: [],
+                loading: false
+            };
+            this.applyProfileMediaTabsVisibility({ isOwn: false });
+            this.setProfileGridTab('videos', { rerender: false });
+            this.renderProfileGridMessage(document.getElementById('profile-grid'), 'Войдите, чтобы увидеть свой профиль');
             return;
         }
-        if (addStoryBtn) addStoryBtn.style.display = '';
-        if (this.openLiveBtn) this.openLiveBtn.style.display = '';
+        if (addStoryBtn) addStoryBtn.style.display = 'none';
+        if (this.openLiveBtn) this.openLiveBtn.style.display = 'none';
+        this.setProfileViewMode('own');
         
         document.getElementById('profile-name').innerHTML = this.renderUserLabel(userProfile.name, !!userProfile.verified);
-        document.getElementById('profile-avatar-img').src = userProfile.avatar;
+        document.getElementById('profile-avatar-img').src = userProfile.avatar || 'assets/default-avatar.svg';
+        const ownDisplayName = String(userProfile.displayName || userProfile.name || 'user').replace(/^@+/, '').trim() || 'user';
+        this.updateProfileDisplayNameUi(ownDisplayName, !!userProfile.verified);
+        this.setProfileTopHandle(userProfile.name || ownDisplayName);
         document.getElementById('profile-bio').textContent = userProfile.bio || '';
-        if (this.profileCoinsBadge) {
-            this.profileCoinsBadge.textContent = `Монеты: ${AdvancedViewRenderer.formatNumber(parseInt(userProfile.coins, 10) || 0)}`;
-        }
         if (this.profilePrivateToggle) {
             this.profilePrivateToggle.checked = userProfile.privateAccount === true;
         }
         if (this.profileAdultToggle) {
             this.profileAdultToggle.checked = userProfile.allowAdultContent === true;
         }
+        const requestsCount = Array.isArray(userProfile.followRequests) ? userProfile.followRequests.length : 0;
         if (this.profileFollowRequestsBtn) {
-            const requestsCount = Array.isArray(userProfile.followRequests) ? userProfile.followRequests.length : 0;
-            this.profileFollowRequestsBtn.textContent = `Заявки: ${requestsCount}`;
+            this.profileFollowRequestsBtn.textContent = `\u0417\u0430\u044f\u0432\u043a\u0438: ${requestsCount}`;
         }
+        if (this.profileRequestsMenu) this.profileRequestsMenu.style.display = 'flex';
+        if (this.profileRequestsMenuText) this.profileRequestsMenuText.textContent = `\u0417\u0430\u044f\u0432\u043a\u0438: ${requestsCount}`;
         
         if (userProfile.location) {
             document.getElementById('profile-location').style.display = 'block';
@@ -5475,7 +6175,7 @@ class AdvancedApp {
         
         if (userProfile.gender && userProfile.gender !== 'other') {
             document.getElementById('profile-gender').style.display = 'block';
-            const genderLabels = { male: 'Мужчина', female: 'Женщина', other: 'Не указано' };
+            const genderLabels = { male: 'РњСѓР¶С‡РёРЅР°', female: 'Р–РµРЅС‰РёРЅР°', other: 'РќРµ СѓРєР°Р·Р°РЅРѕ' };
             document.getElementById('gender-text').textContent = genderLabels[userProfile.gender] || userProfile.gender;
         } else {
             document.getElementById('profile-gender').style.display = 'none';
@@ -5484,75 +6184,15 @@ class AdvancedApp {
         document.getElementById('following-stat').querySelector('.stat-num').textContent = AdvancedViewRenderer.formatNumber(userProfile.stats.following);
         document.getElementById('followers-stat').querySelector('.stat-num').textContent = AdvancedViewRenderer.formatNumber(userProfile.stats.followers);
         document.getElementById('likes-stat').querySelector('.stat-num').textContent = AdvancedViewRenderer.formatNumber(userProfile.stats.likes);
-        
-        const grid = document.getElementById('profile-grid');
-        const renderGrid = (videos = []) => {
-            grid.innerHTML = '';
 
-            const list = Array.isArray(videos) ? videos : [];
-            if (list.length === 0) {
-                grid.innerHTML = `
-                    <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--secondary-text);">
-                        <svg width="48" height="48" viewBox="0 0 24 24" fill="currentColor" style="opacity: 0.5; margin-bottom: 20px;">
-                            <path d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4z"/>
-                        </svg>
-                        <h3>Нет видео</h3>
-                        <p style="font-size: 14px; margin-top: 10px;">Создайте свое первое видео!</p>
-                        <button class="primary-btn" style="margin-top: 20px; width: auto; padding: 10px 20px;" onclick="app.navigateTo('upload-view')">
-                            Создать видео
-                        </button>
-                    </div>
-                `;
-                return;
-            }
-
-            list.forEach(video => {
-                const gridItem = document.createElement('div');
-                gridItem.className = 'grid-item';
-                gridItem.dataset.id = video.id;
-                if (video.firestoreId) gridItem.dataset.firestoreId = video.firestoreId;
-
-                const commentsCount = Number.isFinite(parseInt(video.commentsCount, 10))
-                    ? (parseInt(video.commentsCount, 10) || 0)
-                    : (Array.isArray(video.comments) ? video.comments.length : 0);
-                const safeUrl = this.escapeHtml(video.url || '');
-                const safePoster = video.thumbnail ? this.escapeHtml(video.thumbnail) : '';
-                const posterAttr = safePoster ? ` poster="${safePoster}"` : '';
-                gridItem.innerHTML = `
-                    <video muted playsinline preload="none" data-src="${safeUrl}"${posterAttr}></video>
-                    <button class="grid-delete-btn" type="button" title="Удалить" aria-label="Удалить видео">
-                        <svg viewBox="0 0 24 24">
-                            <path d="M6 7h12l-1 14H7L6 7zm3-3h6l1 2H8l1-2zM4 7h16v2H4V7z"></path>
-                        </svg>
-                    </button>
-                    <div class="grid-overlay">
-                        <div style="display: flex; align-items: center; gap: 5px; font-size: 11px;">
-                            <span>❤️ ${AdvancedViewRenderer.formatNumber(video.likes || 0)}</span>
-                            <span>💬 ${commentsCount}</span>
-                        </div>
-                    </div>
-                `;
-
-                gridItem.querySelector('.grid-delete-btn')?.addEventListener('click', async (e) => {
-                    e.stopPropagation();
-                    const ok = await this.deleteVideoWithConfirm(video);
-                    if (ok) {
-                        const idx = list.findIndex(v => String(v.id) === String(video.id));
-                        if (idx !== -1) list.splice(idx, 1);
-                    }
-                });
-
-                gridItem.addEventListener('click', (e) => {
-                    if (e.target.closest('.grid-delete-btn')) return;
-                    const startIndex = list.findIndex(v => String(v.id) === String(video.id));
-                    this.enterCustomFeedMode(list, { startIndex: startIndex >= 0 ? startIndex : 0, returnViewId: 'profile-view' });
-                });
-
-                grid.appendChild(gridItem);
-            });
-
-            this.setupProfileGridPreviews(grid);
+        this.profileViewContext = {
+            isOwn: true,
+            profileUid: userProfile.uid || null,
+            baseVideos: Array.isArray(userProfile.videos) ? userProfile.videos : [],
+            loading: false
         };
+        this.applyProfileMediaTabsVisibility({ isOwn: true });
+        this.setProfileGridTab(this.state.profileGridTab || 'videos', { rerender: false });
 
         // If Firebase is available, load videos from Firestore so they persist after reload.
         if (typeof firebaseService !== 'undefined'
@@ -5561,11 +6201,8 @@ class AdvancedApp {
             && firebaseService.isInitialized()
             && typeof firebaseService.getVideosByUid === 'function'
             && userProfile.uid) {
-            grid.innerHTML = `
-                <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: var(--secondary-text);">
-                    <p>Загрузка видео...</p>
-                </div>
-            `;
+            this.profileViewContext.loading = true;
+            this.renderActiveProfileGrid();
             firebaseService.getVideosByUid(userProfile.uid, { includePrivate: true })
                 .then((videos) => {
                     const list = Array.isArray(videos) ? videos : [];
@@ -5581,17 +6218,23 @@ class AdvancedApp {
 
                     const likesTotal = list.reduce((sum, v) => sum + (parseInt(v.likes, 10) || 0), 0);
                     document.getElementById('likes-stat').querySelector('.stat-num').textContent = AdvancedViewRenderer.formatNumber(likesTotal);
-                    renderGrid(list);
+                    this.profileViewContext.baseVideos = list;
+                    this.profileViewContext.loading = false;
+                    this.renderActiveProfileGrid();
                 })
                 .catch((err) => {
-                    console.error('Ошибка загрузки видео профиля:', err);
-                    renderGrid(userProfile.videos);
+                    console.error('РћС€РёР±РєР° Р·Р°РіСЂСѓР·РєРё РІРёРґРµРѕ РїСЂРѕС„РёР»СЏ:', err);
+                    this.profileViewContext.baseVideos = Array.isArray(userProfile.videos) ? userProfile.videos : [];
+                    this.profileViewContext.loading = false;
+                    this.renderActiveProfileGrid();
                 });
             return;
         }
 
         // Fallback: render from local cache
-        renderGrid(userProfile.videos);
+        this.profileViewContext.baseVideos = Array.isArray(userProfile.videos) ? userProfile.videos : [];
+        this.profileViewContext.loading = false;
+        this.renderActiveProfileGrid();
     }
 
     // Messaging and notifications logic moved to js/app-messages.js.
@@ -5605,7 +6248,9 @@ if (typeof window !== 'undefined') {
     window.AdvancedApp = AdvancedApp;
 }
 
-// Инициализация
+// РРЅРёС†РёР°Р»РёР·Р°С†РёСЏ
 document.addEventListener('DOMContentLoaded', () => {
     window.app = new AdvancedApp();
 });
+
+

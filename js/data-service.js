@@ -602,7 +602,7 @@ class AdvancedDataService {
     getAvatarForUser(userName) {
         const user = this.getAllUsers().find(u => u.name === userName);
         if (user && user.avatar) return user.avatar;
-        return `https://ui-avatars.com/api/?name=${encodeURIComponent(userName || 'user')}&background=random&size=64`;
+        return 'assets/default-avatar.svg';
     }
 
     setTypingStatus(chatId, userName, isTyping) {
