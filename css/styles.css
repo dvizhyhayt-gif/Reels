@@ -122,6 +122,7 @@ body {
   display: flex;
   margin: 0;
   padding: 0;
+  overflow: hidden;
 }
 
 body::before {
@@ -152,15 +153,22 @@ textarea {
   justify-content: center;
   align-items: flex-start;
   width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
   padding: clamp(8px, 4vw, 12px);
   box-sizing: border-box;
+  overflow: hidden;
 }
 
 .app-shell {
   position: relative;
   width: min(100%, 430px);
+  height: calc(100vh - 24px);
+  height: calc(100dvh - 24px);
   min-height: calc(100vh - 24px);
   min-height: calc(100dvh - 24px);
+  max-height: calc(100vh - 24px);
+  max-height: calc(100dvh - 24px);
   display: flex;
   flex-direction: column;
   border-radius: var(--radius-lg);
@@ -390,11 +398,13 @@ textarea {
   position: relative;
   z-index: 1;
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 0 16px calc(16px + 90px + max(env(safe-area-inset-bottom), 0px));
+  padding: 0 16px 16px;
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
 .shell-content::-webkit-scrollbar {
@@ -584,7 +594,7 @@ html[data-theme="light"] .hero-card {
 .onboard-topbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 12px;
 }
 
@@ -656,8 +666,8 @@ html[data-theme="light"] .onboard-hero-panel {
 .onboard-title {
   margin: 0;
   font-family: var(--font-display);
-  font-size: clamp(2.2rem, 8vw, 3.6rem);
-  line-height: 0.98;
+  font-size: clamp(1.8rem, 6vw, 2.8rem);
+  line-height: 1.02;
   letter-spacing: -0.05em;
   font-weight: 800;
 }
@@ -1827,12 +1837,13 @@ html[data-theme="dark"] .role-choice-card {
 }
 
 .bottom-nav {
-  position: fixed;
-  bottom: 0;
-  left: 50%;
-  transform: translateX(-50%);
+  position: relative;
+  bottom: auto;
+  left: auto;
+  transform: none;
   z-index: 40;
-  width: min(100%, 430px);
+  width: 100%;
+  flex-shrink: 0;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
@@ -2407,9 +2418,9 @@ html[data-theme="light"] .city-menu {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 20px;
+  justify-items: center;
+  text-align: center;
+  gap: 14px;
   padding-bottom: 20px;
   border-bottom: 1px solid var(--line);
   margin-bottom: 20px;
@@ -2418,19 +2429,18 @@ html[data-theme="light"] .city-menu {
 .profile-avatar-large {
   width: 80px;
   height: 80px;
-  border-radius: 24px;
+  border-radius: 50%;
   display: grid;
   place-items: center;
   flex-shrink: 0;
   overflow: hidden;
-  background: linear-gradient(135deg, var(--primary), var(--primary-alt));
-  box-shadow: 0 12px 24px rgba(59, 130, 246, 0.25);
 }
 
 .profile-hero-info {
   display: grid;
   gap: 6px;
   min-width: 0;
+  justify-items: center;
 }
 
 .profile-hero-name {
@@ -2457,7 +2467,7 @@ html[data-theme="light"] .city-menu {
 
 .profile-hero-about {
   margin: 8px 0 0;
-  grid-column: 1 / -1;
+  max-width: 320px;
   color: var(--muted-strong);
   font-size: 0.95rem;
   line-height: 1.5;
@@ -2761,7 +2771,7 @@ html[data-theme="light"] .city-menu {
   }
 
   .shell-content {
-    padding: 0 12px calc(12px + 90px);
+    padding: 0 12px 12px;
   }
 
   .onboard-topbar {
@@ -2803,9 +2813,6 @@ html[data-theme="light"] .city-menu {
     gap: 6px;
     width: 100%;
     border-radius: 0;
-    left: 0;
-    right: 0;
-    transform: none;
   }
 
   .nav-item {
@@ -3046,7 +3053,7 @@ html[data-theme="light"] .city-menu {
   }
 
   .shell-content {
-    padding: 0 12px calc(10px + 80px);
+    padding: 0 12px 10px;
   }
 
   .hero-card {
