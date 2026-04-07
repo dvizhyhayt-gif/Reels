@@ -1,0 +1,9 @@
+﻿{
+  "name": "TezTap MVP",
+  "short_name": "TezTap",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#fcf7ef",
+  "theme_color": "#f25c3d",
+  "description": "MVP сервиса быстрых подработок с ролями заказчика и исполнителя."
+}

@@ -1,0 +1,10 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Временные правила для разработки - разрешают все операции
+    // ВАЖНО: Перед продакшеном установить более строгие правила!
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
