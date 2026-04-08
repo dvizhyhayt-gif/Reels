@@ -1,4 +1,4 @@
-// Firebase Service - auth + Firestore storage
+﻿// Firebase Service - auth + Firestore storage
 
 (() => {
   const USERS_COLLECTION = "users";
@@ -20,6 +20,10 @@
         ? firebase.app()
         : firebase.initializeApp(window.APP_FIREBASE_CONFIG);
       const db = app.firestore ? app.firestore() : firebase.firestore();
+
+      function nowIso() {
+        return new Date().toISOString();
+      }
 
       function normalizePhone(phone) {
         return String(phone || "").replace(/\D/g, "");
@@ -58,9 +62,51 @@
           delivery_type: userData.role === "executor" ? (userData.delivery_type || "foot") : null,
           demoReady: Boolean(userData.demoReady),
           isOnline: Boolean(userData.isOnline),
-          createdAt: userData.createdAt || new Date().toISOString(),
-          updatedAt: userData.updatedAt || new Date().toISOString()
+          isBlocked: Boolean(userData.isBlocked),
+          usedPromoCodes: Array.isArray(userData.usedPromoCodes) ? userData.usedPromoCodes : [],
+          promoHistory: Array.isArray(userData.promoHistory) ? userData.promoHistory : [],
+          createdAt: userData.createdAt || nowIso(),
+          updatedAt: userData.updatedAt || nowIso()
         };
+      }
+
+      function toOrderShape(orderData = {}) {
+        return {
+          id: String(orderData.id || "").trim(),
+          title: orderData.title || "",
+          fromAddress: orderData.fromAddress || orderData.pickupAddress || `Центр ${orderData.city || DEFAULT_CITY}`,
+          toAddress: orderData.toAddress || orderData.address || orderData.dropoffAddress || "",
+          address: orderData.toAddress || orderData.address || orderData.dropoffAddress || "",
+          city: orderData.city || DEFAULT_CITY,
+          when: orderData.when || "",
+          budget: Number(orderData.budget ?? 0),
+          payment: orderData.payment || "Kaspi",
+          category: orderData.category || "",
+          urgent: Boolean(orderData.urgent || orderData.express),
+          express: Boolean(orderData.express || orderData.urgent),
+          photo: orderData.photo || "",
+          status: orderData.status || "open",
+          description: orderData.description || "",
+          ownerId: String(orderData.ownerId || ""),
+          ownerName: orderData.ownerName || "",
+          ownerVerified: Boolean(orderData.ownerVerified),
+          assigneeId: String(orderData.assigneeId || ""),
+          assigneeName: orderData.assigneeName || "",
+          finalPrice: Number(orderData.finalPrice ?? orderData.budget ?? 0),
+          stage: orderData.stage || (orderData.status === "done" ? "delivered" : orderData.status === "assigned" ? "accepted" : "new"),
+          bids: Array.isArray(orderData.bids) ? orderData.bids : [],
+          chat: Array.isArray(orderData.chat) ? orderData.chat : [],
+          complaints: Array.isArray(orderData.complaints) ? orderData.complaints : [],
+          reviewedBy: Array.isArray(orderData.reviewedBy) ? orderData.reviewedBy : [],
+          completedAt: orderData.completedAt || "",
+          commissionSettled: Boolean(orderData.commissionSettled),
+          createdAt: orderData.createdAt || nowIso(),
+          updatedAt: orderData.updatedAt || nowIso()
+        };
+      }
+
+      function sortOrders(orders) {
+        return orders.slice().sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
       }
 
       async function findUserByPhone(phone) {
@@ -104,106 +150,107 @@
         });
       }
 
+      async function getOrderDoc(orderId) {
+        const snapshot = await db.collection(ORDERS_COLLECTION).doc(orderId).get();
+        if (!snapshot.exists) {
+          return null;
+        }
+        return toOrderShape({ id: snapshot.id, ...snapshot.data() });
+      }
+
       window.FirebaseService = {
         async registerUser(phone, password, name, role, city, code, delivery_type = null) {
-          try {
-            const cleanPhone = String(phone || "").trim();
-            const phoneNormalized = normalizePhone(cleanPhone);
-            const cleanPassword = String(password || "");
+          const cleanPhone = String(phone || "").trim();
+          const phoneNormalized = normalizePhone(cleanPhone);
+          const cleanPassword = String(password || "");
 
-            if (String(code || "").trim() !== DEFAULT_CODE) {
-              throw new Error("Неверный код. Пока используйте 1234.");
-            }
-            if (!phoneNormalized) {
-              throw new Error("Введите телефон");
-            }
-            if (cleanPassword.length < 4) {
-              throw new Error("Пароль должен быть минимум 4 символа");
-            }
-
-            const existingUser = await findUserByPhone(cleanPhone);
-            if (existingUser) {
-              throw new Error("Аккаунт с таким телефоном уже существует");
-            }
-
-            const accountId = await getNextAccountId();
-            const passwordHash = await hashPassword(cleanPassword);
-            const now = new Date().toISOString();
-            const account = toAccountShape({
-              id: accountId,
-              phone: cleanPhone,
-              phoneNormalized,
-              role,
-              name: name || (role === "customer" ? "Новый заказчик" : "Новый исполнитель"),
-              city: city || DEFAULT_CITY,
-              about: "",
-              avatar: "",
-              verificationStatus: "none",
-              balance: 1250,
-              debt: 0,
-              firstGraceUsed: false,
-              jobsDone: 0,
-              rating: 0,
-              responseTime: "",
-              delivery_type: role === "executor" ? (delivery_type || "foot") : null,
-              demoReady: false,
-              isOnline: false,
-              createdAt: now,
-              updatedAt: now
-            });
-
-            await db.collection(USERS_COLLECTION).doc(accountId).set({
-              ...account,
-              passwordHash
-            });
-
-            return { success: true, uid: accountId, account };
-          } catch (error) {
-            console.error("Ошибка регистрации:", error);
-            throw error;
+          if (String(code || "").trim() !== DEFAULT_CODE) {
+            throw new Error("Неверный код. Пока используйте 1234.");
           }
+          if (!phoneNormalized) {
+            throw new Error("Введите телефон");
+          }
+          if (cleanPassword.length < 4) {
+            throw new Error("Пароль должен быть минимум 4 символа");
+          }
+
+          const existingUser = await findUserByPhone(cleanPhone);
+          if (existingUser) {
+            throw new Error("Аккаунт с таким телефоном уже существует");
+          }
+
+          const accountId = await getNextAccountId();
+          const passwordHash = await hashPassword(cleanPassword);
+          const now = nowIso();
+          const account = toAccountShape({
+            id: accountId,
+            phone: cleanPhone,
+            phoneNormalized,
+            role,
+            name: name || (role === "customer" ? "Новый заказчик" : "Новый исполнитель"),
+            city: city || DEFAULT_CITY,
+            about: "",
+            avatar: "",
+            verificationStatus: "none",
+            balance: 1250,
+            debt: 0,
+            firstGraceUsed: false,
+            jobsDone: 0,
+            rating: 0,
+            responseTime: "",
+            delivery_type: role === "executor" ? (delivery_type || "foot") : null,
+            demoReady: false,
+            isOnline: false,
+            isBlocked: false,
+            usedPromoCodes: [],
+            promoHistory: [],
+            createdAt: now,
+            updatedAt: now
+          });
+
+          await db.collection(USERS_COLLECTION).doc(accountId).set({
+            ...account,
+            passwordHash
+          });
+
+          return { success: true, uid: accountId, account };
         },
 
         async loginUser(phone, password) {
-          try {
-            const cleanPassword = String(password || "");
-            if (cleanPassword.length < 4) {
-              throw new Error("Введите пароль минимум из 4 символов");
-            }
-
-            const userRecord = await findUserByPhone(phone);
-            if (!userRecord) {
-              throw new Error("Пользователь не найден");
-            }
-
-            const passwordHash = await hashPassword(cleanPassword);
-            const userData = userRecord.data || {};
-            const matchesHash = Boolean(userData.passwordHash) && userData.passwordHash === passwordHash;
-            const matchesLegacyPassword = Boolean(userData.password) && userData.password === cleanPassword;
-
-            if (!matchesHash && !matchesLegacyPassword) {
-              throw new Error("Неверный пароль");
-            }
-
-            const normalizedAccount = toAccountShape({
-              ...userData,
-              id: userRecord.id
-            });
-
-            if (matchesLegacyPassword || !userData.phoneNormalized) {
-              await db.collection(USERS_COLLECTION).doc(userRecord.id).set({
-                passwordHash,
-                phoneNormalized: normalizedAccount.phoneNormalized,
-                password: firebase.firestore.FieldValue.delete(),
-                updatedAt: new Date().toISOString()
-              }, { merge: true });
-            }
-
-            return { success: true, uid: userRecord.id, account: normalizedAccount };
-          } catch (error) {
-            console.error("Ошибка входа:", error);
-            throw error;
+          const cleanPassword = String(password || "");
+          if (cleanPassword.length < 4) {
+            throw new Error("Введите пароль минимум из 4 символов");
           }
+
+          const userRecord = await findUserByPhone(phone);
+          if (!userRecord) {
+            throw new Error("Пользователь не найден");
+          }
+
+          const passwordHash = await hashPassword(cleanPassword);
+          const userData = userRecord.data || {};
+          const matchesHash = Boolean(userData.passwordHash) && userData.passwordHash === passwordHash;
+          const matchesLegacyPassword = Boolean(userData.password) && userData.password === cleanPassword;
+
+          if (!matchesHash && !matchesLegacyPassword) {
+            throw new Error("Неверный пароль");
+          }
+
+          const normalizedAccount = toAccountShape({
+            ...userData,
+            id: userRecord.id
+          });
+
+          if (matchesLegacyPassword || !userData.phoneNormalized) {
+            await db.collection(USERS_COLLECTION).doc(userRecord.id).set({
+              passwordHash,
+              phoneNormalized: normalizedAccount.phoneNormalized,
+              password: firebase.firestore.FieldValue.delete(),
+              updatedAt: nowIso()
+            }, { merge: true });
+          }
+
+          return { success: true, uid: userRecord.id, account: normalizedAccount };
         },
 
         async logoutUser() {
@@ -215,270 +262,451 @@
         },
 
         async saveOrder(orderData) {
-          try {
-            const orderId = String(orderData?.id || "").trim();
-            if (!orderId) {
-              throw new Error("Order ID is required");
-            }
-
-            await db.collection(ORDERS_COLLECTION).doc(orderId).set({
-              ...orderData,
-              id: orderId,
-              updatedAt: new Date().toISOString(),
-              createdAt: orderData.createdAt || new Date().toISOString()
-            }, { merge: true });
-
-            return { success: true, orderId };
-          } catch (error) {
-            console.error("Ошибка сохранения заказа:", error);
-            throw error;
+          const orderId = String(orderData?.id || "").trim();
+          if (!orderId) {
+            throw new Error("Order ID is required");
           }
+
+          const order = toOrderShape({
+            ...orderData,
+            id: orderId
+          });
+
+          await db.collection(ORDERS_COLLECTION).doc(orderId).set({
+            ...order,
+            updatedAt: nowIso(),
+            createdAt: order.createdAt || nowIso()
+          }, { merge: true });
+
+          return { success: true, orderId, order };
         },
 
         async getOrdersByCity(city) {
+          const snapshot = await db
+            .collection(ORDERS_COLLECTION)
+            .where("city", "==", city)
+            .limit(100)
+            .get();
+
+          return sortOrders(snapshot.docs.map((doc) => toOrderShape({ id: doc.id, ...doc.data() })));
+        },
+
+        subscribeOrdersByCity(city, onNext, onError) {
           try {
-            const snapshot = await db
+            return db
               .collection(ORDERS_COLLECTION)
               .where("city", "==", city)
-              .limit(50)
-              .get();
-
-            return snapshot.docs
-              .map((doc) => ({ id: doc.id, ...doc.data() }))
-              .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+              .limit(100)
+              .onSnapshot((snapshot) => {
+                const orders = sortOrders(snapshot.docs.map((doc) => toOrderShape({ id: doc.id, ...doc.data() })));
+                if (typeof onNext === "function") {
+                  onNext(orders);
+                }
+              }, (error) => {
+                console.error("Ошибка realtime подписки заказов:", error);
+                if (typeof onError === "function") {
+                  onError(error);
+                }
+              });
           } catch (error) {
-            console.error("Ошибка получения заказов:", error);
-            return [];
+            console.error("Ошибка запуска realtime подписки:", error);
+            if (typeof onError === "function") {
+              onError(error);
+            }
+            return () => {};
           }
         },
 
         async getUserOrders(userId) {
-          try {
-            const snapshot = await db
-              .collection(ORDERS_COLLECTION)
-              .where("ownerId", "==", userId)
-              .limit(100)
-              .get();
+          const snapshot = await db
+            .collection(ORDERS_COLLECTION)
+            .where("ownerId", "==", userId)
+            .limit(100)
+            .get();
 
-            return snapshot.docs
-              .map((doc) => ({ id: doc.id, ...doc.data() }))
-              .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
-          } catch (error) {
-            console.error("Ошибка получения заказов пользователя:", error);
-            return [];
-          }
+          return sortOrders(snapshot.docs.map((doc) => toOrderShape({ id: doc.id, ...doc.data() })));
         },
 
         async updateOrder(orderId, updates) {
-          try {
-            await db.collection(ORDERS_COLLECTION).doc(orderId).set({
-              ...updates,
-              updatedAt: new Date().toISOString()
-            }, { merge: true });
-            return { success: true };
-          } catch (error) {
-            console.error("Ошибка обновления заказа:", error);
-            throw error;
-          }
+          await db.collection(ORDERS_COLLECTION).doc(orderId).set({
+            ...updates,
+            updatedAt: nowIso()
+          }, { merge: true });
+          return { success: true };
         },
 
         async deleteOrder(orderId) {
-          try {
-            await db.collection(ORDERS_COLLECTION).doc(orderId).delete();
-            return { success: true };
-          } catch (error) {
-            console.error("Ошибка удаления заказа:", error);
-            throw error;
-          }
+          await db.collection(ORDERS_COLLECTION).doc(orderId).delete();
+          return { success: true };
         },
 
         async getOrder(orderId) {
-          try {
-            const doc = await db.collection(ORDERS_COLLECTION).doc(orderId).get();
-            return doc.exists ? { id: doc.id, ...doc.data() } : null;
-          } catch (error) {
-            console.error("Ошибка получения заказа:", error);
-            return null;
-          }
+          return getOrderDoc(orderId);
+        },
+
+        async takeOrder(orderId, executorData) {
+          const orderRef = db.collection(ORDERS_COLLECTION).doc(orderId);
+
+          const order = await db.runTransaction(async (transaction) => {
+            const snapshot = await transaction.get(orderRef);
+            if (!snapshot.exists) {
+              throw new Error("Заказ не найден");
+            }
+
+            const currentOrder = toOrderShape({ id: snapshot.id, ...snapshot.data() });
+            if (currentOrder.status !== "open") {
+              throw new Error("Этот заказ уже недоступен");
+            }
+
+            const now = nowIso();
+            const nextOrder = {
+              ...currentOrder,
+              status: "assigned",
+              stage: "accepted",
+              assigneeId: String(executorData?.id || ""),
+              assigneeName: executorData?.name || "",
+              finalPrice: Number(currentOrder.finalPrice || currentOrder.budget || 0),
+              updatedAt: now,
+              chat: [
+                ...currentOrder.chat,
+                {
+                  id: `MSG-${Date.now()}`,
+                  senderId: "system",
+                  senderName: "TRAINTUP",
+                  role: "system",
+                  text: `${executorData?.name || "Исполнитель"} взял заказ в работу.`,
+                  createdAt: now
+                }
+              ]
+            };
+
+            transaction.set(orderRef, nextOrder, { merge: true });
+            return nextOrder;
+          });
+
+          return { success: true, order };
+        },
+
+        async submitBid(orderId, bidData) {
+          const orderRef = db.collection(ORDERS_COLLECTION).doc(orderId);
+
+          const order = await db.runTransaction(async (transaction) => {
+            const snapshot = await transaction.get(orderRef);
+            if (!snapshot.exists) {
+              throw new Error("Заказ не найден");
+            }
+
+            const currentOrder = toOrderShape({ id: snapshot.id, ...snapshot.data() });
+            if (currentOrder.status !== "open") {
+              throw new Error("Откликнуться можно только на открытый заказ");
+            }
+
+            const now = nowIso();
+            const nextBid = {
+              id: String(bidData?.id || `BID-${Date.now()}`),
+              userId: String(bidData?.userId || ""),
+              userName: bidData?.userName || "",
+              price: Number(bidData?.price || 0),
+              note: bidData?.note || "",
+              createdAt: bidData?.createdAt || now
+            };
+            const bidText = nextBid.note ? `Предлагаю ${nextBid.price} ₸. ${nextBid.note}` : `Предлагаю ${nextBid.price} ₸.`;
+
+            const nextOrder = {
+              ...currentOrder,
+              bids: [...currentOrder.bids, nextBid],
+              chat: [
+                ...currentOrder.chat,
+                {
+                  id: `MSG-${Date.now()}`,
+                  senderId: nextBid.userId,
+                  senderName: nextBid.userName,
+                  role: "executor",
+                  text: bidText,
+                  createdAt: now
+                }
+              ],
+              updatedAt: now
+            };
+
+            transaction.set(orderRef, nextOrder, { merge: true });
+            return nextOrder;
+          });
+
+          return { success: true, order };
+        },
+
+        async acceptBid(orderId, bidId) {
+          const orderRef = db.collection(ORDERS_COLLECTION).doc(orderId);
+
+          const order = await db.runTransaction(async (transaction) => {
+            const snapshot = await transaction.get(orderRef);
+            if (!snapshot.exists) {
+              throw new Error("Заказ не найден");
+            }
+
+            const currentOrder = toOrderShape({ id: snapshot.id, ...snapshot.data() });
+            const bid = currentOrder.bids.find((item) => item.id === bidId);
+            if (!bid) {
+              throw new Error("Отклик не найден");
+            }
+
+            const now = nowIso();
+            const nextOrder = {
+              ...currentOrder,
+              status: "assigned",
+              stage: "accepted",
+              assigneeId: String(bid.userId || ""),
+              assigneeName: bid.userName || "",
+              finalPrice: Number(bid.price || currentOrder.budget || 0),
+              updatedAt: now,
+              chat: [
+                ...currentOrder.chat,
+                {
+                  id: `MSG-${Date.now()}`,
+                  senderId: "system",
+                  senderName: "TRAINTUP",
+                  role: "system",
+                  text: `Заказчик принял предложение ${bid.userName} на ${bid.price} ₸.`,
+                  createdAt: now
+                }
+              ]
+            };
+
+            transaction.set(orderRef, nextOrder, { merge: true });
+            return nextOrder;
+          });
+
+          return { success: true, order };
+        },
+
+        async completeOrder(orderId) {
+          const orderRef = db.collection(ORDERS_COLLECTION).doc(orderId);
+
+          const order = await db.runTransaction(async (transaction) => {
+            const snapshot = await transaction.get(orderRef);
+            if (!snapshot.exists) {
+              throw new Error("Заказ не найден");
+            }
+
+            const currentOrder = toOrderShape({ id: snapshot.id, ...snapshot.data() });
+            if (currentOrder.status === "done") {
+              return currentOrder;
+            }
+
+            const now = nowIso();
+            const nextOrder = {
+              ...currentOrder,
+              status: "done",
+              stage: "delivered",
+              completedAt: now,
+              updatedAt: now,
+              chat: [
+                ...currentOrder.chat,
+                {
+                  id: `MSG-${Date.now()}`,
+                  senderId: "system",
+                  senderName: "TRAINTUP",
+                  role: "system",
+                  text: "Заказ отмечен как выполненный.",
+                  createdAt: now
+                }
+              ]
+            };
+
+            transaction.set(orderRef, nextOrder, { merge: true });
+            return nextOrder;
+          });
+
+          return { success: true, order };
+        },
+
+        async appendOrderMessage(orderId, message) {
+          const orderRef = db.collection(ORDERS_COLLECTION).doc(orderId);
+
+          const order = await db.runTransaction(async (transaction) => {
+            const snapshot = await transaction.get(orderRef);
+            if (!snapshot.exists) {
+              throw new Error("Заказ не найден");
+            }
+
+            const currentOrder = toOrderShape({ id: snapshot.id, ...snapshot.data() });
+            const now = nowIso();
+            const nextMessage = {
+              id: String(message?.id || `MSG-${Date.now()}`),
+              senderId: String(message?.senderId || ""),
+              senderName: message?.senderName || "",
+              role: message?.role || "system",
+              text: message?.text || "",
+              createdAt: message?.createdAt || now
+            };
+
+            const nextOrder = {
+              ...currentOrder,
+              chat: [...currentOrder.chat, nextMessage],
+              updatedAt: now
+            };
+
+            transaction.set(orderRef, nextOrder, { merge: true });
+            return nextOrder;
+          });
+
+          return { success: true, order };
         },
 
         async addBid(orderId, bidData) {
-          try {
-            const bidId = Date.now().toString();
-            await db.collection(ORDERS_COLLECTION).doc(orderId).collection("bids").doc(bidId).set({
-              ...bidData,
-              id: bidId,
-              createdAt: new Date().toISOString()
-            });
-            return { success: true, bidId };
-          } catch (error) {
-            console.error("Ошибка добавления ставки:", error);
-            throw error;
-          }
+          return this.submitBid(orderId, bidData);
         },
 
         async getBids(orderId) {
-          try {
-            const snapshot = await db.collection(ORDERS_COLLECTION).doc(orderId).collection("bids").get();
-            return snapshot.docs.map((doc) => doc.data());
-          } catch (error) {
-            console.error("Ошибка получения ставок:", error);
-            return [];
-          }
+          const order = await getOrderDoc(orderId);
+          return order?.bids || [];
         },
 
         async addChatMessage(orderId, message) {
-          try {
-            const msgId = Date.now().toString();
-            await db.collection(ORDERS_COLLECTION).doc(orderId).collection("chat").doc(msgId).set({
-              ...message,
-              id: msgId,
-              timestamp: new Date().toISOString()
-            });
-            return { success: true };
-          } catch (error) {
-            console.error("Ошибка отправки сообщения:", error);
-            throw error;
-          }
+          return this.appendOrderMessage(orderId, message);
         },
 
         async getOrderChat(orderId) {
-          try {
-            const snapshot = await db.collection(ORDERS_COLLECTION).doc(orderId).collection("chat").limit(100).get();
-            return snapshot.docs.map((doc) => doc.data());
-          } catch (error) {
-            console.error("Ошибка получения чата:", error);
-            return [];
-          }
+          const order = await getOrderDoc(orderId);
+          return order?.chat || [];
         },
 
         async saveNotification(userId, notification) {
+          const notifId = Date.now().toString();
+          await db.collection("notifications").doc(notifId).set({
+            ...notification,
+            userId,
+            id: notifId,
+            read: false,
+            createdAt: nowIso()
+          });
+          return { success: true };
+        },
+
+        subscribeUserNotifications(userId, onNext, onError) {
           try {
-            const notifId = Date.now().toString();
-            await db.collection("notifications").doc(notifId).set({
-              ...notification,
-              userId,
-              id: notifId,
-              read: false,
-              createdAt: new Date().toISOString()
-            });
-            return { success: true };
+            return db.collection("notifications")
+              .where("userId", "==", userId)
+              .limit(100)
+              .onSnapshot((snapshot) => {
+                const notifications = snapshot.docs
+                  .map((doc) => ({ id: doc.id, ...doc.data() }))
+                  .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
+                if (typeof onNext === "function") {
+                  onNext(notifications);
+                }
+              }, (error) => {
+                console.error("Ошибка realtime подписки уведомлений:", error);
+                if (typeof onError === "function") {
+                  onError(error);
+                }
+              });
           } catch (error) {
-            console.error("Ошибка сохранения уведомления:", error);
-            throw error;
+            console.error("Ошибка запуска realtime уведомлений:", error);
+            if (typeof onError === "function") {
+              onError(error);
+            }
+            return () => {};
           }
         },
 
         async getUserNotifications(userId) {
-          try {
-            const snapshot = await db.collection("notifications").where("userId", "==", userId).limit(50).get();
-            return snapshot.docs.map((doc) => doc.data());
-          } catch (error) {
-            console.error("Ошибка получения уведомлений:", error);
-            return [];
-          }
+          const snapshot = await db.collection("notifications").where("userId", "==", userId).limit(50).get();
+          return snapshot.docs
+            .map((doc) => ({ id: doc.id, ...doc.data() }))
+            .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
         },
 
         async markNotificationRead(notifId) {
-          try {
-            await db.collection("notifications").doc(notifId).update({ read: true });
-            return { success: true };
-          } catch (error) {
-            console.error("Ошибка отметки уведомления:", error);
-            throw error;
-          }
+          await db.collection("notifications").doc(notifId).update({ read: true });
+          return { success: true };
         },
 
         async getUser(userId) {
-          try {
-            const doc = await db.collection(USERS_COLLECTION).doc(userId).get();
-            return doc.exists ? toAccountShape({ id: doc.id, ...doc.data() }) : null;
-          } catch (error) {
-            console.error("Ошибка получения пользователя:", error);
-            return null;
-          }
+          const doc = await db.collection(USERS_COLLECTION).doc(userId).get();
+          return doc.exists ? toAccountShape({ id: doc.id, ...doc.data() }) : null;
         },
 
         async updateUser(userId, updates) {
-          try {
-            await db.collection(USERS_COLLECTION).doc(userId).set({
-              ...updates,
-              updatedAt: new Date().toISOString()
-            }, { merge: true });
-            return { success: true };
-          } catch (error) {
-            console.error("Ошибка обновления пользователя:", error);
-            throw error;
-          }
+          await db.collection(USERS_COLLECTION).doc(userId).set({
+            ...updates,
+            updatedAt: nowIso()
+          }, { merge: true });
+          return { success: true };
         },
 
         async saveAccount(accountData) {
-          try {
-            const userId = String(accountData?.id || "").trim();
-            if (!userId) {
-              throw new Error("User ID is required");
-            }
-
-            const account = toAccountShape({
-              ...accountData,
-              id: userId
-            });
-
-            await db.collection(USERS_COLLECTION).doc(userId).set({
-              ...account,
-              updatedAt: new Date().toISOString()
-            }, { merge: true });
-
-            return { success: true, account };
-          } catch (error) {
-            console.error("Ошибка сохранения аккаунта:", error);
-            throw error;
+          const userId = String(accountData?.id || "").trim();
+          if (!userId) {
+            throw new Error("User ID is required");
           }
+
+          const account = toAccountShape({
+            ...accountData,
+            id: userId
+          });
+
+          await db.collection(USERS_COLLECTION).doc(userId).set({
+            ...account,
+            updatedAt: nowIso()
+          }, { merge: true });
+
+          return { success: true, account };
         },
 
         async addUserRating(userId, rating) {
-          try {
-            const doc = await db.collection(USERS_COLLECTION).doc(userId).get();
-            const userData = doc.data() || {};
-            const jobsDone = Number(userData.jobsDone ?? 0);
-            const currentRating = Number(userData.rating ?? 0);
-            const newRating = (currentRating * jobsDone + Number(rating || 0)) / (jobsDone + 1);
+          const doc = await db.collection(USERS_COLLECTION).doc(userId).get();
+          const userData = doc.data() || {};
+          const jobsDone = Number(userData.jobsDone ?? 0);
+          const currentRating = Number(userData.rating ?? 0);
+          const nextRating = (currentRating * jobsDone + Number(rating || 0)) / (jobsDone + 1);
 
-            await db.collection(USERS_COLLECTION).doc(userId).update({
-              rating: newRating,
-              jobsDone: jobsDone + 1,
-              updatedAt: new Date().toISOString()
-            });
-            return { success: true };
-          } catch (error) {
-            console.error("Ошибка добавления рейтинга:", error);
-            throw error;
-          }
+          await db.collection(USERS_COLLECTION).doc(userId).update({
+            rating: nextRating,
+            jobsDone: jobsDone + 1,
+            updatedAt: nowIso()
+          });
+          return { success: true };
         },
 
         async addReview(reviewData) {
-          try {
-            const reviewId = Date.now().toString();
-            await db.collection("reviews").doc(reviewId).set({
-              ...reviewData,
-              id: reviewId,
-              createdAt: new Date().toISOString()
-            });
-            return { success: true, reviewId };
-          } catch (error) {
-            console.error("Ошибка добавления отзыва:", error);
-            throw error;
-          }
+          const reviewId = Date.now().toString();
+          await db.collection("reviews").doc(reviewId).set({
+            ...reviewData,
+            id: reviewId,
+            createdAt: nowIso()
+          });
+          return { success: true, reviewId };
         },
 
         async getUserReviews(userId) {
-          try {
-            const snapshot = await db.collection("reviews").where("toUserId", "==", userId).limit(50).get();
-            return snapshot.docs.map((doc) => doc.data());
-          } catch (error) {
-            console.error("Ошибка получения отзывов:", error);
-            return [];
-          }
+          const snapshot = await db.collection("reviews").where("toUserId", "==", userId).limit(50).get();
+          return snapshot.docs.map((doc) => doc.data());
+        },
+
+        async getAdminStories() {
+          const snapshot = await db.collection("admin_stories").where("active", "==", true).limit(20).get();
+          return snapshot.docs
+            .map((doc) => ({ id: doc.id, ...doc.data() }))
+            .sort((a, b) => Number(a.sortOrder ?? 0) - Number(b.sortOrder ?? 0));
+        },
+
+        async getAdminPromoCodes() {
+          const snapshot = await db.collection("promo_codes").where("active", "==", true).limit(50).get();
+          const promoCodes = {};
+          snapshot.docs.forEach((doc) => {
+            const data = doc.data() || {};
+            promoCodes[String(data.code || doc.id).toUpperCase()] = {
+              amount: Number(data.amount ?? 0),
+              label: data.label || "Промобонус",
+              active: data.active !== false,
+              roles: Array.isArray(data.roles) ? data.roles : [],
+              expiresAt: data.expiresAt || ""
+            };
+          });
+          return promoCodes;
         },
 
         async logEvent(eventName, eventData = {}) {
@@ -487,7 +715,7 @@
             await db.collection("events").doc(eventId).set({
               name: eventName,
               data: eventData,
-              timestamp: new Date().toISOString()
+              timestamp: nowIso()
             });
             return { success: true };
           } catch (error) {

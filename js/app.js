@@ -4,6 +4,12 @@
   const root = document.getElementById("app");
   const toast = document.getElementById("toast");
   let toastTimer = null;
+  let unsubscribeOrdersRealtime = null;
+  let unsubscribeNotificationsRealtime = null;
+  let promoStoryTimer = null;
+  let promoStoryRemaining = 4500;
+  let promoStoryStartedAt = 0;
+  let promoStoryTrackedIndex = -1;
 
   const ICONS = {
     search: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 4a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13Zm0 2a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9Zm8.85 10.44 1.41 1.41-3.2 3.2-1.41-1.41 3.2-3.2Z"/></svg>',
@@ -34,14 +40,150 @@
     "Семей": ["Центральный рынок", "Арбат Семей", "ЖД вокзал", "ТЦ Казына", "Парк Абая"],
     "Павлодар": ["Batyr Mall", "Набережная", "ЖД вокзал", "ЦУМ Павлодар", "Greenwich"]
   };
+  const ORDER_ADDRESS_COORDINATES = {
+    "Алматы": {
+      "Mega Alma-Ata": { lat: 43.202429, lng: 76.892772 },
+      "Арбат, Жибек Жолы": { lat: 43.262196, lng: 76.945774 },
+      "Абая - Байтурсынова": { lat: 43.238208, lng: 76.928831 },
+      "Dostyk Plaza": { lat: 43.233221, lng: 76.955820 },
+      "Сайран автовокзал": { lat: 43.240985, lng: 76.867971 }
+    },
+    "Нур-Султан": {
+      "Хан Шатыр": { lat: 51.132243, lng: 71.403451 },
+      "Байтерек": { lat: 51.128276, lng: 71.430610 },
+      "MEGA Silk Way": { lat: 51.090498, lng: 71.403882 },
+      "Вокзал Нурлы Жол": { lat: 51.149716, lng: 71.422302 },
+      "Триумф Астаны": { lat: 51.140215, lng: 71.429119 }
+    },
+    "Кокшетау": {
+      "Центральный рынок": { lat: 53.283489, lng: 69.388104 },
+      "ТЦ Rio": { lat: 53.282014, lng: 69.395480 },
+      "Абылай хана, центр": { lat: 53.286094, lng: 69.404153 },
+      "Автовокзал": { lat: 53.287881, lng: 69.378219 },
+      "Набережная Копы": { lat: 53.297528, lng: 69.385620 }
+    },
+    "Шымкент": {
+      "Shymkent Plaza": { lat: 42.318318, lng: 69.591084 },
+      "Арбат Шымкент": { lat: 42.317530, lng: 69.595425 },
+      "Центральный парк": { lat: 42.314411, lng: 69.588603 },
+      "Автовокзал Самал": { lat: 42.296962, lng: 69.599226 },
+      "Mega Planet": { lat: 42.339615, lng: 69.596377 }
+    },
+    "Актау": {
+      "Актау Молл": { lat: 43.652872, lng: 51.152183 },
+      "Набережная 15 мкр": { lat: 43.660115, lng: 51.159448 },
+      "ТРК Актау": { lat: 43.650428, lng: 51.171052 },
+      "Автовокзал": { lat: 43.642258, lng: 51.174385 },
+      "Площадь Ынтымак": { lat: 43.652069, lng: 51.160770 }
+    },
+    "Уральск": {
+      "City Center": { lat: 51.230762, lng: 51.368561 },
+      "Центральный рынок": { lat: 51.226091, lng: 51.373221 },
+      "Парк Кирова": { lat: 51.230148, lng: 51.360311 },
+      "ЖД вокзал": { lat: 51.209154, lng: 51.385676 },
+      "ТРЦ Галактика": { lat: 51.234609, lng: 51.377283 }
+    },
+    "Актобе": {
+      "Keruen City": { lat: 50.291241, lng: 57.151856 },
+      "Центральный стадион": { lat: 50.282990, lng: 57.172094 },
+      "Автовокзал Сапар": { lat: 50.270842, lng: 57.215340 },
+      "Парк Первого Президента": { lat: 50.299247, lng: 57.157747 },
+      "Mega Aktobe": { lat: 50.296781, lng: 57.154241 }
+    },
+    "Караганда": {
+      "City Mall": { lat: 49.803658, lng: 73.087081 },
+      "ЦУМ": { lat: 49.806424, lng: 73.102498 },
+      "Автовокзал": { lat: 49.799508, lng: 73.095635 },
+      "Таир": { lat: 49.807781, lng: 73.125892 },
+      "Парк Победы": { lat: 49.819260, lng: 73.094614 }
+    },
+    "Семей": {
+      "Центральный рынок": { lat: 50.414620, lng: 80.249680 },
+      "Арбат Семей": { lat: 50.411096, lng: 80.227146 },
+      "ЖД вокзал": { lat: 50.397939, lng: 80.255175 },
+      "ТЦ Казына": { lat: 50.412225, lng: 80.234720 },
+      "Парк Абая": { lat: 50.414025, lng: 80.223903 }
+    },
+    "Павлодар": {
+      "Batyr Mall": { lat: 52.301530, lng: 76.953703 },
+      "Набережная": { lat: 52.287265, lng: 76.973437 },
+      "ЖД вокзал": { lat: 52.271714, lng: 76.940843 },
+      "ЦУМ Павлодар": { lat: 52.284938, lng: 76.967198 },
+      "Greenwich": { lat: 52.290667, lng: 76.950582 }
+    }
+  };
   const ORDER_SERVICE_OPTIONS = ["Курьерская доставка", "Документы", "Покупка в магазине", "Личные вещи", "Посылка", "Цветы и подарок"];
   const ORDER_TIME_OPTIONS = ["Как можно скорее", "В течение часа", "Сегодня до вечера", "Сегодня к точному времени", "Завтра утром"];
+  const CITY_COORDINATES = {
+    "Алматы": { lat: 43.238949, lng: 76.889709 },
+    "Нур-Султан": { lat: 51.128207, lng: 71.430420 },
+    "Кокшетау": { lat: 53.287338, lng: 69.404587 },
+    "Шымкент": { lat: 42.341686, lng: 69.590101 },
+    "Актау": { lat: 43.653205, lng: 51.197497 },
+    "Уральск": { lat: 51.227821, lng: 51.386543 },
+    "Актобе": { lat: 50.283933, lng: 57.166978 },
+    "Караганда": { lat: 49.806015, lng: 73.085274 },
+    "Семей": { lat: 50.411424, lng: 80.227853 },
+    "Павлодар": { lat: 52.287054, lng: 76.967396 }
+  };
+  const PROMO_CODE_LIBRARY = {
+    START500: { amount: 500, label: "Стартовый бонус" },
+    BONUS1000: { amount: 1000, label: "Бонус на баланс" },
+    EXPRESS300: { amount: 300, label: "Express бонус" }
+  };
+  const PROMO_STORY_DURATION = 4500;
+  // Управляемые разработчиком stories/promos при входе в приложение.
+  const PROMO_STORIES = [
+    {
+      id: "qr-ready",
+      badge: "Обновление",
+      title: "Система QR кода готова",
+      subtitle: "Поздравляем! Новый экран QR уже доступен в приложении.",
+      accent: "#60a5fa",
+      visual: "QR",
+      image: ""
+    },
+    {
+      id: "promo-wallet",
+      badge: "Бонус",
+      title: "Промокоды уже в профиле",
+      subtitle: "Теперь можно активировать коды и сразу получать бонус на баланс.",
+      accent: "#ffffff",
+      visual: "BONUS",
+      image: ""
+    },
+    {
+      id: "realtime-orders",
+      badge: "Realtime",
+      title: "Заказы и отклики синхронизируются",
+      subtitle: "Изменения по заказам теперь видны между разными устройствами.",
+      accent: "#ffffff",
+      visual: "LIVE",
+      image: ""
+    }
+  ];
+  const addressGeoCache = new Map();
+  let activePromoStories = PROMO_STORIES.slice();
+  let activePromoCodeLibrary = { ...PROMO_CODE_LIBRARY };
+  const ORDER_STAGE_META = {
+    new: { title: "Новый", text: "Заказ создан и ждет исполнителя." },
+    accepted: { title: "Принят", text: "Исполнитель подтвердил заказ." },
+    to_pickup: { title: "Едет к точке A", text: "Исполнитель направляется к точке отправления." },
+    picked_up: { title: "Забрал заказ", text: "Точка A пройдена, заказ на руках у исполнителя." },
+    to_dropoff: { title: "Едет к точке B", text: "Исполнитель движется к точке назначения." },
+    delivered: { title: "Доставлено", text: "Маршрут завершен, можно подтверждать и оставлять отзыв." }
+  };
+  const ORDER_STAGE_FLOW = ["accepted", "to_pickup", "picked_up", "to_dropoff", "delivered"];
+  const MAX_ACTIVE_BIDS = 5;
 
 // REMOVED: DEMO_EXECUTORS - теперь реальные пользователи из Firestore
 
   let state = loadState();
   normalizeState();
   render();
+  bootstrapAdminContent();
+  setTimeout(() => bootstrapAdminContent(), 800);
+  scheduleInitialOrdersBootstrap();
   
   // Скрыть splash screen после загрузки
   setTimeout(() => {
@@ -49,9 +191,21 @@
     if (splash) {
       splash.classList.add("hide");
     }
+    if (getPromoStories().length) {
+      state.ui.promoViewerOpen = true;
+      state.ui.promoIndex = 0;
+      promoStoryTrackedIndex = 0;
+      promoStoryRemaining = PROMO_STORY_DURATION;
+      render();
+    }
   }, 2400);
 
   root.addEventListener("click", handleClick);
+  root.addEventListener("focusin", handleFocusIn);
+  root.addEventListener("pointerdown", handlePointerDown);
+  root.addEventListener("pointerup", handlePointerUp);
+  root.addEventListener("pointercancel", handlePointerUp);
+  root.addEventListener("pointerleave", handlePointerUp);
   root.addEventListener("submit", handleSubmit);
   root.addEventListener("input", handleInput);
   root.addEventListener("change", handleChange);
@@ -69,8 +223,14 @@
         selectedCity: "Алматы",
         cityMenuOpen: false,
         createOrderCity: "Алматы",
-        createOrderAddress: "",
-        createOrderPhotoPreview: ""
+        createOrderFromAddress: "",
+        createOrderToAddress: "",
+        addressSuggestionsFrom: [],
+        addressSuggestionsTo: [],
+        activeAddressField: "",
+        createOrderPhotoPreview: "",
+        promoViewerOpen: false,
+        promoIndex: 0
       },
       account: null,
       orders: [],
@@ -104,12 +264,18 @@
       selectedCity: state.ui?.selectedCity || "Алматы",
       cityMenuOpen: false,
       createOrderCity: state.ui?.createOrderCity || state.account?.city || state.ui?.selectedCity || "Алматы",
-      createOrderAddress: state.ui?.createOrderAddress || "",
-      createOrderPhotoPreview: state.ui?.createOrderPhotoPreview || ""
+      createOrderFromAddress: state.ui?.createOrderFromAddress || "",
+      createOrderToAddress: state.ui?.createOrderToAddress || "",
+      addressSuggestionsFrom: Array.isArray(state.ui?.addressSuggestionsFrom) ? state.ui.addressSuggestionsFrom : [],
+      addressSuggestionsTo: Array.isArray(state.ui?.addressSuggestionsTo) ? state.ui.addressSuggestionsTo : [],
+      activeAddressField: "",
+      createOrderPhotoPreview: state.ui?.createOrderPhotoPreview || "",
+      promoViewerOpen: false,
+      promoIndex: 0
     };
     
     state.notifications = Array.isArray(state.notifications) ? state.notifications : fresh.notifications;
-    state.orders = Array.isArray(state.orders) && state.orders.length ? state.orders : fresh.orders;
+    state.orders = Array.isArray(state.orders) ? state.orders.map((order) => normalizeOrder(order)) : fresh.orders;
 
     if (state.account) {
       state.account = {
@@ -131,6 +297,9 @@
         delivery_type: state.account.role === "executor" ? (state.account.delivery_type || "foot") : null,
         demoReady: Boolean(state.account.demoReady),
         isOnline: Boolean(state.account.isOnline),
+        isBlocked: Boolean(state.account.isBlocked),
+        usedPromoCodes: Array.isArray(state.account.usedPromoCodes) ? state.account.usedPromoCodes : [],
+        promoHistory: Array.isArray(state.account.promoHistory) ? state.account.promoHistory : [],
         createdAt: state.account.createdAt || new Date().toISOString(),
         updatedAt: state.account.updatedAt || new Date().toISOString()
       };
@@ -144,9 +313,22 @@
   }
 
   function persist() {
-    // Создаем копию состояния БЕЗ Leaflet объектов (они циклические)
+    // Храним в localStorage только легкое состояние. Тяжелые данные приходят из Firebase.
     const stateToSave = {
-      ...state,
+      settings: { ...state.settings },
+      session: { ...state.session },
+      ui: {
+        ...state.ui,
+        modal: null,
+        cityMenuOpen: false,
+        createOrderPhotoPreview: ""
+      },
+      account: state.account ? {
+        ...state.account,
+        avatar: state.account.avatar?.startsWith("data:") ? "" : state.account.avatar
+      } : null,
+      orders: [],
+      notifications: [],
       map: null,
       detailMap: null
     };
@@ -155,14 +337,440 @@
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
     } catch (error) {
       console.warn("Не удалось сохранить состояние:", error);
+      try {
+        window.localStorage.removeItem(STORAGE_KEY);
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          settings: stateToSave.settings,
+          session: stateToSave.session,
+          ui: createInitialState().ui,
+          account: stateToSave.account ? {
+            id: stateToSave.account.id,
+            phone: stateToSave.account.phone,
+            role: stateToSave.account.role,
+            name: stateToSave.account.name,
+            city: stateToSave.account.city,
+            verificationStatus: stateToSave.account.verificationStatus,
+            balance: stateToSave.account.balance,
+            debt: stateToSave.account.debt,
+            jobsDone: stateToSave.account.jobsDone,
+            rating: stateToSave.account.rating,
+            isOnline: stateToSave.account.isOnline,
+            usedPromoCodes: stateToSave.account.usedPromoCodes,
+            promoHistory: stateToSave.account.promoHistory,
+            createdAt: stateToSave.account.createdAt,
+            updatedAt: stateToSave.account.updatedAt
+          } : null,
+          orders: [],
+          notifications: [],
+          map: null,
+          detailMap: null
+        }));
+      } catch (fallbackError) {
+        console.warn("Не удалось сохранить даже облегчённое состояние:", fallbackError);
+      }
     }
+  }
+
+  function normalizeOrder(order = {}) {
+    return {
+      ...order,
+      id: String(order.id || ""),
+      city: order.city || state.account?.city || state.ui.selectedCity || "Алматы",
+      fromAddress: order.fromAddress || order.pickupAddress || getCityCenterLabel(order.city || state.account?.city || "Алматы"),
+      toAddress: order.toAddress || order.address || order.dropoffAddress || "",
+      address: order.toAddress || order.address || order.dropoffAddress || "",
+      status: order.status || "open",
+      stage: order.stage || (order.status === "done" ? "delivered" : order.status === "assigned" ? "accepted" : "new"),
+      budget: Number(order.budget ?? 0),
+      finalPrice: Number(order.finalPrice ?? order.budget ?? 0),
+      bids: Array.isArray(order.bids) ? order.bids : [],
+      chat: Array.isArray(order.chat) ? order.chat : [],
+      complaints: Array.isArray(order.complaints) ? order.complaints : [],
+      reviewedBy: Array.isArray(order.reviewedBy) ? order.reviewedBy : [],
+      express: Boolean(order.express || order.urgent),
+      urgent: Boolean(order.urgent || order.express),
+      completedAt: order.completedAt || "",
+      commissionSettled: Boolean(order.commissionSettled)
+    };
+  }
+
+  function replaceOrderInState(nextOrder) {
+    const normalized = normalizeOrder(nextOrder);
+    const index = state.orders.findIndex((item) => item.id === normalized.id);
+    if (index >= 0) {
+      state.orders[index] = normalized;
+    } else {
+      state.orders.unshift(normalized);
+    }
+  }
+
+  function stopOrdersRealtime() {
+    if (typeof unsubscribeOrdersRealtime === "function") {
+      unsubscribeOrdersRealtime();
+    }
+    unsubscribeOrdersRealtime = null;
+  }
+
+  function stopNotificationsRealtime() {
+    if (typeof unsubscribeNotificationsRealtime === "function") {
+      unsubscribeNotificationsRealtime();
+    }
+    unsubscribeNotificationsRealtime = null;
+  }
+
+  function scheduleInitialOrdersBootstrap() {
+    if (!state.session.isLoggedIn || !state.account) return;
+    setTimeout(() => {
+      bootstrapAccountOrders();
+      bootstrapNotifications();
+    }, 250);
+  }
+
+  function bootstrapNotifications() {
+    if (!state.account) return;
+
+    if (!window.FirebaseService) {
+      state.notifications = [];
+      persist();
+      render();
+      return;
+    }
+
+    stopNotificationsRealtime();
+
+    if (window.FirebaseService.subscribeUserNotifications) {
+      unsubscribeNotificationsRealtime = window.FirebaseService.subscribeUserNotifications(
+        state.account.id,
+        (notifications) => {
+          if (!state.session.isLoggedIn || !state.account) return;
+          state.notifications = Array.isArray(notifications) ? notifications : [];
+          persist();
+          render();
+        },
+        (error) => {
+          console.error("Ошибка загрузки уведомлений:", error);
+        }
+      );
+      return;
+    }
+
+    window.FirebaseService.getUserNotifications(state.account.id)
+      .then((notifications) => {
+        state.notifications = Array.isArray(notifications) ? notifications : [];
+        persist();
+        render();
+      })
+      .catch((error) => {
+        console.error("Ошибка загрузки уведомлений:", error);
+      });
+  }
+
+  function sendNotificationToUser(userId, title, body, meta = {}) {
+    const targetUserId = String(userId || "").trim();
+    if (!targetUserId || !title || !body) return;
+
+    const notification = {
+      title,
+      body,
+      type: meta.type || "general",
+      orderId: meta.orderId || "",
+      createdAt: new Date().toISOString()
+    };
+
+    if (window.FirebaseService?.saveNotification) {
+      window.FirebaseService.saveNotification(targetUserId, notification).catch((error) => {
+        console.error("Failed to save notification:", error);
+      });
+      return;
+    }
+
+    if (state.account?.id === targetUserId) {
+      addNotification(title, body);
+      persist();
+      render();
+    }
+  }
+
+  function markAllNotificationsRead() {
+    const unreadItems = state.notifications.filter((item) => !item.read);
+    if (!unreadItems.length) return;
+
+    state.notifications = state.notifications.map((item) => ({ ...item, read: true }));
+
+    if (window.FirebaseService?.markNotificationRead) {
+      unreadItems.forEach((item) => {
+        window.FirebaseService.markNotificationRead(item.id).catch((error) => {
+          console.error("Failed to mark notification read:", error);
+        });
+      });
+    }
+
+    persist();
+    render();
+  }
+
+  function getPromoSummary() {
+    const history = Array.isArray(state.account?.promoHistory) ? state.account.promoHistory : [];
+    return {
+      usedCount: history.length,
+      totalAmount: history.reduce((sum, item) => sum + Number(item.amount || 0), 0)
+    };
+  }
+
+  function getPromoStories() {
+    return Array.isArray(activePromoStories) && activePromoStories.length ? activePromoStories : PROMO_STORIES;
+  }
+
+  function getPromoCodeLibrary() {
+    return activePromoCodeLibrary && Object.keys(activePromoCodeLibrary).length ? activePromoCodeLibrary : PROMO_CODE_LIBRARY;
+  }
+
+  function bootstrapAdminContent() {
+    if (!window.FirebaseService) return;
+
+    if (window.FirebaseService.getAdminStories) {
+      window.FirebaseService.getAdminStories()
+        .then((stories) => {
+          if (Array.isArray(stories) && stories.length) {
+            activePromoStories = stories.map((story, index) => ({
+              id: story.id || `story-${index}`,
+              badge: story.badge || "Новое",
+              title: story.title || "",
+              subtitle: story.subtitle || "",
+              accent: story.accent || "#60a5fa",
+              visual: story.visual || "UP",
+              image: story.image || ""
+            }));
+            render();
+          }
+        })
+        .catch((error) => console.error("Не удалось загрузить admin stories:", error));
+    }
+
+    if (window.FirebaseService.getAdminPromoCodes) {
+      window.FirebaseService.getAdminPromoCodes()
+        .then((promoCodes) => {
+          if (promoCodes && Object.keys(promoCodes).length) {
+            activePromoCodeLibrary = promoCodes;
+            render();
+          }
+        })
+        .catch((error) => console.error("Не удалось загрузить promo codes:", error));
+    }
+  }
+
+  function ensureAccountAllowed(actionLabel = "действие") {
+    if (!state.account?.isBlocked) {
+      return true;
+    }
+    showToast(`Аккаунт ограничен. ${actionLabel} недоступно.`);
+    return false;
+  }
+
+  function getOrderStageMeta(stage) {
+    return ORDER_STAGE_META[stage] || ORDER_STAGE_META.new;
+  }
+
+  function getNextOrderStage(stage) {
+    const index = ORDER_STAGE_FLOW.indexOf(stage);
+    if (index < 0) return ORDER_STAGE_FLOW[0];
+    return ORDER_STAGE_FLOW[Math.min(index + 1, ORDER_STAGE_FLOW.length - 1)];
+  }
+
+  function getOpenBidsCount() {
+    return state.orders.filter((order) =>
+      order.status === "open" &&
+      Array.isArray(order.bids) &&
+      order.bids.some((bid) => bid.userId === state.account?.id)
+    ).length;
+  }
+
+  async function searchAddressSuggestions(city, query) {
+    const cleanQuery = String(query || "").trim();
+    if (cleanQuery.length < 3) {
+      return getPresetAddresses(city);
+    }
+
+    const localMatches = getPresetAddresses(city).filter((item) =>
+      item.toLowerCase().includes(cleanQuery.toLowerCase())
+    );
+
+    try {
+      const encoded = encodeURIComponent(`${cleanQuery}, ${city}, Kazakhstan`);
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&accept-language=ru&countrycodes=kz&q=${encoded}`);
+      const results = await response.json();
+      const remoteMatches = Array.isArray(results)
+        ? results.map((item) => String(item.display_name || "").split(",").slice(0, 2).join(", ").trim()).filter(Boolean)
+        : [];
+      return Array.from(new Set([...localMatches, ...remoteMatches])).slice(0, 6);
+    } catch (error) {
+      console.warn("Не удалось загрузить адресные подсказки:", error);
+      return localMatches.length ? localMatches : getPresetAddresses(city);
+    }
+  }
+
+  function saveCurrentAccount(extraLogEvent = null) {
+    if (!state.account || !window.FirebaseService?.saveAccount) {
+      return;
+    }
+
+    window.FirebaseService.saveAccount({
+      id: state.account.id,
+      phone: state.account.phone,
+      role: state.account.role,
+      name: state.account.name,
+      city: state.account.city,
+      about: state.account.about,
+      avatar: state.account.avatar,
+      verificationStatus: state.account.verificationStatus,
+      balance: state.account.balance,
+      debt: state.account.debt,
+      jobsDone: state.account.jobsDone,
+      rating: state.account.rating,
+      responseTime: state.account.responseTime,
+      delivery_type: state.account.delivery_type,
+      firstGraceUsed: state.account.firstGraceUsed,
+      demoReady: state.account.demoReady,
+      isOnline: state.account.isOnline,
+      isBlocked: state.account.isBlocked,
+      usedPromoCodes: state.account.usedPromoCodes,
+      promoHistory: state.account.promoHistory,
+      createdAt: state.account.createdAt || new Date().toISOString()
+    }).catch((error) => console.error("Failed to save account:", error));
+
+    if (extraLogEvent?.name && window.FirebaseService?.logEvent) {
+      window.FirebaseService.logEvent(extraLogEvent.name, extraLogEvent.data || {}).catch((error) => {
+        console.error("Failed to log account event:", error);
+      });
+    }
+  }
+
+  function applyPromoCode(rawCode) {
+    const code = String(rawCode || "").trim().toUpperCase();
+    if (!code) {
+      showToast("Введите промокод");
+      return false;
+    }
+
+    const promo = getPromoCodeLibrary()[code];
+    if (!promo) {
+      showToast("Промокод не найден");
+      return false;
+    }
+    if (promo.active === false) {
+      showToast("Промокод отключен");
+      return false;
+    }
+    if (Array.isArray(promo.roles) && promo.roles.length && !promo.roles.includes(state.account?.role)) {
+      showToast("Этот промокод недоступен для вашей роли");
+      return false;
+    }
+    if (promo.expiresAt && new Date(promo.expiresAt).getTime() < Date.now()) {
+      showToast("Срок действия промокода истек");
+      return false;
+    }
+
+    state.account.usedPromoCodes = Array.isArray(state.account.usedPromoCodes) ? state.account.usedPromoCodes : [];
+    state.account.promoHistory = Array.isArray(state.account.promoHistory) ? state.account.promoHistory : [];
+
+    if (state.account.usedPromoCodes.includes(code)) {
+      showToast("Этот промокод уже использован");
+      return false;
+    }
+
+    const entry = {
+      code,
+      amount: Number(promo.amount || 0),
+      label: promo.label || "Промобонус",
+      createdAt: new Date().toISOString()
+    };
+
+    state.account.balance += entry.amount;
+    state.account.usedPromoCodes = [...state.account.usedPromoCodes, code];
+    state.account.promoHistory = [entry, ...state.account.promoHistory].slice(0, 20);
+
+    saveCurrentAccount({
+      name: "promo_applied",
+      data: {
+        accountId: state.account.id,
+        code,
+        amount: entry.amount
+      }
+    });
+
+    persist();
+    render();
+    showToast(`Промокод активирован: +${formatMoney(entry.amount)}`);
+    return true;
+  }
+
+  function clearPromoStoryTimer() {
+    if (promoStoryTimer) {
+      clearTimeout(promoStoryTimer);
+    }
+    promoStoryTimer = null;
+    promoStoryStartedAt = 0;
+  }
+
+  function schedulePromoStoryTimer() {
+    clearPromoStoryTimer();
+    if (!state.ui.promoViewerOpen || !getPromoStories().length) return;
+
+    if (promoStoryTrackedIndex !== state.ui.promoIndex) {
+      promoStoryTrackedIndex = state.ui.promoIndex;
+      promoStoryRemaining = PROMO_STORY_DURATION;
+    }
+
+    promoStoryStartedAt = Date.now();
+
+    promoStoryTimer = setTimeout(() => {
+      if (state.ui.promoIndex >= getPromoStories().length - 1) {
+        state.ui.promoViewerOpen = false;
+      } else {
+        state.ui.promoIndex += 1;
+      }
+      promoStoryRemaining = PROMO_STORY_DURATION;
+      persist();
+      render();
+    }, promoStoryRemaining);
+  }
+
+  function getActivePromoStory() {
+    const stories = getPromoStories();
+    return stories[state.ui.promoIndex] || stories[0] || null;
+  }
+
+  function pausePromoStory() {
+    if (!state.ui.promoViewerOpen || !promoStoryStartedAt) return;
+
+    const elapsed = Date.now() - promoStoryStartedAt;
+    promoStoryRemaining = Math.max(250, promoStoryRemaining - elapsed);
+    clearPromoStoryTimer();
+
+    const activeBar = root.querySelector(".promo-story-bar.active span");
+    if (activeBar) {
+      activeBar.style.animationPlayState = "paused";
+    }
+  }
+
+  function resumePromoStory() {
+    if (!state.ui.promoViewerOpen || promoStoryTimer) return;
+
+    const activeBar = root.querySelector(".promo-story-bar.active span");
+    if (activeBar) {
+      activeBar.style.animationPlayState = "running";
+    }
+
+    schedulePromoStoryTimer();
   }
 
   function render() {
     document.documentElement.dataset.theme = state.settings.theme;
     const hasModal = Boolean(state.ui.modal);
+    const hasPromoViewer = Boolean(state.ui.promoViewerOpen && getPromoStories().length);
     document.body.classList.toggle("modal-open", hasModal);
-    if (hasModal) {
+    document.body.classList.toggle("promo-open", hasPromoViewer);
+    if (hasModal || hasPromoViewer) {
       document.body.style.overflow = "hidden";
     } else {
       document.body.style.overflow = "";
@@ -176,6 +784,7 @@
         ${state.session.isLoggedIn ? renderBottomNav() : ""}
       </div>
       ${renderModal()}
+      ${renderPromoStoryViewer()}
     `;
 
     // Инициализируем карту маршрута если открыта модаль "detail"
@@ -184,6 +793,12 @@
       if (order) {
         initDetailMapRoute(order);
       }
+    }
+
+    if (hasPromoViewer) {
+      schedulePromoStoryTimer();
+    } else {
+      clearPromoStoryTimer();
     }
   }
 
@@ -197,8 +812,57 @@
           <div class="brand-mark">T</div>
           <div><strong>TRAINTUP</strong><span>Быстрые подработки</span></div>
         </div>
-        <div class="header-actions"><button class="theme-button" data-action="toggle-theme" aria-label="Сменить тему">${state.settings.theme === "dark" ? "☀️" : "🌙"}</button></div>
       </header>
+    `;
+  }
+
+  function renderPromoStoryViewer() {
+    const stories = getPromoStories();
+    if (!state.ui.promoViewerOpen || !stories.length) {
+      return "";
+    }
+
+    const story = getActivePromoStory();
+    if (!story) {
+      return "";
+    }
+
+    return `
+      <section class="promo-story-viewer" aria-label="Промо истории">
+        <div class="promo-story-shell">
+          <div class="promo-story-progress" style="--story-count:${stories.length}">
+            ${stories.map((item, index) => `
+              <button
+                class="promo-story-bar ${index < state.ui.promoIndex ? "completed" : ""} ${index === state.ui.promoIndex ? "active" : ""}"
+                type="button"
+                data-action="story-go"
+                data-story-index="${index}"
+                aria-label="Промо ${index + 1}">
+                <span style="${index === state.ui.promoIndex ? `--story-accent:${story.accent || "#98f53d"};--story-duration:${promoStoryRemaining}ms;` : ""}"></span>
+              </button>
+            `).join("")}
+          </div>
+
+          <button class="promo-story-skip" type="button" data-action="story-close">Пропустить</button>
+
+          <div class="promo-story-content">
+            <div class="promo-story-visual">
+              <div class="promo-story-orb promo-story-orb-top"></div>
+              <div class="promo-story-orb promo-story-orb-bottom"></div>
+              ${story.image ? `<img class="promo-story-image" src="${escapeHtml(story.image)}" alt="${escapeHtml(story.title || "Промо")}">` : `<div class="promo-story-letters">${escapeHtml(story.visual || "UP")}</div>`}
+            </div>
+
+            <div class="promo-story-copy">
+              <span class="promo-story-badge">${escapeHtml(story.badge || "Новое")}</span>
+              <h2>${escapeHtml(story.title || "")}</h2>
+              <p>${escapeHtml(story.subtitle || "")}</p>
+            </div>
+          </div>
+
+          <div class="promo-story-touch promo-story-touch-left" data-action="story-prev" aria-label="Назад"></div>
+          <div class="promo-story-touch promo-story-touch-right" data-action="story-next" aria-label="Далее"></div>
+        </div>
+      </section>
     `;
   }
 
@@ -247,7 +911,6 @@
   }
 
   function renderOnboardStep() {
-    const hasAccount = Boolean(state.account);
     return `
       <section class="screen auth-layout auth-onboard">
         <article class="onboard-card">
@@ -259,13 +922,20 @@
                 <span>Быстрые подработки</span>
               </div>
             </div>
-            <button class="theme-button" data-action="toggle-theme" aria-label="Сменить тему">${state.settings.theme === "dark" ? "☀️" : "🌙"}</button>
           </div>
 
           <div class="onboard-hero-panel">
-            <div class="onboard-copy">
-              <p class="eyebrow">TRAINTUP</p>
-              <h1 class="onboard-title">Быстрые заказы рядом <span>с вами</span></h1>
+            <div class="onboard-copy-stack">
+              <div class="onboard-copy">
+                <p class="eyebrow">TRAINTUP</p>
+                <h1 class="onboard-title">Быстрые заказы рядом <span>с вами</span></h1>
+                <p class="onboard-subtitle">Открывайте срочные поручения, выбирайте удобный маршрут и работайте без лишнего шума.</p>
+              </div>
+              <div class="onboard-feature-row">
+                <span class="onboard-feature-chip">Заказы по городу</span>
+                <span class="onboard-feature-chip">Отклики в реальном времени</span>
+                <span class="onboard-feature-chip">Понятный трекинг</span>
+              </div>
             </div>
 
             <div class="onboard-illustration" aria-hidden="true">
@@ -274,6 +944,10 @@
           </div>
 
           <div class="onboard-actions-card">
+            <div class="onboard-actions-copy">
+              <strong>Начнем с роли и телефона</strong>
+              <span>Потом сразу попадете в приложение.</span>
+            </div>
             <button class="btn btn-primary btn-block onboard-start-btn" data-action="go-step" data-step="role">Регистрация</button>
             <p class="onboard-login-line">
               Уже есть аккаунт?
@@ -289,27 +963,63 @@
     const role = getPendingRole();
     return `
       <section class="screen stack role-screen">
-        <div class="role-screen-head">
-          <button class="back-button" data-action="go-step" data-step="onboard" aria-label="Назад">${ICONS.chevron}</button>
-          <div class="section-copy"><p class="eyebrow">02 Выбор роли</p><h2 class="section-title">Кем вы будете?</h2><span class="helper">Выберите роль, чтобы мы сразу открыли нужный сценарий.</span></div>
+        <div class="role-screen-shell">
+          <div class="role-screen-head">
+            <button class="back-button" data-action="go-step" data-step="onboard" aria-label="Назад">${ICONS.chevron}</button>
+            <div class="section-copy"><p class="eyebrow">02 Выбор роли</p><h2 class="section-title">Кем вы будете?</h2><span class="helper">Выберите подходящую роль, чтобы мы сразу открыли правильный сценарий внутри сервиса.</span></div>
+          </div>
+          <article class="role-intro-card">
+            <strong>Выберите подходящую роль</strong>
+            <span>Позже ее можно будет поменять в профиле без потери данных.</span>
+          </article>
+          <div class="role-choice-list">
+            <article class="role-choice-card ${role === "executor" ? "active" : ""}">
+              <button class="role-choice-card-hit" type="button" data-action="pick-role" data-role="executor" aria-label="Выбрать роль Исполнитель"></button>
+              <div class="role-choice-preview executor">
+                <div class="role-choice-preview-badge">Исполнитель</div>
+                <div class="role-choice-preview-figure executor"></div>
+              </div>
+              <div class="role-choice-content">
+                <div class="role-choice-top">
+                  <span class="role-choice-media executor">A</span>
+                  <span class="role-choice-copy">
+                    <strong>Исполнитель</strong>
+                    <span>Хочу временно подработать</span>
+                  </span>
+                </div>
+                <ul class="role-choice-benefits">
+                  <li>Выбирайте заказы рядом</li>
+                  <li>Гибкий график</li>
+                  <li>Получайте оплату сразу</li>
+                </ul>
+                <button class="btn ${role === "executor" ? "btn-primary" : "btn-ghost"} btn-block role-select-btn" type="button" data-action="pick-role" data-role="executor">${role === "executor" ? "Выбрано" : "Выбрать"}</button>
+              </div>
+            </article>
+            <article class="role-choice-card ${role === "customer" ? "active" : ""}">
+              <button class="role-choice-card-hit" type="button" data-action="pick-role" data-role="customer" aria-label="Выбрать роль Заказчик"></button>
+              <div class="role-choice-preview customer">
+                <div class="role-choice-preview-badge">Заказчик</div>
+                <div class="role-choice-preview-figure customer"></div>
+              </div>
+              <div class="role-choice-content">
+                <div class="role-choice-top">
+                  <span class="role-choice-media customer">B</span>
+                  <span class="role-choice-copy">
+                    <strong>Заказчик</strong>
+                    <span>Размещаю заказы, ищу исполнителей</span>
+                  </span>
+                </div>
+                <ul class="role-choice-benefits">
+                  <li>Рейтинги и отзывы исполнителей</li>
+                  <li>Быстрый отклик</li>
+                  <li>Оплата после выполнения</li>
+                </ul>
+                <button class="btn ${role === "customer" ? "btn-primary" : "btn-ghost"} btn-block role-select-btn" type="button" data-action="pick-role" data-role="customer">${role === "customer" ? "Выбрано" : "Выбрать"}</button>
+              </div>
+            </article>
+          </div>
+          <button class="btn btn-primary btn-block role-continue-btn" type="button" data-action="continue-role">Продолжить</button>
         </div>
-        <div class="role-choice-list">
-          <button class="role-choice-card ${role === "executor" ? "active" : ""}" data-action="pick-role" data-role="executor">
-            <span class="role-choice-media executor">🧑‍💼</span>
-            <span class="role-choice-copy">
-              <strong>Исполнитель</strong>
-              <span>Находит задания рядом и быстро берет подработку в работу.</span>
-            </span>
-          </button>
-          <button class="role-choice-card ${role === "customer" ? "active" : ""}" data-action="pick-role" data-role="customer">
-            <span class="role-choice-media customer">🛍️</span>
-            <span class="role-choice-copy">
-              <strong>Заказчик</strong>
-              <span>Размещает задания, получает отклики и выбирает исполнителя.</span>
-            </span>
-          </button>
-        </div>
-        <p class="role-screen-note">Роль можно будет поменять позже в личном кабинете.</p>
       </section>
     `;
   }
@@ -318,45 +1028,48 @@
     const mode = state.session.mode;
     const role = getPendingRole();
     return `
-      <section class="screen stack">
-        <div class="section-head">
-          <button class="back-button" data-action="go-step" data-step="role" aria-label="Назад">${ICONS.chevron}</button>
-          <div class="section-copy"><p class="eyebrow">03 ${mode === "register" ? "Регистрация" : "Вход"}</p><h2 class="section-title">${mode === "register" ? "Создание аккаунта" : "Вход в аккаунт"}</h2><span class="helper">Телефон и пароль. Для демо используйте код подтверждения 1234.</span></div>
-        </div>
-        <div class="mode-switch" role="tablist" aria-label="Режим авторизации">
-          <button type="button" class="${mode === "register" ? "active" : ""}" data-action="set-auth-mode" data-mode="register">Регистрация</button>
-          <button type="button" class="${mode === "login" ? "active" : ""}" data-action="set-auth-mode" data-mode="login">Вход</button>
-        </div>
-        <form class="form" data-form="auth">
-          <article class="card stack">
-            ${mode === "register" ? `<span class="theme-note">Роль: ${getRoleLabel(role)}</span>` : ""}
-            
-            ${mode === "register" && role === "executor" ? `
-            <div class="field">
-              <span class="field-title">Способ доставки</span>
-              <div class="radio-group">
-                <label class="radio-item">
-                  <input type="radio" name="delivery_type" value="foot" ${!state.session.pending?.delivery_type || state.session.pending?.delivery_type === "foot" ? "checked" : ""}>
-                  <span>🚶 Пеший курьер</span>
-                </label>
-                <label class="radio-item">
-                  <input type="radio" name="delivery_type" value="bike" ${state.session.pending?.delivery_type === "bike" ? "checked" : ""}>
-                  <span>🚴 Велосипед</span>
-                </label>
-                <label class="radio-item">
-                  <input type="radio" name="delivery_type" value="car" ${state.session.pending?.delivery_type === "car" ? "checked" : ""}>
-                  <span>🚗 На машине</span>
-                </label>
+      <section class="screen stack auth-flow-screen">
+        <div class="auth-step-shell">
+          <div class="section-head auth-step-head">
+            <button class="back-button" data-action="go-step" data-step="role" aria-label="Назад">${ICONS.chevron}</button>
+            <div class="section-copy"><p class="eyebrow">03 ${mode === "register" ? "Регистрация" : "Вход"}</p><h2 class="section-title">${mode === "register" ? "Создание аккаунта" : "Вход в аккаунт"}</h2><span class="helper">Введите телефон и пароль. Для демо подтверждение идет кодом 1234.</span></div>
+          </div>
+          <div class="mode-switch" role="tablist" aria-label="Режим авторизации">
+            <button type="button" class="${mode === "register" ? "active" : ""}" data-action="set-auth-mode" data-mode="register">Регистрация</button>
+            <button type="button" class="${mode === "login" ? "active" : ""}" data-action="set-auth-mode" data-mode="login">Вход</button>
+          </div>
+          <form class="form" data-form="auth">
+            <article class="auth-step-card">
+              <div class="auth-step-copy">
+                <strong>${mode === "register" ? "Аккаунт создается за пару шагов" : "С возвращением"}</strong>
+                <span>${mode === "register" ? `Роль: ${getRoleLabel(role)}` : "Если аккаунт уже есть, подтверждение повторно не понадобится."}</span>
               </div>
-            </div>
-            ` : ""}
-            
-            <div class="field"><span class="field-title">Телефон</span><input type="tel" name="phone" placeholder="+7 777 123 45 67" value="${escapeHtml(state.session.pending?.phone || state.account?.phone || "")}" required></div>
-            <div class="field"><span class="field-title">Пароль</span><input type="password" name="password" placeholder="Минимум 4 символа" value="${escapeHtml(state.session.pending?.password || "")}" required></div>
-            <p class="form-hint">${mode === "register" ? "После этого покажем экран подтверждения телефона." : "Если аккаунт уже есть, код подтверждения не нужен."}</p>
-            <button class="btn btn-primary btn-block" type="submit">${mode === "register" ? "Продолжить" : "Войти"}</button>
-          </article>
-        </form>
+              ${mode === "register" && role === "executor" ? `
+              <div class="field">
+                <span class="field-title">Способ доставки</span>
+                <div class="radio-group auth-radio-group">
+                  <label class="radio-item">
+                    <input type="radio" name="delivery_type" value="foot" ${!state.session.pending?.delivery_type || state.session.pending?.delivery_type === "foot" ? "checked" : ""}>
+                    <span>Пешком</span>
+                  </label>
+                  <label class="radio-item">
+                    <input type="radio" name="delivery_type" value="bike" ${state.session.pending?.delivery_type === "bike" ? "checked" : ""}>
+                    <span>Велосипед</span>
+                  </label>
+                  <label class="radio-item">
+                    <input type="radio" name="delivery_type" value="car" ${state.session.pending?.delivery_type === "car" ? "checked" : ""}>
+                    <span>Машина</span>
+                  </label>
+                </div>
+              </div>
+              ` : ""}
+              <div class="field"><span class="field-title">Телефон</span><input type="tel" name="phone" placeholder="+7 777 123 45 67" value="${escapeHtml(state.session.pending?.phone || state.account?.phone || "")}" required></div>
+              <div class="field"><span class="field-title">Пароль</span><input type="password" name="password" placeholder="Минимум 4 символа" value="${escapeHtml(state.session.pending?.password || "")}" required></div>
+              <p class="form-hint">${mode === "register" ? "Сразу после этого откроется экран подтверждения телефона." : "Введите те же данные, с которыми регистрировались."}</p>
+              <button class="btn btn-primary btn-block" type="submit">${mode === "register" ? "Продолжить" : "Войти"}</button>
+            </article>
+          </form>
+        </div>
       </section>
     `;
   }
@@ -364,23 +1077,28 @@
   function renderConfirmStep() {
     const pending = state.session.pending || {};
     return `
-      <section class="screen stack">
-        <div class="section-head">
-          <button class="back-button" data-action="go-step" data-step="register" aria-label="Назад">${ICONS.chevron}</button>
-          <div class="section-copy"><p class="eyebrow">04 Подтверждение</p><h2 class="section-title">Подтверждение телефона</h2><span class="helper">Мы отправили код на ${escapeHtml(pending.phone || "+7 777 123 45 67")}.</span></div>
-        </div>
-        <form class="form" data-form="confirm">
-          <article class="otp-card card">
+      <section class="screen stack auth-flow-screen">
+        <div class="auth-step-shell">
+          <div class="section-head auth-step-head">
+            <button class="back-button" data-action="go-step" data-step="register" aria-label="Назад">${ICONS.chevron}</button>
+            <div class="section-copy"><p class="eyebrow">04 Подтверждение</p><h2 class="section-title">Подтверждение телефона</h2><span class="helper">Проверяем номер ${escapeHtml(pending.phone || "+7 777 123 45 67")}.</span></div>
+          </div>
+          <form class="form" data-form="confirm">
+            <article class="otp-card card auth-step-card auth-confirm-card">
+              <div class="auth-step-copy">
+                <strong>Остался последний шаг</strong>
+                <span>Пока используйте фиксированный код подтверждения 1234.</span>
+              </div>
             <div class="otp-grid">
               <input class="otp-box" type="text" inputmode="text" maxlength="1" data-otp="0" autocomplete="one-time-code">
               <input class="otp-box" type="text" inputmode="text" maxlength="1" data-otp="1">
               <input class="otp-box" type="text" inputmode="text" maxlength="1" data-otp="2">
               <input class="otp-box" type="text" inputmode="text" maxlength="1" data-otp="3">
             </div>
-            <p class="form-hint">Пока используйте фиксированный код подтверждения: 1234.</p>
             <button class="btn btn-primary btn-block" type="submit">Подтвердить</button>
-          </article>
-        </form>
+            </article>
+          </form>
+        </div>
       </section>
     `;
   }
@@ -398,19 +1116,77 @@
     return ORDER_ADDRESS_OPTIONS[city] || ORDER_ADDRESS_OPTIONS["Алматы"] || [];
   }
 
+  function restoreNamedInputFocus(name, value = "") {
+    requestAnimationFrame(() => {
+      const restored = root.querySelector(`[name="${name}"]`);
+      if (!restored) return;
+      restored.focus();
+      const caret = Math.min(String(value || "").length, restored.value.length);
+      if (typeof restored.setSelectionRange === "function") {
+        restored.setSelectionRange(caret, caret);
+      }
+    });
+  }
+
+  function renderAddressAutocomplete({ name, fieldKey, title, value, suggestions, placeholder }) {
+    const isActive = state.ui.activeAddressField === fieldKey;
+    const uniqueSuggestions = Array.from(new Set((suggestions || []).filter(Boolean))).slice(0, 6);
+
+    return `
+      <div class="field address-autocomplete ${isActive ? "open" : ""}">
+        <span class="field-title">${escapeHtml(title)}</span>
+        <div class="address-input-shell">
+          <span class="address-point-badge address-point-${fieldKey}">${fieldKey === "from" ? "A" : "B"}</span>
+          <input
+            type="text"
+            name="${name}"
+            value="${escapeHtml(value)}"
+            placeholder="${escapeHtml(placeholder)}"
+            autocomplete="off"
+            data-address-field="${fieldKey}"
+          >
+        </div>
+        ${isActive ? `
+          <div class="address-suggestions" role="listbox">
+            ${uniqueSuggestions.length ? uniqueSuggestions.map((address) => `
+              <button
+                class="address-suggestion"
+                type="button"
+                data-action="select-address-suggestion"
+                data-field="${fieldKey}"
+                data-value="${escapeHtml(address)}"
+              >
+                <span class="address-suggestion-marker">${fieldKey === "from" ? "A" : "B"}</span>
+                <span class="address-suggestion-copy">
+                  <strong>${escapeHtml(address)}</strong>
+                  <small>${escapeHtml(state.ui.createOrderCity || state.account?.city || "Алматы")}</small>
+                </span>
+              </button>
+            `).join("") : `
+              <div class="address-suggestion-empty">
+                <strong>Ничего не найдено</strong>
+                <small>Попробуйте улицу, ТЦ или район в выбранном городе.</small>
+              </div>
+            `}
+          </div>
+        ` : ""}
+      </div>
+    `;
+  }
+
   function renderHomeView() {
-    // Если исполнитель и не у сети, показать кнопки активации
     if (state.account.role === "executor" && !state.account.isOnline) {
       return `
-        <section class="view stack">
-          <div class="offline-banner">
+        <section class="view stack home-screen">
+          <div class="offline-banner home-panel">
             <div class="offline-content">
-              <h2 class="offline-title">😴 Вы отдыхаете</h2>
-              <p class="offline-subtitle">Нажмите "На линии" чтобы начать получать заказы</p>
+              <p class="eyebrow">Исполнитель</p>
+              <h2 class="offline-title">Вы отдыхаете</h2>
+              <p class="offline-subtitle">Включите режим “На линии”, и новые заказы сразу начнут подтягиваться в ленту.</p>
             </div>
           </div>
           <div class="activation-buttons">
-            <button class="btn btn-primary btn-block" data-action="activate-online">🟢 Перейти На линию</button>
+            <button class="btn btn-primary btn-block" data-action="activate-online">Перейти на линию</button>
             <button class="btn btn-ghost btn-block" data-action="view-profile" data-action-type="profile">Посмотреть профиль</button>
           </div>
         </section>
@@ -421,25 +1197,32 @@
     const labels = state.account.role === "executor" ? { available: "Доступные", work: "В работе", done: "Завершенные" } : { available: "Активные", work: "В работе", done: "Завершенные" };
     
     return `
-      <section class="view stack">
-        <!-- Главный банер -->
-        <div class="home-banner">
+      <section class="view stack home-screen">
+        <div class="home-banner home-panel">
           <div class="banner-content">
             <div class="banner-top">
-              <p class="banner-label">${state.account.role === "executor" ? "🚀 Быстрые заказы" : "📋 Ваши заказы"}</p>
-              ${state.account.role === "executor" ? `<button class="btn btn-sm btn-outlined" data-action="deactivate-online">🔴 Отдыхаю</button>` : ""}
+              <p class="banner-label">${state.account.role === "executor" ? "Исполнитель" : "Заказчик"}</p>
+              ${state.account.role === "executor" ? `<button class="btn btn-sm btn-ghost" data-action="deactivate-online">Отдыхаю</button>` : ""}
             </div>
             <h1 class="banner-title">${state.account.role === "executor" ? "Заказы рядом с вами" : "Управляйте заказами"}</h1>
-            <p class="banner-subtitle">${state.account.role === "executor" ? "Выбирайте задания, откликайтесь и зарабатывайте" : "Следите за откликами и управляйте в одном месте"}</p>
+            <p class="banner-subtitle">${state.account.role === "executor" ? "Смотрите новые поручения, быстро открывайте детали и забирайте подходящие задачи." : "Следите за откликами, исполнителем и прогрессом заказа в одной ленте."}</p>
+            <div class="home-banner-stats">
+              <div class="home-banner-stat">
+                <span>Город</span>
+                <strong>${escapeHtml(state.ui.selectedCity)}</strong>
+              </div>
+              <div class="home-banner-stat">
+                <span>В ленте</span>
+                <strong>${orders.length}</strong>
+              </div>
+            </div>
           </div>
         </div>
 
-        <!-- Поиск -->
         <div class="search-section">
           <label class="search-box"><span class="inline-icon">${ICONS.search}</span><input type="search" name="search" placeholder="Найти задачу или адрес" value="${escapeHtml(state.ui.search)}"></label>
         </div>
 
-        <!-- Фильтры -->
         <div class="filters-section">
           <div class="filter-label">Показывать</div>
           <div class="filter-chips">
@@ -447,7 +1230,6 @@
           </div>
         </div>
 
-        <!-- Список заказов -->
         <div class="orders-section">
           <div class="section-header">
             <h2 class="section-heading">${state.account.role === "executor" ? "Лента заказов" : "Ваши задачи"}</h2>
@@ -472,7 +1254,10 @@
     }
     const selectedCity = state.ui.createOrderCity || state.account.city || state.ui.selectedCity || ORDER_CITY_OPTIONS[0];
     const addressOptions = getPresetAddresses(selectedCity);
-    const selectedAddress = addressOptions.includes(state.ui.createOrderAddress) ? state.ui.createOrderAddress : (addressOptions[0] || "");
+    const suggestionFrom = Array.from(new Set([...(state.ui.addressSuggestionsFrom || []), ...addressOptions]));
+    const suggestionTo = Array.from(new Set([...(state.ui.addressSuggestionsTo || []), ...addressOptions]));
+    const selectedFromAddress = state.ui.createOrderFromAddress || addressOptions[0] || "";
+    const selectedToAddress = state.ui.createOrderToAddress || addressOptions[1] || addressOptions[0] || "";
     const photoPreview = state.ui.createOrderPhotoPreview;
     return `
       <section class="view stack">
@@ -507,11 +1292,31 @@
                   ${ORDER_CITY_OPTIONS.map((city) => `<option value="${escapeHtml(city)}" ${selectedCity === city ? "selected" : ""}>${escapeHtml(city)}</option>`).join("")}
                 </select>
               </div>
-              <div class="field">
-                <span class="field-title">Точка получения / доставки</span>
-                <select name="order_address">
-                  ${addressOptions.map((address) => `<option value="${escapeHtml(address)}" ${selectedAddress === address ? "selected" : ""}>${escapeHtml(address)}</option>`).join("")}
-                </select>
+              ${renderAddressAutocomplete({
+                name: "order_from_address",
+                fieldKey: "from",
+                title: "Точка A - откуда забрать",
+                value: selectedFromAddress,
+                suggestions: suggestionFrom,
+                placeholder: "Введите адрес точки A"
+              })}
+            </div>
+
+            ${renderAddressAutocomplete({
+              name: "order_to_address",
+              fieldKey: "to",
+              title: "Точка B - куда доставить",
+              value: selectedToAddress,
+              suggestions: suggestionTo,
+              placeholder: "Введите адрес точки B"
+            })}
+
+            <div class="field route-preview-card">
+              <span class="field-title">Маршрут</span>
+              <div class="route-preview-line">
+                <div class="route-preview-point"><span>A</span><strong>${escapeHtml(selectedFromAddress || "Выберите точку A")}</strong></div>
+                <div class="route-preview-divider"></div>
+                <div class="route-preview-point"><span>B</span><strong>${escapeHtml(selectedToAddress || "Выберите точку B")}</strong></div>
               </div>
             </div>
 
@@ -605,22 +1410,20 @@
 
   function renderProfileView() {
     const verificationMap = { none: "Не верифицирован", review: "На проверке", verified: "Верифицирован" };
+    const promoSummary = getPromoSummary();
+    const promoHistory = Array.isArray(state.account.promoHistory) ? state.account.promoHistory.slice(0, 3) : [];
     return `
       <section class="view stack profile-main">
-        <!-- Большая красивая карточка профиля -->
         <article class="profile-hero">
-          <div class="profile-hero-bg"></div>
           <div class="profile-hero-content">
             <div class="profile-avatar-large">${renderAvatar(state.account.avatar, state.account.name, 80)}</div>
             <div class="profile-hero-info">
               <h1 class="profile-hero-name">${escapeHtml(state.account.name)}</h1>
-              <p class="profile-hero-role">${getRoleLabel(state.account.role)} • ${escapeHtml(state.account.city)}</p>
+              <p class="profile-hero-role">${escapeHtml(getRoleLabel(state.account.role))}</p>
               <p class="profile-hero-id">ID: ${escapeHtml(formatAccountId(state.account.id))}</p>
-              ${state.account.about ? `<p class="profile-hero-about">${escapeHtml(state.account.about)}</p>` : ''}
+              <span class="profile-verification-badge ${escapeHtml(state.account.verificationStatus)}">${escapeHtml(verificationMap[state.account.verificationStatus] || verificationMap.none)}</span>
+              ${state.account.about ? `<p class="profile-hero-about">${escapeHtml(state.account.about)}</p>` : '<p class="profile-hero-about">Добавьте короткое описание, чтобы профиль выглядел живее и понятнее.</p>'}
             </div>
-            <span class="profile-verification-badge ${state.account.verificationStatus === "verified" ? "verified" : state.account.verificationStatus === "review" ? "review" : "none"}">
-              ${escapeHtml(verificationMap[state.account.verificationStatus])}
-            </span>
           </div>
           <div class="profile-actions-top">
             <button class="btn btn-primary" data-action="open-edit-profile">Изменить профиль</button>
@@ -628,7 +1431,6 @@
           </div>
         </article>
 
-        <!-- Статистика -->
         <div class="stats-row">
           <article class="stat-card">
             <span class="stat-label">Заказов выполнено</span>
@@ -636,15 +1438,14 @@
           </article>
           <article class="stat-card">
             <span class="stat-label">Рейтинг</span>
-            <strong class="stat-value">${(4.8).toFixed(1)}⭐</strong>
+            <strong class="stat-value">${Number(state.account.rating || 0).toFixed(1)}⭐</strong>
           </article>
           <article class="stat-card">
             <span class="stat-label">Отклики</span>
-            <strong class="stat-value">${Math.floor(Math.random() * 50) + 10}</strong>
+            <strong class="stat-value">${state.notifications.length}</strong>
           </article>
         </div>
 
-        <!-- Кошелёк -->
         <article class="profile-wallet-card">
           <div class="wallet-header">
             <h2 class="section-title">Кошелёк</h2>
@@ -663,25 +1464,61 @@
           <button class="btn btn-primary btn-block" data-action="open-wallet">Пополнить баланс</button>
         </article>
 
-        <!-- Опции -->
+        <article class="profile-promo-card">
+          <div class="wallet-header">
+            <div>
+              <h2 class="section-title">Промокоды</h2>
+              <p class="promo-helper">Активируйте код и получите бонус на баланс.</p>
+            </div>
+          </div>
+          <form class="promo-form" data-form="promo-code">
+            <input type="text" name="promo_code" placeholder="Введите промокод" autocomplete="off">
+            <button class="btn btn-primary btn-sm" type="submit">Активировать</button>
+          </form>
+          <div class="promo-demo-codes">
+            ${Object.entries(getPromoCodeLibrary()).map(([code, promo]) => `<span class="promo-demo-chip">${escapeHtml(code)} • +${formatMoney(promo.amount)}</span>`).join("")}
+          </div>
+          <div class="wallet-grid-2">
+            <div class="wallet-item">
+              <span class="wallet-label">Активировано</span>
+              <strong class="wallet-value">${promoSummary.usedCount}</strong>
+            </div>
+            <div class="wallet-item">
+              <span class="wallet-label">Получено</span>
+              <strong class="wallet-value">${formatMoney(promoSummary.totalAmount)}</strong>
+            </div>
+          </div>
+          <div class="promo-history">
+            ${promoHistory.length ? promoHistory.map((item) => `
+              <div class="promo-history-item">
+                <div>
+                  <strong>${escapeHtml(item.code)}</strong>
+                  <span>${escapeHtml(item.label || "Промобонус")}</span>
+                </div>
+                <div class="promo-history-amount">+${formatMoney(item.amount)}</div>
+              </div>
+            `).join("") : `<p class="helper">Пока ни один промокод не активирован.</p>`}
+          </div>
+        </article>
+
         <article class="profile-options">
           <h3 class="section-title">Опции</h3>
           <button class="option-item" data-action="switch-role">
-            <span class="option-icon">🔄</span>
+            <span class="option-icon">Роль</span>
             <div class="option-content">
               <span class="option-title">Сменить роль</span>
               <span class="option-desc">Переключитесь между исполнителем и заказчиком</span>
             </div>
           </button>
           <button class="option-item" data-action="open-settings">
-            <span class="option-icon">⚙️</span>
+            <span class="option-icon">App</span>
             <div class="option-content">
               <span class="option-title">Настройки приложения</span>
               <span class="option-desc">Язык, тема, уведомления</span>
             </div>
           </button>
           <button class="option-item" data-action="logout">
-            <span class="option-icon">🚪</span>
+            <span class="option-icon">Exit</span>
             <div class="option-content">
               <span class="option-title">Выход</span>
               <span class="option-desc">Выйти из аккаунта</span>
@@ -727,8 +1564,8 @@
           
           <div class="card-meta">
             <div class="meta-row">
-              <span class="meta-label">📍 Адрес</span>
-              <span class="meta-value">${escapeHtml(order.address)}</span>
+              <span class="meta-label">📍 Маршрут</span>
+              <span class="meta-value">${escapeHtml(order.fromAddress || getCityCenterLabel(order.city))} → ${escapeHtml(order.toAddress || order.address)}</span>
             </div>
             <div class="meta-row">
               <span class="meta-label">⏰ Время</span>
@@ -811,6 +1648,12 @@
       title = "Комиссия к оплате";
       body = renderCommissionModal(order);
     }
+    if (state.ui.modal.type === "review") {
+      const order = getOrderById(state.ui.modal.orderId);
+      if (!order) return '<div class="modal-layer" hidden></div>';
+      title = "Оставить отзыв";
+      body = renderReviewModal(order);
+    }
     if (state.ui.modal.type === "user-profile") {
       title = "Профиль пользователя";
       body = renderUserProfileModal(state.ui.modal.userId, state.ui.modal.userName);
@@ -870,7 +1713,8 @@
           <div class="detail-price">${formatMoney(order.finalPrice || order.budget)}</div>
         </div>
         <div class="detail-grid">
-          <div class="detail-stat"><span class="detail-label">Адрес</span><strong class="detail-value">${escapeHtml(order.address)}</strong></div>
+          <div class="detail-stat"><span class="detail-label">Точка A</span><strong class="detail-value">${escapeHtml(order.fromAddress || getCityCenterLabel(order.city))}</strong></div>
+          <div class="detail-stat"><span class="detail-label">Точка B</span><strong class="detail-value">${escapeHtml(order.toAddress || order.address)}</strong></div>
           <div class="detail-stat"><span class="detail-label">Когда</span><strong class="detail-value">${escapeHtml(order.when)}</strong></div>
           <div class="detail-stat"><span class="detail-label">Оплата</span><strong class="detail-value">${escapeHtml(order.payment)}</strong></div>
           <div class="detail-stat"><span class="detail-label">Комиссия</span><strong class="detail-value">${formatMoney(commission)}</strong></div>
@@ -887,10 +1731,18 @@
   }
 
   function renderStatusBlock(order) {
+    const stageMeta = getOrderStageMeta(order.stage);
     const items = [{
       title: order.status === "done" ? "Заказ завершен" : order.status === "assigned" ? "Заказ в работе" : "Заказ ожидает исполнителя",
       text: order.status === "done" ? "Статус закрыт, итоговая цена зафиксирована." : order.status === "assigned" ? `Исполнитель: ${order.assigneeName || "назначен"}` : "Можно откликнуться сразу или предложить свою цену."
     }];
+
+    if (order.status !== "open") {
+      items.push({
+        title: `Трекинг: ${stageMeta.title}`,
+        text: stageMeta.text
+      });
+    }
 
     if (order.status === "done") {
       items.push({ title: "Комиссия 10%", text: order.commissionSettled ? "Комиссия по этому заказу уже оплачена." : "После завершения сумма попадает в долг исполнителя до оплаты." });
@@ -925,9 +1777,16 @@
   }
 
   function renderDetailButtons(order, isOwner, isAssignee) {
+    const canReview = order.status === "done" && !order.reviewedBy.includes(state.account.id);
+    if (canReview) return `<button class="btn btn-primary btn-block" data-action="open-review" data-order-id="${order.id}">Оставить отзыв</button>`;
     if (order.status === "done") return '<button class="btn btn-success btn-block" type="button">Завершено</button>';
     if (isOwner && order.status === "assigned") return `<button class="btn btn-primary btn-block" data-action="complete-order" data-order-id="${order.id}">Завершить заказ</button>`;
-    if (isAssignee && order.status === "assigned") return `<button class="btn btn-primary btn-block" data-action="complete-order" data-order-id="${order.id}">Подтвердить выполнение</button>`;
+    if (isAssignee && order.status === "assigned") {
+      if (order.stage !== "delivered") {
+        return `<button class="btn btn-primary btn-block" data-action="advance-stage" data-order-id="${order.id}">Следующий этап: ${escapeHtml(getOrderStageMeta(getNextOrderStage(order.stage)).title)}</button>`;
+      }
+      return `<button class="btn btn-primary btn-block" data-action="complete-order" data-order-id="${order.id}">Подтвердить выполнение</button>`;
+    }
     if (state.account.role === "executor" && !isOwner && order.status === "open") return `<button class="btn btn-primary" data-action="take-order" data-order-id="${order.id}">Выполнить заказ</button><button class="btn btn-secondary" data-action="open-bargain" data-order-id="${order.id}">Предложить свою цену</button>`;
     if (isOwner && order.status === "open") return '<button class="btn btn-ghost btn-block" type="button">Ожидаем отклики</button>';
     return '<button class="btn btn-ghost btn-block" type="button">Заказ уже занят</button>';
@@ -986,10 +1845,13 @@
   }
 
   function renderWalletModal() {
+    const promoSummary = getPromoSummary();
     return `
       <div class="stack">
         <div class="stats-grid"><div class="summary-card"><span class="summary-label">Текущий баланс</span><strong class="summary-value">${formatMoney(state.account.balance)}</strong></div><div class="summary-card"><span class="summary-label">Комиссия</span><strong class="summary-value">${formatMoney(state.account.debt)}</strong></div></div>
+        <div class="stats-grid"><div class="summary-card"><span class="summary-label">Промокодов активировано</span><strong class="summary-value">${promoSummary.usedCount}</strong></div><div class="summary-card"><span class="summary-label">Получено бонусов</span><strong class="summary-value">${formatMoney(promoSummary.totalAmount)}</strong></div></div>
         <article class="status-card ${state.account.debt > 0 ? "warning" : "success"}"><div class="stack"><strong>${state.account.debt > 0 ? "Комиссия ожидает оплаты" : "Комиссия погашена"}</strong><p>${state.account.debt > 0 ? "Пока комиссия не погашена, следующий заказ взять нельзя." : "Можно брать следующие заказы без ограничений."}</p></div></article>
+        <form class="form" data-form="promo-code"><article class="card stack"><div class="field"><span class="field-title">Промокод</span><input type="text" name="promo_code" placeholder="Например: START500"></div><button class="btn btn-secondary btn-block" type="submit">Активировать промокод</button></article></form>
         <form class="form" data-form="topup-modal"><article class="card stack"><div class="field"><span class="field-title">Сумма пополнения</span><input type="number" name="amount" min="500" step="500" value="1000"></div><div class="quick-row"><button class="quick-amount" type="button" data-action="set-topup" data-value="1000">1 000</button><button class="quick-amount" type="button" data-action="set-topup" data-value="2000">2 000</button><button class="quick-amount" type="button" data-action="set-topup" data-value="5000">5 000</button></div><button class="btn btn-primary btn-block" type="submit">Пополнить баланс</button></article></form>
         <button class="btn btn-warning btn-block" data-action="pay-debt">Оплатить комиссию</button>
       </div>
@@ -1033,8 +1895,8 @@
   }
 
   function renderUserProfileModal(userId, userName) {
-    // Загружаем данные пользователя из Firebase (async)
-    const user = { 
+    const modalData = state.ui.modal?.type === "user-profile" && state.ui.modal.userId === userId ? state.ui.modal : {};
+    const baseUser = { 
       id: userId.substring(0, 8),
       name: userName || "Пользователь", 
       rating: 4.8, 
@@ -1045,24 +1907,52 @@
       responseTime: "~5 мин",
       city: "Алматы"
     };
+    const user = { ...baseUser, ...(modalData.user || {}) };
+    const reviews = Array.isArray(modalData.reviews) ? modalData.reviews : [];
     
     // Попытка загрузить реальные данные из Firebase (non-blocking)
     if (window.FirebaseService) {
-      window.FirebaseService.getUser(userId)
+      if (!modalData.userLoaded) {
+        window.FirebaseService.getUser(userId)
         .then(fbUser => {
           if (fbUser) {
-            user.name = fbUser.name || userName;
-            user.id = fbUser.id ? fbUser.id.substring(0, 8) : userId.substring(0, 8);
-            user.rating = fbUser.rating || 0;
-            user.jobsDone = fbUser.jobsDone || 0;
-            user.verified = fbUser.verificationStatus === "verified";
-            user.about = fbUser.about || "Профиль";
-            user.avatar = fbUser.avatar || "";
-            user.city = fbUser.city || "Алматы";
-            render(); // Перерендерим с актуальными данными
+            if (state.ui.modal?.type === "user-profile" && state.ui.modal.userId === userId) {
+              state.ui.modal = {
+                ...state.ui.modal,
+                user: {
+                  name: fbUser.name || userName,
+                  id: fbUser.id ? fbUser.id.substring(0, 8) : userId.substring(0, 8),
+                  rating: fbUser.rating || 0,
+                  jobsDone: fbUser.jobsDone || 0,
+                  verified: fbUser.verificationStatus === "verified",
+                  about: fbUser.about || "Профиль",
+                  avatar: fbUser.avatar || "",
+                  city: fbUser.city || "Алматы",
+                  responseTime: fbUser.responseTime || "~5 мин"
+                },
+                userLoaded: true
+              };
+              render();
+            }
           }
         })
         .catch(err => console.error("Ошибка загрузки профиля:", err));
+      }
+
+      if (!modalData.reviewsLoaded && window.FirebaseService.getUserReviews) {
+        window.FirebaseService.getUserReviews(userId)
+          .then((items) => {
+            if (state.ui.modal?.type === "user-profile" && state.ui.modal.userId === userId) {
+              state.ui.modal = {
+                ...state.ui.modal,
+                reviews: Array.isArray(items) ? items : [],
+                reviewsLoaded: true
+              };
+              render();
+            }
+          })
+          .catch((err) => console.error("Ошибка загрузки отзывов:", err));
+      }
     }
     
     return `
@@ -1113,6 +2003,17 @@
           <p class="profile-bio">${escapeHtml(user.about)}</p>
         </div>
 
+        <div class="profile-section">
+          <h3 class="section-title">Отзывы</h3>
+          ${reviews.length ? reviews.slice(0, 5).map((review) => `
+            <div class="offer-item">
+              <div class="card-row"><strong>${escapeHtml(review.fromUserName || "Пользователь")}</strong><span class="offer-price">${escapeHtml(String(review.rating || 0))}★</span></div>
+              <p>${escapeHtml(review.comment || "Без комментария")}</p>
+              <small>${escapeHtml(formatDateTime(review.createdAt))}</small>
+            </div>
+          `).join("") : `<p class="helper">Отзывов пока нет.</p>`}
+        </div>
+
         <!-- Действие -->
         <button class="btn btn-primary btn-block" data-action="close-modal">Узнать больше</button>
       </div>
@@ -1146,6 +2047,35 @@
         <button class="btn btn-warning btn-block" data-action="pay-debt">Оплатить сейчас</button>
         <button class="btn btn-ghost btn-block" data-action="open-wallet">Открыть кошелек</button>
       </div>
+    `;
+  }
+
+  function renderReviewModal(order) {
+    const targetName = order.ownerId === state.account.id ? order.assigneeName : order.ownerName;
+    return `
+      <form class="form" data-form="review" data-order-id="${order.id}">
+        <article class="card stack">
+          <div class="field">
+            <span class="field-title">Кому отзыв</span>
+            <input type="text" value="${escapeHtml(targetName || "Пользователь")}" disabled>
+          </div>
+          <div class="field">
+            <span class="field-title">Оценка</span>
+            <select name="rating" required>
+              <option value="5">5 - Отлично</option>
+              <option value="4">4 - Хорошо</option>
+              <option value="3">3 - Нормально</option>
+              <option value="2">2 - Плохо</option>
+              <option value="1">1 - Очень плохо</option>
+            </select>
+          </div>
+          <div class="field">
+            <span class="field-title">Комментарий</span>
+            <textarea name="comment" maxlength="250" placeholder="Коротко опишите опыт работы" required></textarea>
+          </div>
+        </article>
+        <button class="btn btn-primary btn-block" type="submit">Отправить отзыв</button>
+      </form>
     `;
   }
 
@@ -1203,7 +2133,7 @@
       if (order.city !== state.ui.selectedCity) return false;
       
       if (search) {
-        const haystack = `${order.title} ${order.address} ${order.city} ${order.description}`.toLowerCase();
+        const haystack = `${order.title} ${order.fromAddress || ""} ${order.toAddress || order.address} ${order.city} ${order.description}`.toLowerCase();
         if (!haystack.includes(search)) return false;
       }
       if (state.account.role === "executor") {
@@ -1231,8 +2161,15 @@
   function handleClick(event) {
     const target = event.target.closest("[data-action]");
     if (!target) {
+      const hadCityMenu = state.ui.cityMenuOpen;
+      const hadAddressDropdown = Boolean(state.ui.activeAddressField);
       if (state.ui.cityMenuOpen && !event.target.closest(".city-dropdown")) {
         state.ui.cityMenuOpen = false;
+      }
+      if (state.ui.activeAddressField && !event.target.closest(".address-autocomplete")) {
+        state.ui.activeAddressField = "";
+      }
+      if ((hadCityMenu && !state.ui.cityMenuOpen) || (hadAddressDropdown && !state.ui.activeAddressField)) {
         persist();
         render();
       }
@@ -1257,7 +2194,27 @@
       state.ui.cityMenuOpen = false;
       persist();
       render();
+      if (state.session.isLoggedIn) {
+        bootstrapAccountOrders();
+      }
       showToast(`Город: ${nextCity}`);
+      return;
+    }
+    if (action === "select-address-suggestion") {
+      const fieldKey = target.dataset.field === "from" ? "from" : "to";
+      const value = String(target.dataset.value || "").trim();
+      const city = state.ui.createOrderCity || state.account?.city || "Алматы";
+      if (!value) return;
+      if (fieldKey === "from") {
+        state.ui.createOrderFromAddress = value;
+        state.ui.addressSuggestionsFrom = [value, ...getPresetAddresses(city)];
+      } else {
+        state.ui.createOrderToAddress = value;
+        state.ui.addressSuggestionsTo = [value, ...getPresetAddresses(city)];
+      }
+      state.ui.activeAddressField = "";
+      persist();
+      render();
       return;
     }
 
@@ -1276,6 +2233,12 @@
     }
     if (action === "pick-role") {
       state.session.pending = { ...(state.session.pending || {}), role: target.dataset.role || "executor" };
+      persist();
+      render();
+      return;
+    }
+    if (action === "continue-role") {
+      state.session.pending = { ...(state.session.pending || {}), role: getPendingRole() };
       state.session.step = "register";
       persist();
       render();
@@ -1289,7 +2252,10 @@
     }
     if (action === "open-tab") {
       state.ui.tab = target.dataset.tab || "home";
-      if (state.ui.tab === "notifications") state.notifications = state.notifications.map((item) => ({ ...item, read: true }));
+      if (state.ui.tab === "notifications") {
+        markAllNotificationsRead();
+        return;
+      }
       if (state.ui.modal && state.ui.modal.type === "welcome" && state.ui.tab === "profile") state.ui.modal = null;
       persist();
       render();
@@ -1312,6 +2278,54 @@
       state.ui.modal = null;
       persist();
       render();
+      return;
+    }
+    if (action === "story-close") {
+      if (state.ui.promoIndex >= getPromoStories().length - 1) {
+        state.ui.promoViewerOpen = false;
+        clearPromoStoryTimer();
+        promoStoryTrackedIndex = -1;
+        promoStoryRemaining = PROMO_STORY_DURATION;
+      } else {
+        state.ui.promoIndex += 1;
+        promoStoryTrackedIndex = state.ui.promoIndex;
+        promoStoryRemaining = PROMO_STORY_DURATION;
+      }
+      persist();
+      render();
+      return;
+    }
+    if (action === "story-next") {
+      if (state.ui.promoIndex >= getPromoStories().length - 1) {
+        state.ui.promoViewerOpen = false;
+        promoStoryTrackedIndex = -1;
+        promoStoryRemaining = PROMO_STORY_DURATION;
+      } else {
+        state.ui.promoIndex += 1;
+        promoStoryTrackedIndex = state.ui.promoIndex;
+        promoStoryRemaining = PROMO_STORY_DURATION;
+      }
+      persist();
+      render();
+      return;
+    }
+    if (action === "story-prev") {
+      state.ui.promoIndex = Math.max(0, state.ui.promoIndex - 1);
+      promoStoryTrackedIndex = state.ui.promoIndex;
+      promoStoryRemaining = PROMO_STORY_DURATION;
+      persist();
+      render();
+      return;
+    }
+    if (action === "story-go") {
+      const nextIndex = Number(target.dataset.storyIndex || 0);
+      if (!Number.isNaN(nextIndex) && nextIndex >= 0 && nextIndex < getPromoStories().length) {
+        state.ui.promoIndex = nextIndex;
+        promoStoryTrackedIndex = state.ui.promoIndex;
+        promoStoryRemaining = PROMO_STORY_DURATION;
+        persist();
+        render();
+      }
       return;
     }
     if (action === "open-bargain") {
@@ -1348,8 +2362,11 @@
       return;
     }
     if (action === "logout") {
+      stopOrdersRealtime();
+      stopNotificationsRealtime();
       state.session.isLoggedIn = false;
       state.account = null;
+      state.notifications = [];
       state.ui.tab = "home";
       state.session.step = "onboard";
       persist();
@@ -1370,7 +2387,10 @@
     if (action === "submit-verification") {
       state.account.verificationStatus = "review";
       state.ui.modal = null;
-      addNotification("Заявка на верификацию отправлена", "Профиль перешел в статус проверки.");
+      saveCurrentAccount({
+        name: "verification_submitted",
+        data: { accountId: state.account.id }
+      });
       persist();
       render();
       showToast("Заявка на верификацию отправлена");
@@ -1400,23 +2420,36 @@
       completeOrder(target.dataset.orderId);
       return;
     }
+    if (action === "advance-stage") {
+      advanceOrderStage(target.dataset.orderId);
+      return;
+    }
     if (action === "accept-bid") {
       acceptBid(target.dataset.orderId, target.dataset.bidId);
       return;
     }
-    if (action === "mark-notifications-read") {
-      state.notifications = state.notifications.map((item) => ({ ...item, read: true }));
+    if (action === "open-review") {
+      state.ui.modal = { type: "review", orderId: target.dataset.orderId };
       persist();
       render();
+      return;
+    }
+    if (action === "mark-notifications-read") {
+      markAllNotificationsRead();
       return;
     }
     if (action === "switch-role") {
       state.account.role = state.account.role === "executor" ? "customer" : "executor";
       state.ui.tab = state.account.role === "customer" ? "create" : "home";
-      bootstrapAccountOrders();
+      saveCurrentAccount({
+        name: "role_switched",
+        data: { accountId: state.account.id, role: state.account.role }
+      });
       persist();
+      bootstrapAccountOrders();
       render();
       showToast(`Роль переключена: ${getRoleLabel(state.account.role)}`);
+      return;
     }
     if (action === "activate-online") {
       state.ui.modal = { type: "activation-animation" };
@@ -1426,6 +2459,7 @@
       setTimeout(() => {
         state.account.isOnline = true;
         state.ui.modal = null;
+        saveCurrentAccount();
         persist();
         render();
         bootstrapAccountOrders();
@@ -1433,8 +2467,10 @@
       return;
     }
     if (action === "deactivate-online") {
+      stopOrdersRealtime();
       state.account.isOnline = false;
       state.orders = [];
+      saveCurrentAccount();
       persist();
       render();
       showToast("Вы перешли на отдых");
@@ -1483,9 +2519,11 @@
     }
 
     if (formName === "create-order") {
+      if (!ensureAccountAllowed("Создание заказа")) return;
       const service = String(data.get("service") || ORDER_SERVICE_OPTIONS[0]).trim();
       const city = String(data.get("order_city") || state.ui.createOrderCity || state.account.city || "Алматы").trim();
-      const address = String(data.get("order_address") || state.ui.createOrderAddress || "").trim();
+      const fromAddress = String(data.get("order_from_address") || state.ui.createOrderFromAddress || "").trim();
+      const toAddress = String(data.get("order_to_address") || state.ui.createOrderToAddress || "").trim();
       const title = String(data.get("title") || "").trim();
       const when = String(data.get("when") || ORDER_TIME_OPTIONS[0]).trim();
       const description = String(data.get("description") || "").trim();
@@ -1504,14 +2542,16 @@
         }
       }
 
-      if (!title || !address || !when || budget <= 0) {
+      if (!title || !fromAddress || !toAddress || !when || budget <= 0) {
         showToast("Заполните обязательные поля заказа");
         return;
       }
-      const order = {
+      const order = normalizeOrder({
         id: generateOrderId(),
         title,
-        address,
+        fromAddress,
+        toAddress,
+        address: toAddress,
         city,
         when,
         budget,
@@ -1521,6 +2561,7 @@
         express: isExpress,
         photo: orderPhoto,
         status: "open",
+        stage: "new",
         description: description || "Описание будет уточнено в чате.",
         ownerId: state.account.id,
         ownerName: state.account.name,
@@ -1530,30 +2571,40 @@
         finalPrice: budget,
         bids: [],
         chat: [{ id: generateId("MSG"), senderId: "system", senderName: "TezTap", role: "system", text: "Заказ опубликован и ждет откликов.", createdAt: new Date().toISOString() }],
+        reviewedBy: [],
         completedAt: "",
         commissionSettled: false
-      };
-      state.orders.unshift(order);
-      addNotification("Заказ опубликован", `${title} • ${formatMoney(budget)}`);
+      });
+
+      if (window.FirebaseService) {
+        try {
+          const saved = await window.FirebaseService.saveOrder(order);
+          replaceOrderInState(saved.order || order);
+        } catch (error) {
+          console.error("Failed to save order:", error);
+          showToast("Не удалось опубликовать заказ");
+          return;
+        }
+      } else {
+        state.orders.unshift(order);
+      }
+
       state.ui.tab = "home";
       state.ui.homeFilter = "available";
       state.ui.selectedCity = city;
       state.ui.createOrderCity = city;
-      state.ui.createOrderAddress = getPresetAddresses(city)[0] || "";
+      state.ui.createOrderFromAddress = getPresetAddresses(city)[0] || "";
+      state.ui.createOrderToAddress = getPresetAddresses(city)[1] || getPresetAddresses(city)[0] || "";
       state.ui.createOrderPhotoPreview = "";
-      
-      // Сохраняем заказ в Firebase
-      if (window.FirebaseService) {
-        window.FirebaseService.saveOrder(order).catch(err => console.error('Failed to save order:', err));
-      }
-      
       persist();
       render();
+      bootstrapAccountOrders();
       showToast("Заказ опубликован");
       return;
     }
 
     if (formName === "offer") {
+      if (!ensureAccountAllowed("Отклик")) return;
       const order = getOrderById(form.dataset.orderId);
       if (!order) return;
       const price = Number(data.get("price") || 0);
@@ -1566,10 +2617,38 @@
         showToast("Торг доступен только исполнителю");
         return;
       }
+      if (order.ownerId === state.account.id) {
+        showToast("Нельзя откликнуться на собственный заказ");
+        return;
+      }
+      if (getOpenBidsCount() >= MAX_ACTIVE_BIDS) {
+        showToast(`Лимит активных откликов: ${MAX_ACTIVE_BIDS}`);
+        return;
+      }
       const bid = { id: generateId("BID"), userId: state.account.id, userName: state.account.name, price, note, createdAt: new Date().toISOString() };
-      order.bids.push(bid);
-      order.chat.push({ id: generateId("MSG"), senderId: state.account.id, senderName: state.account.name, role: "executor", text: note ? `Предлагаю ${formatMoney(price)}. ${note}` : `Предлагаю ${formatMoney(price)}.`, createdAt: new Date().toISOString() });
-      addNotification("Новое предложение по заказу", `${state.account.name} предложил ${formatMoney(price)}`);
+
+      if (window.FirebaseService?.submitBid) {
+        try {
+          const result = await window.FirebaseService.submitBid(order.id, bid);
+          replaceOrderInState(result.order || order);
+        } catch (error) {
+          console.error("Failed to submit bid:", error);
+          showToast(error.message || "Не удалось отправить отклик");
+          return;
+        }
+      } else {
+        order.bids.push(bid);
+        order.chat.push({ id: generateId("MSG"), senderId: state.account.id, senderName: state.account.name, role: "executor", text: note ? `Предлагаю ${formatMoney(price)}. ${note}` : `Предлагаю ${formatMoney(price)}.`, createdAt: new Date().toISOString() });
+      }
+
+      if (order.ownerId && order.ownerId !== state.account.id) {
+        sendNotificationToUser(
+          order.ownerId,
+          "Новый отклик",
+          `${state.account.name} предложил ${formatMoney(price)} по заказу ${order.title}.`,
+          { type: "bid_created", orderId: order.id }
+        );
+      }
       
       // Log to Firebase
       if (window.FirebaseService) {
@@ -1588,6 +2667,7 @@
     }
 
     if (formName === "message") {
+      if (!ensureAccountAllowed("Сообщение")) return;
       const order = getOrderById(form.dataset.orderId);
       if (!order) return;
       const text = String(data.get("text") || "").trim();
@@ -1595,8 +2675,33 @@
         showToast("Введите сообщение");
         return;
       }
-      order.chat.push({ id: generateId("MSG"), senderId: state.account.id, senderName: state.account.name, role: state.account.role, text, createdAt: new Date().toISOString() });
-      addNotification("Новое сообщение", `${state.account.name}: ${text}`);
+      if (text.length > 500) {
+        showToast("Сообщение слишком длинное");
+        return;
+      }
+      const message = { id: generateId("MSG"), senderId: state.account.id, senderName: state.account.name, role: state.account.role, text, createdAt: new Date().toISOString() };
+      if (window.FirebaseService?.appendOrderMessage) {
+        try {
+          const result = await window.FirebaseService.appendOrderMessage(order.id, message);
+          replaceOrderInState(result.order || order);
+        } catch (error) {
+          console.error("Failed to send message:", error);
+          showToast("Не удалось отправить сообщение");
+          return;
+        }
+      } else {
+        order.chat.push(message);
+      }
+
+      const messageRecipientId = order.ownerId === state.account.id ? order.assigneeId : order.ownerId;
+      if (messageRecipientId && messageRecipientId !== state.account.id) {
+        sendNotificationToUser(
+          messageRecipientId,
+          "Новое сообщение",
+          `${state.account.name}: ${text}`,
+          { type: "chat_message", orderId: order.id }
+        );
+      }
       persist();
       render();
       return;
@@ -1609,20 +2714,24 @@
         return;
       }
       state.account.balance += amount;
-      addNotification("Баланс пополнен", `На ${formatMoney(amount)}.`);
-      
-      // Log to Firebase
-      if (window.FirebaseService) {
-        window.FirebaseService.logEvent('wallet_topup', {
+      saveCurrentAccount({
+        name: "wallet_topup",
+        data: {
           accountId: state.account.id,
           amount: amount,
           newBalance: state.account.balance
-        }).catch(err => console.error('Failed to log event:', err));
-      }
+        }
+      });
       
       persist();
       render();
       showToast(`Баланс пополнен на ${formatMoney(amount)}`);
+      return;
+    }
+
+    if (formName === "promo-code") {
+      const code = String(data.get("promo_code") || "").trim();
+      applyPromoCode(code);
       return;
     }
 
@@ -1638,12 +2747,17 @@
       state.account.city = city;
       state.account.about = about;
       updateOwnOrdersMeta();
+      saveCurrentAccount({
+        name: "profile_updated",
+        data: { accountId: state.account.id, name, city }
+      });
       persist();
       render();
       showToast("Профиль сохранен");
     }
 
     if (formName === "complaint") {
+      if (!ensureAccountAllowed("Жалоба")) return;
       const order = getOrderById(form.dataset.orderId);
       if (!order) return;
       const reason = String(data.get("reason") || "").trim();
@@ -1681,7 +2795,6 @@
         }).catch(err => console.error('Failed to log event:', err));
       }
       
-      addNotification("Жалоба подана", `Наша команда рассмотрит её в течение 24 часов.`);
       state.ui.modal = { type: "detail", orderId: order.id };
       persist();
       render();
@@ -1702,33 +2815,59 @@
       state.account.about = about;
       updateOwnOrdersMeta();
       state.ui.modal = null;
-      
-      // Save to Firebase
-      if (window.FirebaseService) {
-        window.FirebaseService.saveAccount({
-          id: state.account.id,
-          name: state.account.name,
-          city: state.account.city,
-          avatar: state.account.avatar,
-          about: state.account.about,
-          rating: state.account.rating,
-          jobsDone: state.account.jobsDone,
-          responseTime: state.account.responseTime,
-          phone: state.account.phone,
-          role: state.account.role,
-          createdAt: state.account.createdAt || new Date().toISOString()
-        }).catch(err => console.error('Failed to save profile:', err));
-        
-        window.FirebaseService.logEvent('profile_updated', {
-          accountId: state.account.id,
-          name: name,
-          city: city
-        }).catch(err => console.error('Failed to log event:', err));
-      }
+      saveCurrentAccount({
+        name: "profile_updated",
+        data: { accountId: state.account.id, name, city }
+      });
       
       persist();
       render();
       showToast("Профиль обновлен");
+    }
+
+    if (formName === "review") {
+      if (!ensureAccountAllowed("Отзыв")) return;
+      const order = getOrderById(form.dataset.orderId);
+      if (!order) return;
+      if (order.reviewedBy.includes(state.account.id)) {
+        showToast("Вы уже оставили отзыв");
+        return;
+      }
+      const rating = Number(data.get("rating") || 0);
+      const comment = String(data.get("comment") || "").trim();
+      if (rating < 1 || rating > 5 || !comment) {
+        showToast("Укажите оценку и комментарий");
+        return;
+      }
+      const toUserId = order.ownerId === state.account.id ? order.assigneeId : order.ownerId;
+      const toUserName = order.ownerId === state.account.id ? order.assigneeName : order.ownerName;
+      if (!toUserId) {
+        showToast("Некому оставить отзыв");
+        return;
+      }
+      if (window.FirebaseService?.addReview) {
+        window.FirebaseService.addReview({
+          orderId: order.id,
+          fromUserId: state.account.id,
+          fromUserName: state.account.name,
+          toUserId,
+          toUserName,
+          rating,
+          comment
+        }).catch((error) => console.error("Failed to save review:", error));
+      }
+      if (window.FirebaseService?.addUserRating) {
+        window.FirebaseService.addUserRating(toUserId, rating).catch((error) => console.error("Failed to update rating:", error));
+      }
+      order.reviewedBy = [...order.reviewedBy, state.account.id];
+      if (window.FirebaseService?.updateOrder) {
+        window.FirebaseService.updateOrder(order.id, { reviewedBy: order.reviewedBy }).catch((error) => console.error("Failed to update review flag:", error));
+      }
+      state.ui.modal = { type: "detail", orderId: order.id };
+      persist();
+      render();
+      showToast("Отзыв сохранен");
+      return;
     }
   }
 
@@ -1744,6 +2883,23 @@
         restored.focus();
         restored.setSelectionRange(value.length, value.length);
       }
+      return;
+    }
+    if (input.name === "order_from_address" || input.name === "order_to_address") {
+      const field = input.name === "order_from_address" ? "addressSuggestionsFrom" : "addressSuggestionsTo";
+      const stateField = input.name === "order_from_address" ? "createOrderFromAddress" : "createOrderToAddress";
+      const activeField = input.name === "order_from_address" ? "from" : "to";
+      const city = state.ui.createOrderCity || state.account?.city || "Алматы";
+      const value = String(input.value || "").trim();
+      state.ui[stateField] = value;
+      state.ui.activeAddressField = activeField;
+      searchAddressSuggestions(city, value).then((items) => {
+        if (state.ui[stateField] !== value) return;
+        state.ui[field] = items;
+        persist();
+        render();
+        restoreNamedInputFocus(input.name, value);
+      });
       return;
     }
     if (input.matches("[data-otp]")) {
@@ -1763,6 +2919,9 @@
       state.ui.selectedCity = input.value;
       persist();
       render();
+      if (state.session.isLoggedIn) {
+        bootstrapAccountOrders();
+      }
       showToast(`Фильтр города изменен на ${input.value}`);
       return;
     }
@@ -1771,14 +2930,24 @@
       const nextCity = String(input.value || "").trim() || "Алматы";
       const addresses = getPresetAddresses(nextCity);
       state.ui.createOrderCity = nextCity;
-      state.ui.createOrderAddress = addresses[0] || "";
+      state.ui.createOrderFromAddress = addresses[0] || "";
+      state.ui.createOrderToAddress = addresses[1] || addresses[0] || "";
+      state.ui.addressSuggestionsFrom = addresses;
+      state.ui.addressSuggestionsTo = addresses;
+      state.ui.activeAddressField = "";
       persist();
       render();
       return;
     }
 
-    if (input.name === "order_address") {
-      state.ui.createOrderAddress = String(input.value || "").trim();
+    if (input.name === "order_from_address") {
+      state.ui.createOrderFromAddress = String(input.value || "").trim();
+      persist();
+      return;
+    }
+
+    if (input.name === "order_to_address") {
+      state.ui.createOrderToAddress = String(input.value || "").trim();
       persist();
       return;
     }
@@ -1786,6 +2955,7 @@
     if (input.name === "avatar" && input.files && input.files[0]) {
       readFileAsDataUrl(input.files[0]).then((result) => {
         state.account.avatar = result;
+        saveCurrentAccount();
         persist();
         render();
         showToast("Аватар обновлен");
@@ -1807,6 +2977,35 @@
     }
   }
 
+  function handleFocusIn(event) {
+    const target = event.target;
+    if (target.name !== "order_from_address" && target.name !== "order_to_address") {
+      return;
+    }
+
+    const isFrom = target.name === "order_from_address";
+    const stateField = isFrom ? "createOrderFromAddress" : "createOrderToAddress";
+    const suggestionField = isFrom ? "addressSuggestionsFrom" : "addressSuggestionsTo";
+    const activeField = isFrom ? "from" : "to";
+    const city = state.ui.createOrderCity || state.account?.city || "Алматы";
+    const value = String(target.value || state.ui[stateField] || "").trim();
+
+    if (state.ui.activeAddressField === activeField && Array.isArray(state.ui[suggestionField]) && state.ui[suggestionField].length) {
+      state.ui[stateField] = value;
+      return;
+    }
+
+    state.ui[stateField] = value;
+    state.ui[suggestionField] = Array.from(new Set([
+      ...(state.ui[suggestionField] || []),
+      ...getPresetAddresses(city)
+    ])).slice(0, 6);
+    state.ui.activeAddressField = activeField;
+    persist();
+    render();
+    restoreNamedInputFocus(target.name, value);
+  }
+
   function handleKeyDown(event) {
     if (event.key === "Escape" && state.ui.modal) {
       state.ui.modal = null;
@@ -1820,10 +3019,28 @@
       render();
       return;
     }
+    if (event.key === "Escape" && state.ui.activeAddressField) {
+      state.ui.activeAddressField = "";
+      persist();
+      render();
+      return;
+    }
     if (event.target.matches("[data-otp]") && event.key === "Backspace" && !event.target.value) {
       const previous = root.querySelector(`[data-otp="${Number(event.target.dataset.otp) - 1}"]`);
       if (previous) previous.focus();
     }
+  }
+
+  function handlePointerDown(event) {
+    if (!state.ui.promoViewerOpen) return;
+    if (!event.target.closest(".promo-story-shell")) return;
+    pausePromoStory();
+  }
+
+  function handlePointerUp(event) {
+    if (!state.ui.promoViewerOpen) return;
+    if (!event.target.closest(".promo-story-shell")) return;
+    resumePromoStory();
   }
 
   // ===== FIREBASE AUTHENTICATION =====
@@ -1840,12 +3057,14 @@
         state.session.pending = null;
         state.ui.tab = "home";
         state.ui.homeFilter = "available";
+        state.ui.selectedCity = result.account.city || "Алматы";
         persist();
         render();
         showToast("С возвращением!");
-        
+        bootstrapAdminContent();
         // Загружаем заказы
         await bootstrapAccountOrders();
+        bootstrapNotifications();
       }
     } catch (error) {
       console.error("Ошибка входа:", error);
@@ -1889,16 +3108,17 @@
         state.session.pending = null;
         state.ui.tab = "home";
         state.ui.homeFilter = "available";
+        state.ui.selectedCity = result.account.city || "Алматы";
         persist();
         render();
         showToast("Аккаунт создан!");
-        
+        bootstrapAdminContent();
         // Загружаем заказы
         await bootstrapAccountOrders();
+        bootstrapNotifications();
         
         // Показываем welcome модал
         state.ui.modal = { type: "welcome" };
-        addNotification("Аккаунт создан", `Ваш ID ${formatAccountId(result.uid)}`);
         persist();
         render();
       }
@@ -1924,6 +3144,9 @@
       debt: 0,
       firstGraceUsed: false,
       jobsDone: 0,
+      isBlocked: false,
+      usedPromoCodes: [],
+      promoHistory: [],
       demoReady: false,
       createdAt: new Date().toISOString()
     };
@@ -1957,30 +3180,52 @@
     }
     
     bootstrapAccountOrders();
+    bootstrapNotifications();
     state.ui.modal = { type: "welcome" };
-    addNotification("Аккаунт создан", `Ваш ID ${formatAccountId(state.account.id)}`);
     persist();
     render();
   }
 
   async function bootstrapAccountOrders() {
     if (!state.account) return;
-    
-    // 🔥 Загружаем заказы из Firebase
+
+    const city = state.ui.selectedCity || state.account.city || "Алматы";
+
+    if (!window.FirebaseService) {
+      setTimeout(() => {
+        if (state.session.isLoggedIn && state.account) {
+          bootstrapAccountOrders();
+        }
+      }, 400);
+      return;
+    }
+
+    stopOrdersRealtime();
+
+    if (window.FirebaseService.subscribeOrdersByCity) {
+      unsubscribeOrdersRealtime = window.FirebaseService.subscribeOrdersByCity(
+        city,
+        (orders) => {
+          if (!state.session.isLoggedIn || !state.account) return;
+          state.orders = Array.isArray(orders) ? orders.map((order) => normalizeOrder(order)) : [];
+          state.account.demoReady = true;
+          persist();
+          render();
+        },
+        (error) => {
+          console.error("Ошибка realtime загрузки заказов:", error);
+          showToast("Не удалось подключить обновление заказов");
+        }
+      );
+      return;
+    }
+
     try {
-      showToast('Загружаем заказы...');
-      const orders = await window.FirebaseService.getOrdersByCity(state.account.city);
-      state.orders = orders || [];
-      
-      // Пустая лента? Добавить уведомление
-      if (state.orders.length === 0 && state.account.role === 'executor') {
-        addNotification("Пока нет заказов", `В ${state.account.city} пока нет активных заказов. Создайте первый заказ как заказчик!`);
-      }
-      
+      const orders = await window.FirebaseService.getOrdersByCity(city);
+      state.orders = Array.isArray(orders) ? orders.map((order) => normalizeOrder(order)) : [];
       state.account.demoReady = true;
       persist();
       render();
-      showToast(`Загружено ${state.orders.length} заказов`);
     } catch (error) {
       console.error("Ошибка загрузки заказов:", error);
       showToast("Ошибка загрузки заказов");
@@ -2024,22 +3269,22 @@
     const orders = await window.FirebaseService.getOrdersByCity(state.account.city);
     state.orders = orders || [];
     
-    // Пустая лента? Добавить уведомление
-    if (state.orders.length === 0 && state.account.role === 'executor') {
-      addNotification("Пока нет заказов", `В ${state.account.city} пока тихо. Создайте первый заказ как заказчик для теста!`);
-    }
-    
     state.account.demoReady = true;
     persist();
     render();
     showToast(`Загружено ${state.orders.length} реальных заказов`);
   }
 
-  function takeOrder(orderId) {
+  async function takeOrder(orderId) {
     const order = getOrderById(orderId);
     if (!order) return;
+    if (!ensureAccountAllowed("Взять заказ")) return;
     if (state.account.role !== "executor") {
       showToast("Этот режим доступен исполнителю");
+      return;
+    }
+    if (order.ownerId === state.account.id) {
+      showToast("Нельзя взять собственный заказ");
       return;
     }
     if (!canTakeNextOrder()) {
@@ -2049,99 +3294,187 @@
       showToast("Сначала оплатите комиссию");
       return;
     }
-    order.status = "assigned";
-    order.assigneeId = state.account.id;
-    order.assigneeName = state.account.name;
-    order.finalPrice = order.finalPrice || order.budget;
-    order.chat.push({ id: generateId("MSG"), senderId: "system", senderName: "TezTap", role: "system", text: `${state.account.name} взял заказ в работу.`, createdAt: new Date().toISOString() });
-    addNotification("Заказ принят", `${order.title} теперь у вас в работе.`);
+
+    try {
+      if (window.FirebaseService?.takeOrder) {
+        const result = await window.FirebaseService.takeOrder(orderId, {
+          id: state.account.id,
+          name: state.account.name
+        });
+        replaceOrderInState(result.order || order);
+      } else {
+        order.status = "assigned";
+        order.stage = "accepted";
+        order.assigneeId = state.account.id;
+        order.assigneeName = state.account.name;
+        order.finalPrice = order.finalPrice || order.budget;
+        order.chat.push({ id: generateId("MSG"), senderId: "system", senderName: "TezTap", role: "system", text: `${state.account.name} взял заказ в работу.`, createdAt: new Date().toISOString() });
+      }
+    } catch (error) {
+      console.error("Failed to take order:", error);
+      showToast(error.message || "Не удалось взять заказ");
+      return;
+    }
+
+    if (order.ownerId && order.ownerId !== state.account.id) {
+      sendNotificationToUser(
+        order.ownerId,
+        "Заказ взят в работу",
+        `${state.account.name} взял заказ ${order.title}.`,
+        { type: "order_taken", orderId: order.id }
+      );
+    }
     state.ui.modal = { type: "detail", orderId: order.id };
-    
-    // Update Firebase
+
     if (window.FirebaseService) {
-      window.FirebaseService.updateOrder(orderId, {
-        status: "assigned",
-        assigneeId: state.account.id,
-        assigneeName: state.account.name,
-        finalPrice: order.finalPrice
-      }).catch(err => console.error('Failed to update order:', err));
-      
       window.FirebaseService.logEvent('order_taken', {
         orderId: orderId,
         executorId: state.account.id,
         budget: order.budget
       }).catch(err => console.error('Failed to log event:', err));
     }
-    
+
     persist();
     render();
     showToast("Заказ принят в работу");
   }
 
-  function completeOrder(orderId) {
+  async function completeOrder(orderId) {
     const order = getOrderById(orderId);
     if (!order || order.status === "done") return;
-    order.status = "done";
-    order.completedAt = new Date().toISOString();
-    order.chat.push({ id: generateId("MSG"), senderId: "system", senderName: "TezTap", role: "system", text: "Заказ отмечен как выполненный.", createdAt: new Date().toISOString() });
-    if (state.account.role === "executor" && order.assigneeId === state.account.id && !order.commissionSettled) {
-      state.account.debt += calculateCommission(order.finalPrice || order.budget);
-      state.account.jobsDone += 1;
-      state.ui.modal = { type: "commission", orderId: order.id };
-      addNotification("Заказ завершен", `Комиссия ${formatMoney(calculateCommission(order.finalPrice || order.budget))} добавлена в долг.`);
-    } else {
-      state.ui.modal = { type: "detail", orderId: order.id };
-      addNotification("Заказ завершен", `${order.title} закрыт.`);
+    if (!ensureAccountAllowed("Завершение заказа")) return;
+
+    try {
+      if (window.FirebaseService?.completeOrder) {
+        const result = await window.FirebaseService.completeOrder(orderId);
+        replaceOrderInState(result.order || order);
+      } else {
+        order.status = "done";
+        order.completedAt = new Date().toISOString();
+        order.chat.push({ id: generateId("MSG"), senderId: "system", senderName: "TezTap", role: "system", text: "Заказ отмечен как выполненный.", createdAt: new Date().toISOString() });
+      }
+    } catch (error) {
+      console.error("Failed to complete order:", error);
+      showToast(error.message || "Не удалось завершить заказ");
+      return;
     }
-    
-    // Update Firebase
+
+    const updatedOrder = getOrderById(orderId) || order;
+    if (state.account.role === "executor" && updatedOrder.assigneeId === state.account.id && !updatedOrder.commissionSettled) {
+      state.account.debt += calculateCommission(updatedOrder.finalPrice || updatedOrder.budget);
+      state.account.jobsDone += 1;
+      saveCurrentAccount();
+      state.ui.modal = { type: "commission", orderId: updatedOrder.id };
+    } else {
+      state.ui.modal = { type: "detail", orderId: updatedOrder.id };
+    }
+
+    const completionRecipientId = updatedOrder.ownerId === state.account.id ? updatedOrder.assigneeId : updatedOrder.ownerId;
+    if (completionRecipientId && completionRecipientId !== state.account.id) {
+      sendNotificationToUser(
+        completionRecipientId,
+        "Заказ завершен",
+        `Заказ ${updatedOrder.title} отмечен как выполненный.`,
+        { type: "order_completed", orderId: updatedOrder.id }
+      );
+    }
+
     if (window.FirebaseService) {
-      window.FirebaseService.updateOrder(orderId, {
-        status: "done",
-        completedAt: order.completedAt
-      }).catch(err => console.error('Failed to update order:', err));
-      
       window.FirebaseService.logEvent('order_completed', {
         orderId: orderId,
-        finalPrice: order.finalPrice || order.budget,
-        completedAt: order.completedAt
+        finalPrice: updatedOrder.finalPrice || updatedOrder.budget,
+        completedAt: updatedOrder.completedAt
       }).catch(err => console.error('Failed to log event:', err));
     }
-    
+
     persist();
     render();
     showToast("Заказ завершен");
   }
 
-  function acceptBid(orderId, bidId) {
+  async function advanceOrderStage(orderId) {
+    const order = getOrderById(orderId);
+    if (!order || order.status !== "assigned") return;
+    if (!ensureAccountAllowed("Трекинг заказа")) return;
+
+    const nextStage = getNextOrderStage(order.stage);
+    if (nextStage === order.stage) return;
+
+    order.stage = nextStage;
+    order.chat.push({
+      id: generateId("MSG"),
+      senderId: "system",
+      senderName: "TRAINTUP",
+      role: "system",
+      text: `Статус доставки обновлен: ${getOrderStageMeta(nextStage).title}.`,
+      createdAt: new Date().toISOString()
+    });
+
+    if (window.FirebaseService?.updateOrder) {
+      window.FirebaseService.updateOrder(orderId, {
+        stage: nextStage,
+        chat: order.chat
+      }).catch((error) => console.error("Failed to update order stage:", error));
+    }
+
+    const recipientId = order.ownerId === state.account.id ? order.assigneeId : order.ownerId;
+    if (recipientId && recipientId !== state.account.id) {
+      sendNotificationToUser(
+        recipientId,
+        "Обновление по заказу",
+        `${order.title}: ${getOrderStageMeta(nextStage).title}`,
+        { type: "order_tracking", orderId: order.id }
+      );
+    }
+
+    persist();
+    render();
+    showToast(`Этап: ${getOrderStageMeta(nextStage).title}`);
+  }
+
+  async function acceptBid(orderId, bidId) {
     const order = getOrderById(orderId);
     if (!order) return;
+    if (!ensureAccountAllowed("Выбор исполнителя")) return;
     const bid = order.bids.find((item) => item.id === bidId);
     if (!bid) return;
-    order.status = "assigned";
-    order.assigneeId = bid.userId;
-    order.assigneeName = bid.userName;
-    order.finalPrice = bid.price;
-    order.chat.push({ id: generateId("MSG"), senderId: "system", senderName: "TezTap", role: "system", text: `Заказчик принял предложение ${bid.userName} на ${formatMoney(bid.price)}.`, createdAt: new Date().toISOString() });
-    addNotification("Исполнитель выбран", `${bid.userName} назначен на заказ ${order.title}.`);
+
+    try {
+      if (window.FirebaseService?.acceptBid) {
+        const result = await window.FirebaseService.acceptBid(orderId, bidId);
+        replaceOrderInState(result.order || order);
+      } else {
+        order.status = "assigned";
+        order.stage = "accepted";
+        order.assigneeId = bid.userId;
+        order.assigneeName = bid.userName;
+        order.finalPrice = bid.price;
+        order.chat.push({ id: generateId("MSG"), senderId: "system", senderName: "TezTap", role: "system", text: `Заказчик принял предложение ${bid.userName} на ${formatMoney(bid.price)}.`, createdAt: new Date().toISOString() });
+      }
+    } catch (error) {
+      console.error("Failed to accept bid:", error);
+      showToast(error.message || "Не удалось выбрать исполнителя");
+      return;
+    }
+
+    if (bid.userId && bid.userId !== state.account.id) {
+      sendNotificationToUser(
+        bid.userId,
+        "Вас выбрали исполнителем",
+        `Заказчик принял ваш отклик по заказу ${order.title}.`,
+        { type: "bid_accepted", orderId: order.id }
+      );
+    }
     state.ui.modal = { type: "detail", orderId: order.id };
-    
-    // Update Firebase
+
     if (window.FirebaseService) {
-      window.FirebaseService.updateOrder(orderId, {
-        status: "assigned",
-        assigneeId: bid.userId,
-        assigneeName: bid.userName,
-        finalPrice: bid.price
-      }).catch(err => console.error('Failed to update order:', err));
-      
       window.FirebaseService.logEvent('bid_accepted', {
         orderId: orderId,
         bidId: bidId,
         bidAmount: bid.price
       }).catch(err => console.error('Failed to log event:', err));
     }
-    
+
     persist();
     render();
     showToast("Исполнитель назначен");
@@ -2162,7 +3495,10 @@
     state.account.balance -= state.account.debt;
     state.account.debt = 0;
     state.orders = state.orders.map((order) => order.assigneeId === state.account.id && order.status === "done" ? { ...order, commissionSettled: true } : order);
-    addNotification("Комиссия оплачена", "Можно брать следующий заказ.");
+    saveCurrentAccount({
+      name: "debt_paid",
+      data: { accountId: state.account.id }
+    });
     state.ui.modal = null;
     persist();
     render();
@@ -2184,6 +3520,9 @@
   }
 
   function addNotification(title, body) {
+    if (window.FirebaseService) {
+      return;
+    }
     state.notifications.unshift({ id: generateId("NTF"), title, body, read: false, createdAt: new Date().toISOString() });
     state.notifications = state.notifications.slice(0, 40);
   }
@@ -2277,156 +3616,291 @@
   }
 
   // Map functions
-  function getOrderCoordinates(address) {
-    // Demo coordinates для Алматы
-    const cityCoordinates = {
-      "Алматы": { lat: 43.2381, lng: 76.9453 },
-      "Нур-Султан": { lat: 51.1694, lng: 71.4491 },
-      "Кокшетау": { lat: 53.2839, lng: 75.9244 },
-      "Шымкент": { lat: 42.3139, lng: 69.5894 },
-      "Актау": { lat: 43.6486, lng: 51.4008 },
-      "Уральск": { lat: 51.2277, lng: 51.3656 },
-      "Актобе": { lat: 50.2838, lng: 57.1844 },
-      "Караганда": { lat: 49.8047, lng: 72.1346 },
-      "Семей": { lat: 50.4109, lng: 80.2500 },
-      "Павлодар": { lat: 52.2881, lng: 76.9384 }
-    };
+  function getCityCenter(city) {
+    return CITY_COORDINATES[city] || CITY_COORDINATES["Алматы"];
+  }
 
-    const city = state.ui.selectedCity || "Алматы";
-    const baseCoord = cityCoordinates[city] || cityCoordinates["Алматы"];
+  function getCityCenterLabel(city) {
+    return `Центр ${city || "Алматы"}`;
+  }
 
-    // Генерируем небольшой случайный офсет для каждого адреса
-    const hash = String(address).split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    const seedRandom = (seed) => {
-      const x = Math.sin(seed) * 10000;
-      return x - Math.floor(x);
-    };
+  function getAddressSeed(text) {
+    return String(text || "").split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  }
 
-    const offsetLat = (seedRandom(hash) - 0.5) * 0.05;
-    const offsetLng = (seedRandom(hash * 2) - 0.5) * 0.05;
+  function seededRandom(seed) {
+    const x = Math.sin(seed) * 10000;
+    return x - Math.floor(x);
+  }
 
+  function getApproxOrderPoint(city, address) {
+    const base = getCityCenter(city);
+    const hash = getAddressSeed(`${city}:${address}`);
+    const offsetLat = (seededRandom(hash) - 0.5) * 0.03;
+    const offsetLng = (seededRandom(hash * 2) - 0.5) * 0.04;
     return {
-      lat: baseCoord.lat + offsetLat,
-      lng: baseCoord.lng + offsetLng
+      lat: base.lat + offsetLat,
+      lng: base.lng + offsetLng
     };
   }
 
-  function initDetailMapRoute(order) {
-    // Инициализируем карту маршрута в модальном окне
-    setTimeout(() => {
+  function getOrderCoordinates(address, city = state.ui.selectedCity || "Алматы") {
+    return getApproxOrderPoint(city, address);
+  }
+
+  async function resolveAddressCoordinates(city, address) {
+    const cleanAddress = String(address || "").trim();
+    if (!cleanAddress) {
+      return getCityCenter(city);
+    }
+
+    const cacheKey = `${city}::${cleanAddress}`;
+    if (addressGeoCache.has(cacheKey)) {
+      return addressGeoCache.get(cacheKey);
+    }
+
+    if (cleanAddress === getCityCenterLabel(city)) {
+      const centerPoint = getCityCenter(city);
+      addressGeoCache.set(cacheKey, centerPoint);
+      return centerPoint;
+    }
+
+    const presetPoint = ORDER_ADDRESS_COORDINATES[city]?.[cleanAddress];
+    if (presetPoint) {
+      addressGeoCache.set(cacheKey, presetPoint);
+      return presetPoint;
+    }
+
+    const fallbackPoint = getApproxOrderPoint(city, cleanAddress);
+
+    try {
+      const query = encodeURIComponent(`${cleanAddress}, ${city}, Kazakhstan`);
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=ru&countrycodes=kz&q=${query}`);
+      const results = await response.json();
+      if (Array.isArray(results) && results.length) {
+        const coords = {
+          lat: Number(results[0].lat),
+          lng: Number(results[0].lon)
+        };
+        if (Number.isFinite(coords.lat) && Number.isFinite(coords.lng)) {
+          addressGeoCache.set(cacheKey, coords);
+          return coords;
+        }
+      }
+    } catch (error) {
+      console.warn("Не удалось геокодировать адрес, используем fallback:", cleanAddress, error);
+    }
+
+    addressGeoCache.set(cacheKey, fallbackPoint);
+    return fallbackPoint;
+  }
+
+  async function fetchRoadRoute(startPoint, endPoint) {
+    const fallbackDistance = window.L
+      ? window.L.latLng(startPoint.lat, startPoint.lng).distanceTo(window.L.latLng(endPoint.lat, endPoint.lng))
+      : 0;
+
+    try {
+      const routeUrl = `https://router.project-osrm.org/route/v1/driving/${startPoint.lng},${startPoint.lat};${endPoint.lng},${endPoint.lat}?overview=full&geometries=geojson&steps=false`;
+      const response = await fetch(routeUrl);
+      const data = await response.json();
+      const route = data?.routes?.[0];
+
+      if (route?.geometry?.coordinates?.length) {
+        return {
+          geometry: route.geometry.coordinates.map(([lng, lat]) => [lat, lng]),
+          distanceKm: Number(route.distance || 0) / 1000,
+          durationMin: Number(route.duration || 0) / 60
+        };
+      }
+    } catch (error) {
+      console.warn("Не удалось построить дорожный маршрут, используем прямую линию:", error);
+    }
+
+    return {
+      geometry: [
+        [startPoint.lat, startPoint.lng],
+        [endPoint.lat, endPoint.lng]
+      ],
+      distanceKm: fallbackDistance / 1000,
+      durationMin: Math.max(5, (fallbackDistance / 1000) * 2.5)
+    };
+  }
+
+  function createRouteMarker(label, color) {
+    return window.L.divIcon({
+      className: "route-marker",
+      html: `<div style="width: 38px; height: 38px; background: ${color}; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 800; border: 3px solid white; box-shadow: 0 8px 18px rgba(0,0,0,0.28); font-size: 16px;">${label}</div>`,
+      iconSize: [38, 38],
+      iconAnchor: [19, 19],
+      popupAnchor: [0, -19]
+    });
+  }
+
+  function getOrderStageProgress(stage) {
+    const progressMap = {
+      new: 0.02,
+      accepted: 0.12,
+      to_pickup: 0.28,
+      picked_up: 0.48,
+      to_dropoff: 0.76,
+      delivered: 0.98
+    };
+    return progressMap[stage] ?? progressMap.new;
+  }
+
+  function getPointAtProgress(points, progress) {
+    if (!Array.isArray(points) || !points.length) return null;
+    if (points.length === 1) {
+      const [lat, lng] = points[0];
+      return { lat, lng };
+    }
+
+    const normalized = Math.min(1, Math.max(0, Number(progress) || 0));
+    const segments = [];
+    let totalDistance = 0;
+
+    for (let index = 1; index < points.length; index += 1) {
+      const start = points[index - 1];
+      const end = points[index];
+      const distance = window.L
+        ? window.L.latLng(start[0], start[1]).distanceTo(window.L.latLng(end[0], end[1]))
+        : Math.hypot(end[0] - start[0], end[1] - start[1]);
+      segments.push({ start, end, distance });
+      totalDistance += distance;
+    }
+
+    if (!totalDistance) {
+      const [lat, lng] = points[0];
+      return { lat, lng };
+    }
+
+    let passed = 0;
+    const targetDistance = totalDistance * normalized;
+
+    for (const segment of segments) {
+      if (passed + segment.distance >= targetDistance) {
+        const ratio = segment.distance ? (targetDistance - passed) / segment.distance : 0;
+        return {
+          lat: segment.start[0] + (segment.end[0] - segment.start[0]) * ratio,
+          lng: segment.start[1] + (segment.end[1] - segment.start[1]) * ratio
+        };
+      }
+      passed += segment.distance;
+    }
+
+    const [lat, lng] = points[points.length - 1];
+    return { lat, lng };
+  }
+
+  function createCourierMarker() {
+    return window.L.divIcon({
+      className: "route-courier-marker",
+      html: `
+        <div style="width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg, #2563eb, #7c3aed); border: 3px solid white; box-shadow: 0 10px 24px rgba(37, 99, 235, 0.35); display: grid; place-items: center;">
+          <div style="width: 12px; height: 12px; border-radius: 50%; background: #fff;"></div>
+        </div>
+      `,
+      iconSize: [34, 34],
+      iconAnchor: [17, 17],
+      popupAnchor: [0, -18]
+    });
+  }
+
+  async function initDetailMapRoute(order) {
+    setTimeout(async () => {
       const mapElement = document.getElementById("detailMapRoute");
       if (!mapElement || !window.L) return;
 
-      // Удаляем старую карту если она есть
       if (state.detailMap) {
         state.detailMap.remove();
         state.detailMap = null;
       }
 
-      // Начальная точка - центр города
-      const cityCoordinates = {
-        "Алматы": [43.2381, 76.9453],
-        "Нур-Султан": [51.1694, 71.4491],
-        "Кокшетау": [53.2839, 75.9244],
-        "Шымкент": [42.3139, 69.5894],
-        "Актау": [43.6486, 51.4008],
-        "Уральск": [51.2277, 51.3656],
-        "Актобе": [50.2838, 57.1844],
-        "Караганда": [49.8047, 72.1346],
-        "Семей": [50.4109, 80.2500],
-        "Павлодар": [52.2881, 76.9384]
-      };
-
-      const startPoint = cityCoordinates[order.city] || cityCoordinates["Алматы"];
-      const endCoords = getOrderCoordinates(order.address);
-      const endPoint = [endCoords.lat, endCoords.lng];
-
-      // Создаем карту с явным размером контейнера
       mapElement.style.width = "100%";
       mapElement.style.height = "500px";
-      
+      mapElement.innerHTML = '<div class="route-map-loading">Строим маршрут...</div>';
+
+      const startLabel = order.fromAddress || getCityCenterLabel(order.city);
+      const endLabel = order.toAddress || order.address;
+      const city = order.city || state.ui.selectedCity || "Алматы";
+      const stageMeta = getOrderStageMeta(order.stage);
+      const trackingEnabled = Boolean(order.assigneeId || order.assigneeName);
+
+      const startPoint = await resolveAddressCoordinates(city, startLabel);
+      const endPoint = await resolveAddressCoordinates(city, endLabel);
+      const route = await fetchRoadRoute(startPoint, endPoint);
+
+      if (!document.getElementById("detailMapRoute")) return;
+
+      mapElement.innerHTML = "";
       state.detailMap = window.L.map("detailMapRoute", {
         attributionControl: false,
         zoomControl: false
-      }).setView(startPoint, 13);
+      });
 
-      // Пересчитываем размер карты после инициализации
-      setTimeout(() => {
-        if (state.detailMap) {
-          state.detailMap.invalidateSize();
-        }
-      }, 100);
-
-      // Добавляем OSM тайлы
       window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: '© OpenStreetMap',
+        attribution: "© OpenStreetMap",
         maxZoom: 19
       }).addTo(state.detailMap);
 
-      // Маркер начальной точки (откуда забрать)
-      const startIcon = window.L.divIcon({
-        className: "route-marker",
-        html: `<div style="width: 36px; height: 36px; background: #10b981; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 800; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.3); font-size: 16px;">A</div>`,
-        iconSize: [36, 36],
-        iconAnchor: [18, 18],
-        popupAnchor: [0, -18]
-      });
+      const startLatLng = [startPoint.lat, startPoint.lng];
+      const endLatLng = [endPoint.lat, endPoint.lng];
 
-      window.L.marker(startPoint, { icon: startIcon })
-        .bindPopup("Откуда забрать")
+      window.L.marker(startLatLng, { icon: createRouteMarker("A", "#22c55e") })
+        .bindPopup(`Точка A: ${escapeHtml(startLabel)}`)
         .addTo(state.detailMap);
 
-      // Маркер конечной точки (где доставить)
-      const endIcon = window.L.divIcon({
-        className: "route-marker",
-        html: `<div style="width: 36px; height: 36px; background: #ef4444; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 800; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.3); font-size: 16px;">B</div>`,
-        iconSize: [36, 36],
-        iconAnchor: [18, 18],
-        popupAnchor: [0, -18]
-      });
-
-      window.L.marker(endPoint, { icon: endIcon })
-        .bindPopup("Куда доставить")
+      window.L.marker(endLatLng, { icon: createRouteMarker("B", "#ef4444") })
+        .bindPopup(`Точка B: ${escapeHtml(endLabel)}`)
         .addTo(state.detailMap);
 
-      // Линия маршрута
-      const routeLine = window.L.polyline([startPoint, endPoint], {
-        color: "#0ea5e9",
-        weight: 4,
-        opacity: 0.8,
-        dashArray: "5, 10"
+      const routeOutline = window.L.polyline(route.geometry, {
+        color: "#93c5fd",
+        weight: 10,
+        opacity: 0.25,
+        lineCap: "round",
+        lineJoin: "round"
       }).addTo(state.detailMap);
 
-      // Вычисляем примерное расстояние (градусы в км, приблизительно)
-      const latDiff = endCoords.lat - startPoint[0];
-      const lngDiff = endCoords.lng - startPoint[1];
-      const distance = Math.sqrt(latDiff * latDiff + lngDiff * lngDiff) * 111; // 1 градус ~ 111 км
-      const time = Math.max(5, Math.round(distance * 2)); // примерное время в минутах
+      window.L.polyline(route.geometry, {
+        color: "#2563eb",
+        weight: 6,
+        opacity: 0.95,
+        lineCap: "round",
+        lineJoin: "round"
+      }).addTo(state.detailMap);
 
-      // Добавляем инфо маршрута
+      if (trackingEnabled) {
+        const trackerPoint = getPointAtProgress(route.geometry, getOrderStageProgress(order.stage));
+        if (trackerPoint) {
+          window.L.marker([trackerPoint.lat, trackerPoint.lng], { icon: createCourierMarker() })
+            .bindPopup(`${escapeHtml(order.assigneeName || "Исполнитель")} • ${escapeHtml(stageMeta.title)}`)
+            .addTo(state.detailMap);
+        }
+      }
+
       const infoText = document.createElement("div");
-      infoText.style.cssText = `
-        position: absolute;
-        bottom: 12px;
-        left: 12px;
-        background: rgba(15, 20, 25, 0.92);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 12px;
-        padding: 12px 16px;
-        color: white;
-        font-size: 14px;
-        font-weight: 600;
-        z-index: 999;
-        backdrop-filter: blur(10px);
+      infoText.className = "route-map-info";
+      infoText.innerHTML = `
+        <div class="route-map-summary">
+          <strong>${escapeHtml(city)}</strong>
+          <span>${escapeHtml(startLabel)} → ${escapeHtml(endLabel)}</span>
+        </div>
+        <div class="route-map-meta">
+          <small>${route.distanceKm.toFixed(1)} км • ${Math.max(1, Math.round(route.durationMin))} мин</small>
+          <div class="route-map-stage ${trackingEnabled ? "" : "idle"}">
+            <em>${escapeHtml(trackingEnabled ? (order.assigneeName || "Исполнитель") : "Трекинг")}</em>
+            <b>${escapeHtml(trackingEnabled ? stageMeta.title : "Ждет исполнителя")}</b>
+          </div>
+        </div>
       `;
-      infoText.innerHTML = `<strong style="display: block; margin-bottom: 4px;">Маршрут</strong>
-                            <span style="color: rgba(255,255,255,0.7);">≈ ${distance.toFixed(1)} км • ${time} мин</span>`;
       mapElement.appendChild(infoText);
 
-      // Показываем оба маркера на экране
-      const bounds = window.L.latLngBounds([startPoint, endPoint]);
-      state.detailMap.fitBounds(bounds, { padding: [50, 50] });
-    }, 200);
+      const bounds = window.L.latLngBounds(route.geometry);
+      state.detailMap.fitBounds(bounds, { padding: [36, 36] });
+      setTimeout(() => state.detailMap?.invalidateSize(), 120);
+    }, 120);
   }
 
   function initMap() {
@@ -2442,20 +3916,8 @@
       }
 
       const city = state.ui.selectedCity || "Алматы";
-      const cityCoordinates = {
-        "Алматы": [43.2381, 76.9453],
-        "Нур-Султан": [51.1694, 71.4491],
-        "Кокшетау": [53.2839, 75.9244],
-        "Шымкент": [42.3139, 69.5894],
-        "Актау": [43.6486, 51.4008],
-        "Уральск": [51.2277, 51.3656],
-        "Актобе": [50.2838, 57.1844],
-        "Караганда": [49.8047, 72.1346],
-        "Семей": [50.4109, 80.2500],
-        "Павлодар": [52.2881, 76.9384]
-      };
-
-      const center = cityCoordinates[city] || cityCoordinates["Алматы"];
+      const cityCenter = getCityCenter(city);
+      const center = [cityCenter.lat, cityCenter.lng];
 
       // Создаем карту
       state.map = window.L.map("mapView").setView(center, 13);
@@ -2469,7 +3931,7 @@
       // Добавляем маркеры заказов
       const orders = getVisibleOrders();
       orders.forEach(order => {
-        const coords = getOrderCoordinates(order.address);
+        const coords = getOrderCoordinates(order.toAddress || order.address, order.city || city);
         const color = order.status === "done" ? "#888" : order.ownerId === state.account.id ? "#3b82f6" : "#10b981";
         
         const customIcon = window.L.divIcon({
