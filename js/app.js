@@ -11,6 +11,8 @@
   let promoStoryStartedAt = 0;
   let promoStoryTrackedIndex = -1;
   let yandexMapsReadyPromise = null;
+  let yandexMapsBlocked = window.location.protocol === "file:";
+  let yandexSuggestBlocked = window.location.protocol === "file:";
 
   const ICONS = {
     search: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 4a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13Zm0 2a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9Zm8.85 10.44 1.41 1.41-3.2 3.2-1.41-1.41 3.2-3.2Z"/></svg>',
@@ -28,18 +30,95 @@
     list: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h2v2H4V6Zm4 0h12v2H8V6ZM4 11h2v2H4v-2Zm4 0h12v2H8v-2ZM4 16h2v2H4v-2Zm4 0h12v2H8v-2Z"/></svg>'
   };
 
-  const ORDER_CITY_OPTIONS = ["Алматы", "Нур-Султан", "Кокшетау", "Шымкент", "Актау", "Уральск", "Актобе", "Караганда", "Семей", "Павлодар"];
+  const ORDER_CITY_OPTIONS = [
+    "Астана",
+    "Алматы",
+    "Шымкент",
+    "Актау",
+    "Актобе",
+    "Атырау",
+    "Кокшетау",
+    "Караганда",
+    "Конаев",
+    "Костанай",
+    "Кызылорда",
+    "Павлодар",
+    "Петропавловск",
+    "Семей",
+    "Талдыкорган",
+    "Тараз",
+    "Туркестан",
+    "Уральск",
+    "Усть-Каменогорск",
+    "Жезказган",
+    "Рудный",
+    "Экибастуз",
+    "Темиртау",
+    "Кентау",
+    "Жанаозен",
+    "Каскелен",
+    "Щучинск",
+    "Байконыр",
+    "Аркалык",
+    "Балхаш",
+    "Жаркент",
+    "Арыс",
+    "Шу",
+    "Сатпаев",
+    "Степногорск",
+    "Риддер",
+    "Нур-Султан"
+  ];
+  const DEFAULT_CITY_ADDRESS_TEMPLATES = [
+    "ул. Абая",
+    "ул. Ауэзова",
+    "пр. Назарбаева",
+    "пр. Республики",
+    "ул. Тауелсиздик",
+    "Центральный рынок",
+    "ЖД вокзал",
+    "Автовокзал",
+    "ЦОН",
+    "Центральный парк"
+  ];
   const ORDER_ADDRESS_OPTIONS = {
     "Алматы": ["Mega Alma-Ata", "Арбат, Жибек Жолы", "Абая - Байтурсынова", "Dostyk Plaza", "Сайран автовокзал"],
+    "Астана": ["Хан Шатыр", "Байтерек", "MEGA Silk Way", "Вокзал Нурлы Жол", "Триумф Астаны"],
     "Нур-Султан": ["Хан Шатыр", "Байтерек", "MEGA Silk Way", "Вокзал Нурлы Жол", "Триумф Астаны"],
-    "Кокшетау": ["Центральный рынок", "ТЦ Rio", "Абылай хана, центр", "Автовокзал", "Набережная Копы"],
+    "Кокшетау": ["ул. Абая, 138", "ул. Ауэзова, 230", "Абылай хана, центр", "Автовокзал", "Набережная Копы", "ТЦ Rio", "ЖД вокзал"],
     "Шымкент": ["Shymkent Plaza", "Арбат Шымкент", "Центральный парк", "Автовокзал Самал", "Mega Planet"],
     "Актау": ["Актау Молл", "Набережная 15 мкр", "ТРК Актау", "Автовокзал", "Площадь Ынтымак"],
     "Уральск": ["City Center", "Центральный рынок", "Парк Кирова", "ЖД вокзал", "ТРЦ Галактика"],
     "Актобе": ["Keruen City", "Центральный стадион", "Автовокзал Сапар", "Парк Первого Президента", "Mega Aktobe"],
+    "Атырау": ["ТРЦ Baizaar", "Набережная Урала", "Центральный рынок", "ЖД вокзал", "пр. Сатпаева"],
     "Караганда": ["City Mall", "ЦУМ", "Автовокзал", "Таир", "Парк Победы"],
+    "Конаев": ["Центральная площадь", "Городской пляж", "Автовокзал", "пр. Д. Кунаева", "ЦОН"],
+    "Костанай": ["Mart", "Центральный рынок", "ЖД вокзал", "пр. Аль-Фараби", "ЦУМ"],
+    "Кызылорда": ["Старый базар", "ЖД вокзал", "пр. Абая", "Центральная площадь", "ТРЦ Aray City Mall"],
+    "Петропавловск": ["ЦУМ", "ЖД вокзал", "Центральный рынок", "ул. Конституции Казахстана", "Сити Молл"],
     "Семей": ["Центральный рынок", "Арбат Семей", "ЖД вокзал", "ТЦ Казына", "Парк Абая"],
-    "Павлодар": ["Batyr Mall", "Набережная", "ЖД вокзал", "ЦУМ Павлодар", "Greenwich"]
+    "Павлодар": ["Batyr Mall", "Набережная", "ЖД вокзал", "ЦУМ Павлодар", "Greenwich"],
+    "Талдыкорган": ["City Plus", "ЖД вокзал", "Центральный рынок", "ул. Кабанбай батыра", "ЦОН"],
+    "Тараз": ["Mart", "ЖД вокзал", "Центральный рынок", "Арбат", "Парк Первого Президента"],
+    "Туркестан": ["Керуен Сарай", "Мавзолей Ходжи Ахмеда Ясави", "Автовокзал", "ЖД вокзал", "Центральный рынок"],
+    "Усть-Каменогорск": ["ADK River", "ЖД вокзал", "Центральный рынок", "пр. Назарбаева", "ЦОН"],
+    "Жезказган": ["Центральная площадь", "ЖД вокзал", "Центральный рынок", "пр. Алашахана", "ЦОН"],
+    "Рудный": ["ТЦ Ажар", "Автовокзал", "ул. Ленина", "Центральный рынок", "ЦОН"],
+    "Экибастуз": ["Maxi Mall", "Автовокзал", "ул. Ауэзова", "Центральный рынок", "ЖД вокзал"],
+    "Темиртау": ["Alem", "Автовокзал", "пр. Металлургов", "Центральный парк", "ЖД вокзал"],
+    "Кентау": ["Центральный рынок", "Автовокзал", "пр. Кунаева", "ЦОН", "Парк Победы"],
+    "Жанаозен": ["ТРЦ Zhanaozen Mall", "Автовокзал", "мкр Шанырак", "Центральная площадь", "ЦОН"],
+    "Каскелен": ["Алтын ауыл", "Автовокзал", "ул. Абылай хана", "ЦОН", "Центральный рынок"],
+    "Щучинск": ["Бурабай молл", "ЖД вокзал", "Автовокзал", "Центральный рынок", "ул. Абылай хана"],
+    "Байконыр": ["7 микрорайон", "Автовокзал", "Центральный рынок", "ул. Абая", "площадь Ленина"],
+    "Аркалык": ["Центральный рынок", "Автовокзал", "ул. Ауэзова", "ЦОН", "Центральная площадь"],
+    "Балхаш": ["Центральная набережная", "Автовокзал", "ул. Агыбай батыра", "ЦОН", "Центральный рынок"],
+    "Жаркент": ["Центральный рынок", "Автовокзал", "ул. Головацкого", "ЦОН", "Парк Жаркент"],
+    "Арыс": ["ЖД вокзал", "Центральный рынок", "ул. Абая", "Автовокзал", "ЦОН"],
+    "Шу": ["ЖД вокзал", "Центральный рынок", "ул. Сатпаева", "Автовокзал", "ЦОН"],
+    "Сатпаев": ["Центральный рынок", "Автовокзал", "пр. Независимости", "ЦОН", "Площадь"],
+    "Степногорск": ["Центральный рынок", "Автовокзал", "1 микрорайон", "ЦОН", "ТЦ Казахстан"],
+    "Риддер": ["Центральный рынок", "Автовокзал", "ул. Гагарина", "ЦОН", "Парк"]
   };
   const ORDER_ADDRESS_COORDINATES = {
     "Алматы": {
@@ -49,6 +128,13 @@
       "Dostyk Plaza": { lat: 43.233221, lng: 76.955820 },
       "Сайран автовокзал": { lat: 43.240985, lng: 76.867971 }
     },
+    "Астана": {
+      "Хан Шатыр": { lat: 51.132243, lng: 71.403451 },
+      "Байтерек": { lat: 51.128276, lng: 71.430610 },
+      "MEGA Silk Way": { lat: 51.090498, lng: 71.403882 },
+      "Вокзал Нурлы Жол": { lat: 51.149716, lng: 71.422302 },
+      "Триумф Астаны": { lat: 51.140215, lng: 71.429119 }
+    },
     "Нур-Султан": {
       "Хан Шатыр": { lat: 51.132243, lng: 71.403451 },
       "Байтерек": { lat: 51.128276, lng: 71.430610 },
@@ -57,6 +143,8 @@
       "Триумф Астаны": { lat: 51.140215, lng: 71.429119 }
     },
     "Кокшетау": {
+      "ул. Абая, 138": { lat: 53.287020, lng: 69.397950 },
+      "ул. Ауэзова, 230": { lat: 53.284700, lng: 69.401850 },
       "Центральный рынок": { lat: 53.283489, lng: 69.388104 },
       "ТЦ Rio": { lat: 53.282014, lng: 69.395480 },
       "Абылай хана, центр": { lat: 53.286094, lng: 69.404153 },
@@ -116,6 +204,7 @@
   const ORDER_SERVICE_OPTIONS = ["Курьерская доставка", "Документы", "Покупка в магазине", "Личные вещи", "Посылка", "Цветы и подарок"];
   const ORDER_TIME_OPTIONS = ["Как можно скорее", "В течение часа", "Сегодня до вечера", "Сегодня к точному времени", "Завтра утром"];
   const CITY_COORDINATES = {
+    "Астана": { lat: 51.128207, lng: 71.430420 },
     "Алматы": { lat: 43.238949, lng: 76.889709 },
     "Нур-Султан": { lat: 51.128207, lng: 71.430420 },
     "Кокшетау": { lat: 53.287338, lng: 69.404587 },
@@ -123,9 +212,35 @@
     "Актау": { lat: 43.653205, lng: 51.197497 },
     "Уральск": { lat: 51.227821, lng: 51.386543 },
     "Актобе": { lat: 50.283933, lng: 57.166978 },
+    "Атырау": { lat: 47.094495, lng: 51.923837 },
     "Караганда": { lat: 49.806015, lng: 73.085274 },
+    "Конаев": { lat: 43.866821, lng: 77.063391 },
+    "Костанай": { lat: 53.214580, lng: 63.624630 },
+    "Кызылорда": { lat: 44.848830, lng: 65.482268 },
+    "Петропавловск": { lat: 54.872791, lng: 69.143006 },
     "Семей": { lat: 50.411424, lng: 80.227853 },
-    "Павлодар": { lat: 52.287054, lng: 76.967396 }
+    "Павлодар": { lat: 52.287054, lng: 76.967396 },
+    "Талдыкорган": { lat: 45.015556, lng: 78.373889 },
+    "Тараз": { lat: 42.900393, lng: 71.364512 },
+    "Туркестан": { lat: 43.297333, lng: 68.251750 },
+    "Усть-Каменогорск": { lat: 49.948333, lng: 82.627500 },
+    "Жезказган": { lat: 47.803611, lng: 67.714444 },
+    "Рудный": { lat: 52.972900, lng: 63.116800 },
+    "Экибастуз": { lat: 51.723710, lng: 75.322870 },
+    "Темиртау": { lat: 50.054940, lng: 72.959470 },
+    "Кентау": { lat: 43.516720, lng: 68.510830 },
+    "Жанаозен": { lat: 43.341160, lng: 52.861920 },
+    "Каскелен": { lat: 43.200350, lng: 76.635000 },
+    "Щучинск": { lat: 52.938500, lng: 70.186200 },
+    "Байконыр": { lat: 45.616670, lng: 63.316670 },
+    "Аркалык": { lat: 50.249150, lng: 66.920270 },
+    "Балхаш": { lat: 46.848060, lng: 74.995000 },
+    "Жаркент": { lat: 44.162780, lng: 80.001110 },
+    "Арыс": { lat: 42.429170, lng: 68.803060 },
+    "Шу": { lat: 43.598330, lng: 73.761390 },
+    "Сатпаев": { lat: 47.902220, lng: 67.537780 },
+    "Степногорск": { lat: 52.350620, lng: 71.881610 },
+    "Риддер": { lat: 50.344130, lng: 83.512870 }
   };
   const PROMO_CODE_LIBRARY = {
     START500: { amount: 500, label: "Стартовый бонус" },
@@ -601,7 +716,7 @@
       item.toLowerCase().includes(cleanQuery.toLowerCase())
     );
 
-    if (!hasYandexSuggestKey()) {
+    if (!hasYandexSuggestKey() || window.location.protocol === "file:") {
       return localMatches.slice(0, 6);
     }
 
@@ -633,6 +748,7 @@
 
       return Array.from(new Set([...localMatches, ...remoteMatches])).slice(0, 6);
     } catch (error) {
+      yandexSuggestBlocked = true;
       console.warn("Не удалось загрузить адресные подсказки через Яндекс:", error);
       return localMatches.slice(0, 6);
     }
@@ -1147,7 +1263,15 @@
   }
 
   function getPresetAddresses(city) {
-    return ORDER_ADDRESS_OPTIONS[city] || ORDER_ADDRESS_OPTIONS["Алматы"] || [];
+    const cityName = String(city || "Алматы").trim() || "Алматы";
+    const baseList = ORDER_ADDRESS_OPTIONS[cityName] || ORDER_ADDRESS_OPTIONS["Алматы"] || [];
+    const generated = DEFAULT_CITY_ADDRESS_TEMPLATES.map((item) => {
+      if (/рынок|вокзал|парк|цон/i.test(item)) {
+        return `${item}, ${cityName}`;
+      }
+      return `${item}, ${cityName}`;
+    });
+    return Array.from(new Set([...baseList, ...generated]));
   }
 
   function restoreNamedInputFocus(name, value = "") {
@@ -3610,7 +3734,7 @@
 
   // Map functions
   function hasYandexMapsKey() {
-    return Boolean(MAPS_CONFIG.yandexApiKey);
+    return Boolean(MAPS_CONFIG.yandexApiKey) && !yandexMapsBlocked;
   }
 
   function getCityCenter(city) {
@@ -3675,13 +3799,16 @@
   }
 
   function getMapBootstrapMessage() {
+    if (window.location.protocol === "file:") {
+      return "Маршрут работает в локальном режиме. Для Яндекс Карт откройте проект через http://localhost.";
+    }
     return hasYandexMapsKey()
       ? "Загружаем Яндекс Карты..."
-      : "Добавьте API key Яндекс Карт в `js/firebase-config.js`, чтобы включить карту и маршруты.";
+      : "Добавьте корректный API key Яндекс Карт в `js/firebase-config.js`, чтобы включить карту и маршруты.";
   }
 
   function hasYandexSuggestKey() {
-    return Boolean(MAPS_CONFIG.yandexSuggestApiKey || MAPS_CONFIG.yandexApiKey);
+    return Boolean(MAPS_CONFIG.yandexSuggestApiKey || MAPS_CONFIG.yandexApiKey) && !yandexSuggestBlocked;
   }
 
   async function ensureYandexMaps() {
@@ -3689,6 +3816,10 @@
       return new Promise((resolve) => {
         window.ymaps.ready(() => resolve(window.ymaps));
       });
+    }
+
+    if (window.location.protocol === "file:") {
+      throw new Error("yandex_file_origin_blocked");
     }
 
     if (!hasYandexMapsKey()) {
@@ -3702,6 +3833,7 @@
 
         const handleReady = () => {
           if (!window.ymaps?.ready) {
+            yandexMapsBlocked = true;
             reject(new Error("yandex_api_unavailable"));
             return;
           }
@@ -3721,7 +3853,10 @@
           }
           script.src = `https://api-maps.yandex.ru/2.1/?${scriptParams.toString()}`;
           script.addEventListener("load", handleReady, { once: true });
-          script.addEventListener("error", () => reject(new Error("yandex_api_load_failed")), { once: true });
+          script.addEventListener("error", () => {
+            yandexMapsBlocked = true;
+            reject(new Error("yandex_api_load_failed"));
+          }, { once: true });
           document.head.appendChild(script);
           return;
         }
@@ -3732,7 +3867,10 @@
         }
 
         script.addEventListener("load", handleReady, { once: true });
-        script.addEventListener("error", () => reject(new Error("yandex_api_load_failed")), { once: true });
+        script.addEventListener("error", () => {
+          yandexMapsBlocked = true;
+          reject(new Error("yandex_api_load_failed"));
+        }, { once: true });
       });
     }
 
@@ -3855,6 +3993,65 @@
     return { lat, lng };
   }
 
+  function getDistanceKmBetween(startPoint, endPoint) {
+    const dx = (endPoint.lng - startPoint.lng) * 111 * Math.cos(((startPoint.lat + endPoint.lat) / 2) * Math.PI / 180);
+    const dy = (endPoint.lat - startPoint.lat) * 111;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  function projectPointToMiniMap(point, city) {
+    const center = getCityCenter(city);
+    const dx = (point.lng - center.lng) * Math.cos(center.lat * Math.PI / 180);
+    const dy = point.lat - center.lat;
+    const x = 50 + dx * 1800;
+    const y = 50 - dy * 1800;
+    return {
+      x: Math.max(10, Math.min(90, x)),
+      y: Math.max(12, Math.min(88, y))
+    };
+  }
+
+  function renderFallbackRouteMap(order, mapElement, startPoint, endPoint, city, startLabel, endLabel) {
+    const stageMeta = getOrderStageMeta(order.stage);
+    const trackingEnabled = Boolean(order.assigneeId || order.assigneeName);
+    const routeGeometry = [
+      [startPoint.lat, startPoint.lng],
+      [endPoint.lat, endPoint.lng]
+    ];
+    const trackerPoint = trackingEnabled ? getPointAtProgress(routeGeometry, getOrderStageProgress(order.stage)) : null;
+    const startPos = projectPointToMiniMap(startPoint, city);
+    const endPos = projectPointToMiniMap(endPoint, city);
+    const trackerPos = trackerPoint ? projectPointToMiniMap(trackerPoint, city) : null;
+    const controlX = ((startPos.x + endPos.x) / 2) + (startPos.y < endPos.y ? -8 : 8);
+    const controlY = ((startPos.y + endPos.y) / 2) - 12;
+    const distanceKm = getDistanceKmBetween(startPoint, endPoint);
+    const durationMin = Math.max(8, Math.round(distanceKm * 3.5));
+
+    mapElement.innerHTML = `
+      <div class="route-fallback-map">
+        <div class="route-fallback-grid" aria-hidden="true"></div>
+        <svg class="route-fallback-svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+          <path d="M ${startPos.x} ${startPos.y} Q ${controlX} ${controlY} ${endPos.x} ${endPos.y}" class="route-fallback-line-shadow"></path>
+          <path d="M ${startPos.x} ${startPos.y} Q ${controlX} ${controlY} ${endPos.x} ${endPos.y}" class="route-fallback-line"></path>
+        </svg>
+        <div class="route-fallback-pin start" style="left:${startPos.x}%;top:${startPos.y}%;">A</div>
+        <div class="route-fallback-pin end" style="left:${endPos.x}%;top:${endPos.y}%;">B</div>
+        ${trackerPos ? `<div class="route-fallback-courier" style="left:${trackerPos.x}%;top:${trackerPos.y}%;"></div>` : ""}
+      </div>
+    `;
+
+    appendRouteMapInfo(mapElement, {
+      city,
+      startLabel,
+      endLabel,
+      distanceText: `${distanceKm.toFixed(1)} км`,
+      durationText: `${durationMin} мин`,
+      trackingEnabled,
+      assigneeName: order.assigneeName,
+      stageTitle: stageMeta.title
+    });
+  }
+
   function extractRouteGeometry(activeRoute) {
     const geometry = [];
     const paths = activeRoute?.getPaths?.();
@@ -3898,9 +4095,16 @@
     setTimeout(async () => {
       const mapElement = document.getElementById("detailMapRoute");
       if (!mapElement) return;
+      const city = order.city || state.ui.selectedCity || "Алматы";
+      const startLabel = order.fromAddress || getCityCenterLabel(city);
+      const endLabel = order.toAddress || order.address || getCityCenterLabel(city);
+      const [startPoint, endPoint] = await Promise.all([
+        resolveAddressCoordinates(city, startLabel),
+        resolveAddressCoordinates(city, endLabel)
+      ]);
 
-      if (!hasYandexMapsKey()) {
-        setMapMessage(mapElement, getMapBootstrapMessage());
+      if (!hasYandexMapsKey() || window.location.protocol === "file:") {
+        renderFallbackRouteMap(order, mapElement, startPoint, endPoint, city, startLabel, endLabel);
         return;
       }
 
@@ -3913,15 +4117,8 @@
         destroyMapInstance(state.detailMap);
         state.detailMap = null;
 
-        const city = order.city || state.ui.selectedCity || "Алматы";
-        const startLabel = order.fromAddress || getCityCenterLabel(city);
-        const endLabel = order.toAddress || order.address || getCityCenterLabel(city);
         const stageMeta = getOrderStageMeta(order.stage);
         const trackingEnabled = Boolean(order.assigneeId || order.assigneeName);
-        const [startPoint, endPoint] = await Promise.all([
-          resolveAddressCoordinates(city, startLabel),
-          resolveAddressCoordinates(city, endLabel)
-        ]);
 
         if (!document.getElementById("detailMapRoute")) return;
 
@@ -4010,20 +4207,12 @@
         });
 
         multiRoute.model.events.add("requestfail", () => {
-          appendRouteMapInfo(mapElement, {
-            city,
-            startLabel,
-            endLabel,
-            distanceText: "Маршрут не построен",
-            durationText: "Проверьте адреса",
-            trackingEnabled,
-            assigneeName: order.assigneeName,
-            stageTitle: stageMeta.title
-          });
+          renderFallbackRouteMap(order, mapElement, startPoint, endPoint, city, startLabel, endLabel);
         });
       } catch (error) {
+        yandexMapsBlocked = true;
         console.error("Не удалось инициализировать маршрут Яндекс Карт:", error);
-        setMapMessage(mapElement, "Не удалось загрузить маршрут Яндекс Карт.");
+        renderFallbackRouteMap(order, mapElement, startPoint, endPoint, city, startLabel, endLabel);
       }
     }, 120);
   }
