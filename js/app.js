@@ -10,6 +10,7 @@
   let promoStoryRemaining = 4500;
   let promoStoryStartedAt = 0;
   let promoStoryTrackedIndex = -1;
+  let yandexMapsReadyPromise = null;
 
   const ICONS = {
     search: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 4a6.5 6.5 0 1 1 0 13 6.5 6.5 0 0 1 0-13Zm0 2a4.5 4.5 0 1 0 0 9 4.5 4.5 0 0 0 0-9Zm8.85 10.44 1.41 1.41-3.2 3.2-1.41-1.41 3.2-3.2Z"/></svg>',
@@ -130,6 +131,11 @@
     START500: { amount: 500, label: "Стартовый бонус" },
     BONUS1000: { amount: 1000, label: "Бонус на баланс" },
     EXPRESS300: { amount: 300, label: "Express бонус" }
+  };
+  const MAPS_CONFIG = {
+    yandexApiKey: String(window.APP_MAPS_CONFIG?.yandexApiKey || "").trim(),
+    yandexSuggestApiKey: String(window.APP_MAPS_CONFIG?.yandexSuggestApiKey || "").trim(),
+    yandexLang: String(window.APP_MAPS_CONFIG?.yandexLang || "ru_RU").trim() || "ru_RU"
   };
   const PROMO_STORY_DURATION = 4500;
   // Управляемые разработчиком stories/promos при входе в приложение.
@@ -305,7 +311,7 @@
       };
     }
 
-    // Инициализируем Leaflet объекты (они не сохраняются)
+    // Экземпляры карт не сериализуем в localStorage
     state.map = null;
     state.detailMap = null;
 
@@ -588,24 +594,47 @@
   async function searchAddressSuggestions(city, query) {
     const cleanQuery = String(query || "").trim();
     if (cleanQuery.length < 3) {
-      return getPresetAddresses(city);
+      return [];
     }
 
     const localMatches = getPresetAddresses(city).filter((item) =>
       item.toLowerCase().includes(cleanQuery.toLowerCase())
     );
 
+    if (!hasYandexSuggestKey()) {
+      return localMatches.slice(0, 6);
+    }
+
     try {
-      const encoded = encodeURIComponent(`${cleanQuery}, ${city}, Kazakhstan`);
-      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&accept-language=ru&countrycodes=kz&q=${encoded}`);
-      const results = await response.json();
+      const ymaps = await ensureYandexMaps();
+      if (typeof ymaps.suggest !== "function") {
+        return localMatches.slice(0, 6);
+      }
+
+      const bounds = getCityBounds(city);
+      const results = await ymaps.suggest(`${cleanQuery}, ${city}`, {
+        boundedBy: bounds,
+        results: 5,
+        provider: "yandex#map"
+      });
+
       const remoteMatches = Array.isArray(results)
-        ? results.map((item) => String(item.display_name || "").split(",").slice(0, 2).join(", ").trim()).filter(Boolean)
+        ? results.map((item) => {
+            const value = String(item.value || item.displayName || "").trim();
+            const title = String(item.displayName || "").trim();
+            const label = value || title;
+            const cityTail = new RegExp(`,?\\s*${escapeRegExp(city)}$`, "i");
+            return label
+              .replace(/,?\s*Казахстан$/i, "")
+              .replace(cityTail, "")
+              .trim();
+          }).filter(Boolean)
         : [];
+
       return Array.from(new Set([...localMatches, ...remoteMatches])).slice(0, 6);
     } catch (error) {
-      console.warn("Не удалось загрузить адресные подсказки:", error);
-      return localMatches.length ? localMatches : getPresetAddresses(city);
+      console.warn("Не удалось загрузить адресные подсказки через Яндекс:", error);
+      return localMatches.slice(0, 6);
     }
   }
 
@@ -775,6 +804,7 @@
     } else {
       document.body.style.overflow = "";
     }
+    destroyMapInstances();
     root.innerHTML = `
       <div class="app-shell">
         ${state.session.isLoggedIn ? renderAppHeader() : renderGuestHeader()}
@@ -786,6 +816,10 @@
       ${renderModal()}
       ${renderPromoStoryViewer()}
     `;
+
+    if (state.session.isLoggedIn && state.ui.tab === "map") {
+      initMap();
+    }
 
     // Инициализируем карту маршрута если открыта модаль "detail"
     if (state.ui.modal && state.ui.modal.type === "detail" && state.ui.modal.orderId) {
@@ -1131,22 +1165,25 @@
   function renderAddressAutocomplete({ name, fieldKey, title, value, suggestions, placeholder }) {
     const isActive = state.ui.activeAddressField === fieldKey;
     const uniqueSuggestions = Array.from(new Set((suggestions || []).filter(Boolean))).slice(0, 6);
+    const pinClass = fieldKey === "from" ? "pickup" : "dropoff";
+    const showSuggestions = isActive && (String(value || "").trim().length >= 3 || uniqueSuggestions.length);
 
     return `
-      <div class="field address-autocomplete ${isActive ? "open" : ""}">
-        <span class="field-title">${escapeHtml(title)}</span>
+      <div class="address-autocomplete ${isActive ? "open" : ""}">
         <div class="address-input-shell">
-          <span class="address-point-badge address-point-${fieldKey}">${fieldKey === "from" ? "A" : "B"}</span>
-          <input
-            type="text"
-            name="${name}"
-            value="${escapeHtml(value)}"
-            placeholder="${escapeHtml(placeholder)}"
-            autocomplete="off"
-            data-address-field="${fieldKey}"
-          >
+          <span class="address-point-badge ${pinClass}" aria-hidden="true"></span>
+          <div class="address-input-copy">
+            <input
+              type="text"
+              name="${name}"
+              value="${escapeHtml(value)}"
+              placeholder="${escapeHtml(placeholder)}"
+              autocomplete="off"
+              data-address-field="${fieldKey}"
+            >
+          </div>
         </div>
-        ${isActive ? `
+        ${showSuggestions ? `
           <div class="address-suggestions" role="listbox">
             ${uniqueSuggestions.length ? uniqueSuggestions.map((address) => `
               <button
@@ -1165,7 +1202,7 @@
             `).join("") : `
               <div class="address-suggestion-empty">
                 <strong>Ничего не найдено</strong>
-                <small>Попробуйте улицу, ТЦ или район в выбранном городе.</small>
+                <small>Введите улицу и дом, чтобы найти точный адрес.</small>
               </div>
             `}
           </div>
@@ -1253,26 +1290,16 @@
       `;
     }
     const selectedCity = state.ui.createOrderCity || state.account.city || state.ui.selectedCity || ORDER_CITY_OPTIONS[0];
-    const addressOptions = getPresetAddresses(selectedCity);
-    const suggestionFrom = Array.from(new Set([...(state.ui.addressSuggestionsFrom || []), ...addressOptions]));
-    const suggestionTo = Array.from(new Set([...(state.ui.addressSuggestionsTo || []), ...addressOptions]));
-    const selectedFromAddress = state.ui.createOrderFromAddress || addressOptions[0] || "";
-    const selectedToAddress = state.ui.createOrderToAddress || addressOptions[1] || addressOptions[0] || "";
+    const suggestionFrom = Array.isArray(state.ui.addressSuggestionsFrom) ? state.ui.addressSuggestionsFrom : [];
+    const suggestionTo = Array.isArray(state.ui.addressSuggestionsTo) ? state.ui.addressSuggestionsTo : [];
+    const selectedFromAddress = state.ui.createOrderFromAddress || "";
+    const selectedToAddress = state.ui.createOrderToAddress || "";
     const photoPreview = state.ui.createOrderPhotoPreview;
     return `
       <section class="view stack">
-        <div class="section-copy"><p class="eyebrow">Создание заказа</p><h2 class="section-title">Создайте красивый заказ</h2><span class="helper">Выберите готовый адрес, добавьте фото и отметьте срочность, если нужен Express.</span></div>
+        <div class="section-copy"><p class="eyebrow">Создание заказа</p><h2 class="section-title">Новое задание</h2><span class="helper">Заполните маршрут и коротко опишите, что нужно сделать.</span></div>
         <form class="form" data-form="create-order">
           <article class="card stack create-order-card">
-            <div class="create-order-hero">
-              <div>
-                <p class="create-order-kicker">TezTap Express</p>
-                <h3 class="create-order-title">Новый заказ</h3>
-                <p class="create-order-subtitle">Чем понятнее карточка, тем быстрее откликнутся исполнители.</p>
-              </div>
-              <span class="create-order-badge">Express Ready</span>
-            </div>
-
             <div class="field">
               <span class="field-title">Тип заказа</span>
               <select name="service" required>
@@ -1285,71 +1312,39 @@
               <input type="text" name="title" placeholder="Например: Забрать документы и привезти в офис" required>
             </div>
 
-            <div class="field-grid">
-              <div class="field">
-                <span class="field-title">Город</span>
-                <select name="order_city">
-                  ${ORDER_CITY_OPTIONS.map((city) => `<option value="${escapeHtml(city)}" ${selectedCity === city ? "selected" : ""}>${escapeHtml(city)}</option>`).join("")}
-                </select>
-              </div>
-              ${renderAddressAutocomplete({
-                name: "order_from_address",
-                fieldKey: "from",
-                title: "Точка A - откуда забрать",
-                value: selectedFromAddress,
-                suggestions: suggestionFrom,
-                placeholder: "Введите адрес точки A"
-              })}
+            <div class="field">
+              <span class="field-title">Город</span>
+              <select name="order_city">
+                ${ORDER_CITY_OPTIONS.map((city) => `<option value="${escapeHtml(city)}" ${selectedCity === city ? "selected" : ""}>${escapeHtml(city)}</option>`).join("")}
+              </select>
             </div>
 
-            ${renderAddressAutocomplete({
-              name: "order_to_address",
-              fieldKey: "to",
-              title: "Точка B - куда доставить",
-              value: selectedToAddress,
-              suggestions: suggestionTo,
-              placeholder: "Введите адрес точки B"
-            })}
-
-            <div class="field route-preview-card">
+            <div class="field">
               <span class="field-title">Маршрут</span>
-              <div class="route-preview-line">
-                <div class="route-preview-point"><span>A</span><strong>${escapeHtml(selectedFromAddress || "Выберите точку A")}</strong></div>
-                <div class="route-preview-divider"></div>
-                <div class="route-preview-point"><span>B</span><strong>${escapeHtml(selectedToAddress || "Выберите точку B")}</strong></div>
-              </div>
-            </div>
-
-            <div class="field-grid">
-              <div class="field">
-                <span class="field-title">Когда</span>
-                <select name="when">
-                  ${ORDER_TIME_OPTIONS.map((option) => `<option value="${escapeHtml(option)}">${escapeHtml(option)}</option>`).join("")}
-                </select>
-              </div>
-              <div class="field">
-                <span class="field-title">Бюджет</span>
-                <input type="number" name="budget" min="500" step="100" placeholder="2000" required>
-              </div>
-            </div>
-
-            <div class="field">
-              <span class="field-title">Срочность</span>
-              <div class="priority-toggle">
-                <label class="priority-option">
-                  <input type="radio" name="priority" value="standard" checked>
-                  <span>Стандарт</span>
-                </label>
-                <label class="priority-option express">
-                  <input type="radio" name="priority" value="express">
-                  <span>Express</span>
-                </label>
+              <div class="route-address-card">
+                <div class="route-address-divider" aria-hidden="true"></div>
+                ${renderAddressAutocomplete({
+                  name: "order_from_address",
+                  fieldKey: "from",
+                  title: "Ваш адрес",
+                  value: selectedFromAddress,
+                  suggestions: suggestionFrom,
+                  placeholder: "Укажите ваш адрес..."
+                })}
+                ${renderAddressAutocomplete({
+                  name: "order_to_address",
+                  fieldKey: "to",
+                  title: "Адрес получателя",
+                  value: selectedToAddress,
+                  suggestions: suggestionTo,
+                  placeholder: "Адрес получателя..."
+                })}
               </div>
             </div>
 
             <div class="field">
-              <span class="field-title">Оплата</span>
-              <select name="payment"><option value="Kaspi">Kaspi</option><option value="Наличные">Наличные</option><option value="Halyk">Halyk</option><option value="Другой банк">Другой банк</option></select>
+              <span class="field-title">Бюджет</span>
+              <input type="number" name="budget" min="500" step="100" placeholder="2000" required>
             </div>
 
             <div class="field">
@@ -2252,11 +2247,13 @@
     }
     if (action === "open-tab") {
       state.ui.tab = target.dataset.tab || "home";
+      state.ui.modal = null;
+      state.ui.cityMenuOpen = false;
+      state.ui.activeAddressField = "";
       if (state.ui.tab === "notifications") {
         markAllNotificationsRead();
         return;
       }
-      if (state.ui.modal && state.ui.modal.type === "welcome" && state.ui.tab === "profile") state.ui.modal = null;
       persist();
       render();
       return;
@@ -2525,12 +2522,11 @@
       const fromAddress = String(data.get("order_from_address") || state.ui.createOrderFromAddress || "").trim();
       const toAddress = String(data.get("order_to_address") || state.ui.createOrderToAddress || "").trim();
       const title = String(data.get("title") || "").trim();
-      const when = String(data.get("when") || ORDER_TIME_OPTIONS[0]).trim();
+      const when = "По договоренности";
       const description = String(data.get("description") || "").trim();
       const budget = Number(data.get("budget") || 0);
-      const payment = String(data.get("payment") || "Kaspi");
-      const priority = String(data.get("priority") || "standard");
-      const isExpress = priority === "express";
+      const payment = "Уточнить в чате";
+      const isExpress = false;
       let orderPhoto = state.ui.createOrderPhotoPreview || "";
       const photoFile = form.querySelector('input[name="order_photo"]')?.files?.[0];
 
@@ -2593,8 +2589,10 @@
       state.ui.homeFilter = "available";
       state.ui.selectedCity = city;
       state.ui.createOrderCity = city;
-      state.ui.createOrderFromAddress = getPresetAddresses(city)[0] || "";
-      state.ui.createOrderToAddress = getPresetAddresses(city)[1] || getPresetAddresses(city)[0] || "";
+      state.ui.createOrderFromAddress = "";
+      state.ui.createOrderToAddress = "";
+      state.ui.addressSuggestionsFrom = [];
+      state.ui.addressSuggestionsTo = [];
       state.ui.createOrderPhotoPreview = "";
       persist();
       render();
@@ -2928,12 +2926,11 @@
 
     if (input.name === "order_city") {
       const nextCity = String(input.value || "").trim() || "Алматы";
-      const addresses = getPresetAddresses(nextCity);
       state.ui.createOrderCity = nextCity;
-      state.ui.createOrderFromAddress = addresses[0] || "";
-      state.ui.createOrderToAddress = addresses[1] || addresses[0] || "";
-      state.ui.addressSuggestionsFrom = addresses;
-      state.ui.addressSuggestionsTo = addresses;
+      state.ui.createOrderFromAddress = "";
+      state.ui.createOrderToAddress = "";
+      state.ui.addressSuggestionsFrom = [];
+      state.ui.addressSuggestionsTo = [];
       state.ui.activeAddressField = "";
       persist();
       render();
@@ -2987,19 +2984,15 @@
     const stateField = isFrom ? "createOrderFromAddress" : "createOrderToAddress";
     const suggestionField = isFrom ? "addressSuggestionsFrom" : "addressSuggestionsTo";
     const activeField = isFrom ? "from" : "to";
-    const city = state.ui.createOrderCity || state.account?.city || "Алматы";
     const value = String(target.value || state.ui[stateField] || "").trim();
 
-    if (state.ui.activeAddressField === activeField && Array.isArray(state.ui[suggestionField]) && state.ui[suggestionField].length) {
+    if (state.ui.activeAddressField === activeField) {
       state.ui[stateField] = value;
       return;
     }
 
     state.ui[stateField] = value;
-    state.ui[suggestionField] = Array.from(new Set([
-      ...(state.ui[suggestionField] || []),
-      ...getPresetAddresses(city)
-    ])).slice(0, 6);
+    state.ui[suggestionField] = Array.isArray(state.ui[suggestionField]) ? state.ui[suggestionField] : [];
     state.ui.activeAddressField = activeField;
     persist();
     render();
@@ -3616,8 +3609,20 @@
   }
 
   // Map functions
+  function hasYandexMapsKey() {
+    return Boolean(MAPS_CONFIG.yandexApiKey);
+  }
+
   function getCityCenter(city) {
     return CITY_COORDINATES[city] || CITY_COORDINATES["Алматы"];
+  }
+
+  function getCityBounds(city) {
+    const center = getCityCenter(city);
+    return [
+      [center.lat - 0.2, center.lng - 0.28],
+      [center.lat + 0.2, center.lng + 0.28]
+    ];
   }
 
   function getCityCenterLabel(city) {
@@ -3626,6 +3631,10 @@
 
   function getAddressSeed(text) {
     return String(text || "").split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  }
+
+  function escapeRegExp(value) {
+    return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
 
   function seededRandom(seed) {
@@ -3644,8 +3653,108 @@
     };
   }
 
-  function getOrderCoordinates(address, city = state.ui.selectedCity || "Алматы") {
-    return getApproxOrderPoint(city, address);
+  function destroyMapInstance(instance) {
+    if (!instance || typeof instance.destroy !== "function") return;
+    try {
+      instance.destroy();
+    } catch (error) {
+      console.warn("Не удалось корректно уничтожить экземпляр карты:", error);
+    }
+  }
+
+  function destroyMapInstances() {
+    destroyMapInstance(state.map);
+    destroyMapInstance(state.detailMap);
+    state.map = null;
+    state.detailMap = null;
+  }
+
+  function setMapMessage(container, message, className = "route-map-loading") {
+    if (!container) return;
+    container.innerHTML = `<div class="${className}">${escapeHtml(message)}</div>`;
+  }
+
+  function getMapBootstrapMessage() {
+    return hasYandexMapsKey()
+      ? "Загружаем Яндекс Карты..."
+      : "Добавьте API key Яндекс Карт в `js/firebase-config.js`, чтобы включить карту и маршруты.";
+  }
+
+  function hasYandexSuggestKey() {
+    return Boolean(MAPS_CONFIG.yandexSuggestApiKey || MAPS_CONFIG.yandexApiKey);
+  }
+
+  async function ensureYandexMaps() {
+    if (window.ymaps?.Map) {
+      return new Promise((resolve) => {
+        window.ymaps.ready(() => resolve(window.ymaps));
+      });
+    }
+
+    if (!hasYandexMapsKey()) {
+      throw new Error("yandex_api_key_missing");
+    }
+
+    if (!yandexMapsReadyPromise) {
+      yandexMapsReadyPromise = new Promise((resolve, reject) => {
+        const scriptId = "yandex-maps-api";
+        let script = document.getElementById(scriptId);
+
+        const handleReady = () => {
+          if (!window.ymaps?.ready) {
+            reject(new Error("yandex_api_unavailable"));
+            return;
+          }
+          window.ymaps.ready(() => resolve(window.ymaps));
+        };
+
+        if (!script) {
+          script = document.createElement("script");
+          script.id = scriptId;
+          script.async = true;
+          const scriptParams = new URLSearchParams({
+            lang: MAPS_CONFIG.yandexLang,
+            apikey: MAPS_CONFIG.yandexApiKey
+          });
+          if (hasYandexSuggestKey()) {
+            scriptParams.set("suggest_apikey", MAPS_CONFIG.yandexSuggestApiKey || MAPS_CONFIG.yandexApiKey);
+          }
+          script.src = `https://api-maps.yandex.ru/2.1/?${scriptParams.toString()}`;
+          script.addEventListener("load", handleReady, { once: true });
+          script.addEventListener("error", () => reject(new Error("yandex_api_load_failed")), { once: true });
+          document.head.appendChild(script);
+          return;
+        }
+
+        if (window.ymaps?.Map) {
+          handleReady();
+          return;
+        }
+
+        script.addEventListener("load", handleReady, { once: true });
+        script.addEventListener("error", () => reject(new Error("yandex_api_load_failed")), { once: true });
+      });
+    }
+
+    return yandexMapsReadyPromise;
+  }
+
+  async function geocodeWithYandex(city, address) {
+    const ymaps = await ensureYandexMaps();
+    const result = await ymaps.geocode(`${address}, ${city}, Казахстан`, {
+      results: 1,
+      boundedBy: getCityBounds(city),
+      strictBounds: false
+    });
+    const geoObject = result?.geoObjects?.get(0);
+    const coords = geoObject?.geometry?.getCoordinates?.();
+    if (Array.isArray(coords) && coords.length >= 2) {
+      return {
+        lat: Number(coords[0]),
+        lng: Number(coords[1])
+      };
+    }
+    return null;
   }
 
   async function resolveAddressCoordinates(city, address) {
@@ -3673,68 +3782,23 @@
 
     const fallbackPoint = getApproxOrderPoint(city, cleanAddress);
 
+    if (!hasYandexMapsKey()) {
+      addressGeoCache.set(cacheKey, fallbackPoint);
+      return fallbackPoint;
+    }
+
     try {
-      const query = encodeURIComponent(`${cleanAddress}, ${city}, Kazakhstan`);
-      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&accept-language=ru&countrycodes=kz&q=${query}`);
-      const results = await response.json();
-      if (Array.isArray(results) && results.length) {
-        const coords = {
-          lat: Number(results[0].lat),
-          lng: Number(results[0].lon)
-        };
-        if (Number.isFinite(coords.lat) && Number.isFinite(coords.lng)) {
-          addressGeoCache.set(cacheKey, coords);
-          return coords;
-        }
+      const coords = await geocodeWithYandex(city, cleanAddress);
+      if (coords && Number.isFinite(coords.lat) && Number.isFinite(coords.lng)) {
+        addressGeoCache.set(cacheKey, coords);
+        return coords;
       }
     } catch (error) {
-      console.warn("Не удалось геокодировать адрес, используем fallback:", cleanAddress, error);
+      console.warn("Не удалось геокодировать адрес через Яндекс Карты, используем fallback:", cleanAddress, error);
     }
 
     addressGeoCache.set(cacheKey, fallbackPoint);
     return fallbackPoint;
-  }
-
-  async function fetchRoadRoute(startPoint, endPoint) {
-    const fallbackDistance = window.L
-      ? window.L.latLng(startPoint.lat, startPoint.lng).distanceTo(window.L.latLng(endPoint.lat, endPoint.lng))
-      : 0;
-
-    try {
-      const routeUrl = `https://router.project-osrm.org/route/v1/driving/${startPoint.lng},${startPoint.lat};${endPoint.lng},${endPoint.lat}?overview=full&geometries=geojson&steps=false`;
-      const response = await fetch(routeUrl);
-      const data = await response.json();
-      const route = data?.routes?.[0];
-
-      if (route?.geometry?.coordinates?.length) {
-        return {
-          geometry: route.geometry.coordinates.map(([lng, lat]) => [lat, lng]),
-          distanceKm: Number(route.distance || 0) / 1000,
-          durationMin: Number(route.duration || 0) / 60
-        };
-      }
-    } catch (error) {
-      console.warn("Не удалось построить дорожный маршрут, используем прямую линию:", error);
-    }
-
-    return {
-      geometry: [
-        [startPoint.lat, startPoint.lng],
-        [endPoint.lat, endPoint.lng]
-      ],
-      distanceKm: fallbackDistance / 1000,
-      durationMin: Math.max(5, (fallbackDistance / 1000) * 2.5)
-    };
-  }
-
-  function createRouteMarker(label, color) {
-    return window.L.divIcon({
-      className: "route-marker",
-      html: `<div style="width: 38px; height: 38px; background: ${color}; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 800; border: 3px solid white; box-shadow: 0 8px 18px rgba(0,0,0,0.28); font-size: 16px;">${label}</div>`,
-      iconSize: [38, 38],
-      iconAnchor: [19, 19],
-      popupAnchor: [0, -19]
-    });
   }
 
   function getOrderStageProgress(stage) {
@@ -3763,9 +3827,7 @@
     for (let index = 1; index < points.length; index += 1) {
       const start = points[index - 1];
       const end = points[index];
-      const distance = window.L
-        ? window.L.latLng(start[0], start[1]).distanceTo(window.L.latLng(end[0], end[1]))
-        : Math.hypot(end[0] - start[0], end[1] - start[1]);
+      const distance = Math.hypot(end[0] - start[0], end[1] - start[1]);
       segments.push({ start, end, distance });
       totalDistance += distance;
     }
@@ -3793,185 +3855,272 @@
     return { lat, lng };
   }
 
-  function createCourierMarker() {
-    return window.L.divIcon({
-      className: "route-courier-marker",
-      html: `
-        <div style="width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg, #2563eb, #7c3aed); border: 3px solid white; box-shadow: 0 10px 24px rgba(37, 99, 235, 0.35); display: grid; place-items: center;">
-          <div style="width: 12px; height: 12px; border-radius: 50%; background: #fff;"></div>
-        </div>
-      `,
-      iconSize: [34, 34],
-      iconAnchor: [17, 17],
-      popupAnchor: [0, -18]
+  function extractRouteGeometry(activeRoute) {
+    const geometry = [];
+    const paths = activeRoute?.getPaths?.();
+    if (!paths?.each) return geometry;
+
+    paths.each((path) => {
+      const coords = path?.geometry?.getCoordinates?.();
+      if (!Array.isArray(coords)) return;
+      coords.forEach((point) => {
+        if (Array.isArray(point) && point.length >= 2) {
+          geometry.push(point);
+        }
+      });
     });
+
+    return geometry;
+  }
+
+  function appendRouteMapInfo(container, payload) {
+    if (!container) return;
+    container.querySelector(".route-map-info")?.remove();
+    const infoText = document.createElement("div");
+    infoText.className = "route-map-info";
+    infoText.innerHTML = `
+      <div class="route-map-summary">
+        <strong>${escapeHtml(payload.city)}</strong>
+        <span>${escapeHtml(payload.startLabel)} → ${escapeHtml(payload.endLabel)}</span>
+      </div>
+      <div class="route-map-meta">
+        <small>${escapeHtml(payload.distanceText)} • ${escapeHtml(payload.durationText)}</small>
+        <div class="route-map-stage ${payload.trackingEnabled ? "" : "idle"}">
+          <em>${escapeHtml(payload.trackingEnabled ? (payload.assigneeName || "Исполнитель") : "Трекинг")}</em>
+          <b>${escapeHtml(payload.trackingEnabled ? payload.stageTitle : "Ждет исполнителя")}</b>
+        </div>
+      </div>
+    `;
+    container.appendChild(infoText);
   }
 
   async function initDetailMapRoute(order) {
     setTimeout(async () => {
       const mapElement = document.getElementById("detailMapRoute");
-      if (!mapElement || !window.L) return;
+      if (!mapElement) return;
 
-      if (state.detailMap) {
-        state.detailMap.remove();
-        state.detailMap = null;
-      }
-
-      mapElement.style.width = "100%";
-      mapElement.style.height = "500px";
-      mapElement.innerHTML = '<div class="route-map-loading">Строим маршрут...</div>';
-
-      const startLabel = order.fromAddress || getCityCenterLabel(order.city);
-      const endLabel = order.toAddress || order.address;
-      const city = order.city || state.ui.selectedCity || "Алматы";
-      const stageMeta = getOrderStageMeta(order.stage);
-      const trackingEnabled = Boolean(order.assigneeId || order.assigneeName);
-
-      const startPoint = await resolveAddressCoordinates(city, startLabel);
-      const endPoint = await resolveAddressCoordinates(city, endLabel);
-      const route = await fetchRoadRoute(startPoint, endPoint);
-
-      if (!document.getElementById("detailMapRoute")) return;
-
-      mapElement.innerHTML = "";
-      state.detailMap = window.L.map("detailMapRoute", {
-        attributionControl: false,
-        zoomControl: false
-      });
-
-      window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: "© OpenStreetMap",
-        maxZoom: 19
-      }).addTo(state.detailMap);
-
-      const startLatLng = [startPoint.lat, startPoint.lng];
-      const endLatLng = [endPoint.lat, endPoint.lng];
-
-      window.L.marker(startLatLng, { icon: createRouteMarker("A", "#22c55e") })
-        .bindPopup(`Точка A: ${escapeHtml(startLabel)}`)
-        .addTo(state.detailMap);
-
-      window.L.marker(endLatLng, { icon: createRouteMarker("B", "#ef4444") })
-        .bindPopup(`Точка B: ${escapeHtml(endLabel)}`)
-        .addTo(state.detailMap);
-
-      const routeOutline = window.L.polyline(route.geometry, {
-        color: "#93c5fd",
-        weight: 10,
-        opacity: 0.25,
-        lineCap: "round",
-        lineJoin: "round"
-      }).addTo(state.detailMap);
-
-      window.L.polyline(route.geometry, {
-        color: "#2563eb",
-        weight: 6,
-        opacity: 0.95,
-        lineCap: "round",
-        lineJoin: "round"
-      }).addTo(state.detailMap);
-
-      if (trackingEnabled) {
-        const trackerPoint = getPointAtProgress(route.geometry, getOrderStageProgress(order.stage));
-        if (trackerPoint) {
-          window.L.marker([trackerPoint.lat, trackerPoint.lng], { icon: createCourierMarker() })
-            .bindPopup(`${escapeHtml(order.assigneeName || "Исполнитель")} • ${escapeHtml(stageMeta.title)}`)
-            .addTo(state.detailMap);
-        }
-      }
-
-      const infoText = document.createElement("div");
-      infoText.className = "route-map-info";
-      infoText.innerHTML = `
-        <div class="route-map-summary">
-          <strong>${escapeHtml(city)}</strong>
-          <span>${escapeHtml(startLabel)} → ${escapeHtml(endLabel)}</span>
-        </div>
-        <div class="route-map-meta">
-          <small>${route.distanceKm.toFixed(1)} км • ${Math.max(1, Math.round(route.durationMin))} мин</small>
-          <div class="route-map-stage ${trackingEnabled ? "" : "idle"}">
-            <em>${escapeHtml(trackingEnabled ? (order.assigneeName || "Исполнитель") : "Трекинг")}</em>
-            <b>${escapeHtml(trackingEnabled ? stageMeta.title : "Ждет исполнителя")}</b>
-          </div>
-        </div>
-      `;
-      mapElement.appendChild(infoText);
-
-      const bounds = window.L.latLngBounds(route.geometry);
-      state.detailMap.fitBounds(bounds, { padding: [36, 36] });
-      setTimeout(() => state.detailMap?.invalidateSize(), 120);
-    }, 120);
-  }
-
-  function initMap() {
-    // Дождемся, когда DOM будет готов
-    setTimeout(() => {
-      const mapElement = document.getElementById("mapView");
-      if (!mapElement || !window.L) return;
-
-      // Если карта уже инициализирована, не инициализируем снова
-      if (state.map) {
-        state.map.invalidateSize();
+      if (!hasYandexMapsKey()) {
+        setMapMessage(mapElement, getMapBootstrapMessage());
         return;
       }
 
-      const city = state.ui.selectedCity || "Алматы";
-      const cityCenter = getCityCenter(city);
-      const center = [cityCenter.lat, cityCenter.lng];
+      setMapMessage(mapElement, "Строим маршрут через Яндекс Карты...");
 
-      // Создаем карту
-      state.map = window.L.map("mapView").setView(center, 13);
+      try {
+        const ymaps = await ensureYandexMaps();
+        if (!document.getElementById("detailMapRoute")) return;
 
-      // Добавляем OpenStreetMap тайлы
-      window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        attribution: '© OpenStreetMap contributors',
-        maxZoom: 19
-      }).addTo(state.map);
+        destroyMapInstance(state.detailMap);
+        state.detailMap = null;
 
-      // Добавляем маркеры заказов
-      const orders = getVisibleOrders();
-      orders.forEach(order => {
-        const coords = getOrderCoordinates(order.toAddress || order.address, order.city || city);
-        const color = order.status === "done" ? "#888" : order.ownerId === state.account.id ? "#3b82f6" : "#10b981";
-        
-        const customIcon = window.L.divIcon({
-          className: "map-marker",
-          html: `<div style="background: ${color}; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 14px; cursor: pointer; border: 3px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.3);">${getInitials(order.title)}</div>`,
-          iconSize: [32, 32],
-          iconAnchor: [16, 16],
-          popupAnchor: [0, -16]
+        const city = order.city || state.ui.selectedCity || "Алматы";
+        const startLabel = order.fromAddress || getCityCenterLabel(city);
+        const endLabel = order.toAddress || order.address || getCityCenterLabel(city);
+        const stageMeta = getOrderStageMeta(order.stage);
+        const trackingEnabled = Boolean(order.assigneeId || order.assigneeName);
+        const [startPoint, endPoint] = await Promise.all([
+          resolveAddressCoordinates(city, startLabel),
+          resolveAddressCoordinates(city, endLabel)
+        ]);
+
+        if (!document.getElementById("detailMapRoute")) return;
+
+        mapElement.innerHTML = "";
+        state.detailMap = new ymaps.Map("detailMapRoute", {
+          center: [startPoint.lat, startPoint.lng],
+          zoom: 12,
+          controls: []
+        }, {
+          suppressMapOpenBlock: true
         });
 
-        const marker = window.L.marker([coords.lat, coords.lng], { icon: customIcon })
-          .bindPopup(`
-            <div class="map-popup">
-              <strong>${escapeHtml(order.title)}</strong><br>
-              <small>${escapeHtml(order.category)}</small><br>
-              <small>${formatMoney(order.finalPrice || order.budget)}</small>
-            </div>
-          `, { closeButton: false })
-          .addTo(state.map);
-
-        marker.on("click", () => {
-          state.ui.modal = { type: "detail", orderId: order.id };
-          persist();
-          render();
+        const startPlacemark = new ymaps.Placemark([startPoint.lat, startPoint.lng], {
+          balloonContentHeader: "Точка A",
+          balloonContentBody: escapeHtml(startLabel)
+        }, {
+          preset: "islands#greenIcon"
         });
-      });
 
-      // Маркер текущего пользователя (центр города)
-      const userIcon = window.L.divIcon({
-        className: "map-marker user",
-        html: `<div style="background: #f97316; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 700; font-size: 16px; border: 3px solid white; box-shadow: 0 2px 12px rgba(0,0,0,0.4); animation: pulse 2s infinite;">◉</div>`,
-        iconSize: [40, 40],
-        iconAnchor: [20, 20],
-        popupAnchor: [0, -20]
-      });
+        const endPlacemark = new ymaps.Placemark([endPoint.lat, endPoint.lng], {
+          balloonContentHeader: "Точка B",
+          balloonContentBody: escapeHtml(endLabel)
+        }, {
+          preset: "islands#redIcon"
+        });
 
-      window.L.marker(center, { icon: userIcon })
-        .bindPopup("Ваше местоположение", { closeButton: false })
-        .addTo(state.map);
+        state.detailMap.geoObjects.add(startPlacemark);
+        state.detailMap.geoObjects.add(endPlacemark);
 
+        const multiRoute = new ymaps.multiRouter.MultiRoute({
+          referencePoints: [
+            [startPoint.lat, startPoint.lng],
+            [endPoint.lat, endPoint.lng]
+          ],
+          params: {
+            routingMode: "auto",
+            results: 1
+          }
+        }, {
+          boundsAutoApply: true,
+          wayPointVisible: false,
+          viaPointVisible: false,
+          routeActiveStrokeColor: "#2563eb",
+          routeActiveStrokeWidth: 6,
+          routeActiveStrokeOpacity: 0.95
+        });
+
+        state.detailMap.geoObjects.add(multiRoute);
+
+        multiRoute.model.events.add("requestsuccess", () => {
+          const activeRoute = multiRoute.getActiveRoute();
+          const distanceText = activeRoute?.properties?.get("distance")?.text || "Маршрут готов";
+          const durationText = activeRoute?.properties?.get("duration")?.text || "Время уточняется";
+          const geometry = extractRouteGeometry(activeRoute);
+
+          if (trackingEnabled) {
+            const trackerPoint = getPointAtProgress(
+              geometry.length ? geometry : [
+                [startPoint.lat, startPoint.lng],
+                [endPoint.lat, endPoint.lng]
+              ],
+              getOrderStageProgress(order.stage)
+            );
+
+            if (trackerPoint) {
+              const courierPlacemark = new ymaps.Placemark([trackerPoint.lat, trackerPoint.lng], {
+                balloonContentHeader: escapeHtml(order.assigneeName || "Исполнитель"),
+                balloonContentBody: escapeHtml(stageMeta.title)
+              }, {
+                preset: "islands#blueCircleDotIcon"
+              });
+              state.detailMap.geoObjects.add(courierPlacemark);
+            }
+          }
+
+          appendRouteMapInfo(mapElement, {
+            city,
+            startLabel,
+            endLabel,
+            distanceText,
+            durationText,
+            trackingEnabled,
+            assigneeName: order.assigneeName,
+            stageTitle: stageMeta.title
+          });
+        });
+
+        multiRoute.model.events.add("requestfail", () => {
+          appendRouteMapInfo(mapElement, {
+            city,
+            startLabel,
+            endLabel,
+            distanceText: "Маршрут не построен",
+            durationText: "Проверьте адреса",
+            trackingEnabled,
+            assigneeName: order.assigneeName,
+            stageTitle: stageMeta.title
+          });
+        });
+      } catch (error) {
+        console.error("Не удалось инициализировать маршрут Яндекс Карт:", error);
+        setMapMessage(mapElement, "Не удалось загрузить маршрут Яндекс Карт.");
+      }
+    }, 120);
+  }
+
+  function buildOrderBalloon(order) {
+    return `
+      <div class="map-popup">
+        <strong>${escapeHtml(order.title)}</strong>
+        <small>${escapeHtml(order.category)}</small>
+        <small>${formatMoney(order.finalPrice || order.budget)}</small>
+      </div>
+    `;
+  }
+
+  function getOrderMarkerPreset(order) {
+    if (order.status === "done") return "islands#grayCircleDotIcon";
+    if (order.ownerId === state.account.id) return "islands#blueCircleDotIcon";
+    return "islands#greenCircleDotIcon";
+  }
+
+  function initMap() {
+    setTimeout(async () => {
+      const mapElement = document.getElementById("mapView");
+      if (!mapElement) return;
+
+      if (!hasYandexMapsKey()) {
+        setMapMessage(mapElement, getMapBootstrapMessage());
+        return;
+      }
+
+      setMapMessage(mapElement, "Загружаем Яндекс Карты...");
+
+      try {
+        const ymaps = await ensureYandexMaps();
+        if (!document.getElementById("mapView")) return;
+
+        destroyMapInstance(state.map);
+        state.map = null;
+
+        const city = state.ui.selectedCity || "Алматы";
+        const cityCenter = getCityCenter(city);
+        const center = [cityCenter.lat, cityCenter.lng];
+        const orders = getVisibleOrders();
+
+        mapElement.innerHTML = "";
+        state.map = new ymaps.Map("mapView", {
+          center,
+          zoom: 12,
+          controls: ["zoomControl"]
+        }, {
+          suppressMapOpenBlock: true
+        });
+
+        const collection = new ymaps.GeoObjectCollection();
+
+        const orderGeoObjects = await Promise.all(orders.map(async (order) => {
+          const coords = await resolveAddressCoordinates(order.city || city, order.toAddress || order.address);
+          const placemark = new ymaps.Placemark([coords.lat, coords.lng], {
+            balloonContentHeader: escapeHtml(order.title),
+            balloonContentBody: buildOrderBalloon(order)
+          }, {
+            preset: getOrderMarkerPreset(order)
+          });
+
+          placemark.events.add("click", () => {
+            state.ui.modal = { type: "detail", orderId: order.id };
+            persist();
+            render();
+          });
+
+          return placemark;
+        }));
+
+        orderGeoObjects.forEach((geoObject) => collection.add(geoObject));
+
+        const userPlacemark = new ymaps.Placemark(center, {
+          balloonContentHeader: "Ваш город",
+          balloonContentBody: escapeHtml(city)
+        }, {
+          preset: "islands#orangeCircleDotIcon"
+        });
+
+        collection.add(userPlacemark);
+        state.map.geoObjects.add(collection);
+
+        const bounds = collection.getBounds?.();
+        if (bounds) {
+          state.map.setBounds(bounds, {
+            checkZoomRange: true
+          });
+        } else {
+          state.map.setCenter(center, 12);
+        }
+      } catch (error) {
+        console.error("Не удалось инициализировать Яндекс Карты:", error);
+        setMapMessage(mapElement, "Не удалось загрузить Яндекс Карты.");
+      }
     }, 100);
   }
 })();
