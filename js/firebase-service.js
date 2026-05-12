@@ -65,21 +65,30 @@
           isBlocked: Boolean(userData.isBlocked),
           usedPromoCodes: Array.isArray(userData.usedPromoCodes) ? userData.usedPromoCodes : [],
           promoHistory: Array.isArray(userData.promoHistory) ? userData.promoHistory : [],
+          walletHistory: Array.isArray(userData.walletHistory) ? userData.walletHistory : [],
           createdAt: userData.createdAt || nowIso(),
           updatedAt: userData.updatedAt || nowIso()
         };
       }
 
       function toOrderShape(orderData = {}) {
+        const city = orderData.city || DEFAULT_CITY;
+        const fromAddress = orderData.fromAddress || orderData.pickupAddress || `Центр ${city}`;
+        const explicitToAddress = orderData.toAddress || orderData.dropoffAddress || "";
+        const legacyAddress = orderData.address || "";
+        const toAddress = explicitToAddress || (legacyAddress && legacyAddress !== fromAddress ? legacyAddress : "");
         return {
           id: String(orderData.id || "").trim(),
           title: orderData.title || "",
-          fromAddress: orderData.fromAddress || orderData.pickupAddress || `Центр ${orderData.city || DEFAULT_CITY}`,
-          toAddress: orderData.toAddress || orderData.address || orderData.dropoffAddress || "",
-          address: orderData.toAddress || orderData.address || orderData.dropoffAddress || "",
-          city: orderData.city || DEFAULT_CITY,
+          fromAddress,
+          toAddress,
+          address: legacyAddress || toAddress || fromAddress,
+          city,
           when: orderData.when || "",
           budget: Number(orderData.budget ?? 0),
+          taskKind: orderData.taskKind || "",
+          senderPhone: orderData.senderPhone || orderData.sender_phone || "",
+          recipientPhone: orderData.recipientPhone || orderData.recipient_phone || "",
           payment: orderData.payment || "Kaspi",
           category: orderData.category || "",
           urgent: Boolean(orderData.urgent || orderData.express),
@@ -87,11 +96,13 @@
           photo: orderData.photo || "",
           status: orderData.status || "open",
           description: orderData.description || "",
+          requirements: orderData.requirements || "",
           ownerId: String(orderData.ownerId || ""),
           ownerName: orderData.ownerName || "",
           ownerVerified: Boolean(orderData.ownerVerified),
           assigneeId: String(orderData.assigneeId || ""),
           assigneeName: orderData.assigneeName || "",
+          assigneePhone: orderData.assigneePhone || orderData.assignee_phone || "",
           finalPrice: Number(orderData.finalPrice ?? orderData.budget ?? 0),
           stage: orderData.stage || (orderData.status === "done" ? "delivered" : orderData.status === "assigned" ? "accepted" : "new"),
           bids: Array.isArray(orderData.bids) ? orderData.bids : [],
@@ -187,7 +198,7 @@
             phone: cleanPhone,
             phoneNormalized,
             role,
-            name: name || (role === "customer" ? "Новый заказчик" : "Новый исполнитель"),
+            name: name || (role === "support" ? "Сотрудник поддержки" : role === "customer" ? "Новый заказчик" : "Новый исполнитель"),
             city: city || DEFAULT_CITY,
             about: "",
             avatar: "",
@@ -204,6 +215,7 @@
             isBlocked: false,
             usedPromoCodes: [],
             promoHistory: [],
+            walletHistory: [],
             createdAt: now,
             updatedAt: now
           });
@@ -365,6 +377,7 @@
               stage: "accepted",
               assigneeId: String(executorData?.id || ""),
               assigneeName: executorData?.name || "",
+              assigneePhone: executorData?.phone || "",
               finalPrice: Number(currentOrder.finalPrice || currentOrder.budget || 0),
               updatedAt: now,
               chat: [
@@ -406,6 +419,7 @@
               id: String(bidData?.id || `BID-${Date.now()}`),
               userId: String(bidData?.userId || ""),
               userName: bidData?.userName || "",
+              userPhone: bidData?.userPhone || "",
               price: Number(bidData?.price || 0),
               note: bidData?.note || "",
               createdAt: bidData?.createdAt || now
@@ -458,6 +472,7 @@
               stage: "accepted",
               assigneeId: String(bid.userId || ""),
               assigneeName: bid.userName || "",
+              assigneePhone: bid.userPhone || "",
               finalPrice: Number(bid.price || currentOrder.budget || 0),
               updatedAt: now,
               chat: [
@@ -573,7 +588,7 @@
         },
 
         async saveNotification(userId, notification) {
-          const notifId = Date.now().toString();
+          const notifId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
           await db.collection("notifications").doc(notifId).set({
             ...notification,
             userId,
@@ -622,6 +637,23 @@
         async markNotificationRead(notifId) {
           await db.collection("notifications").doc(notifId).update({ read: true });
           return { success: true };
+        },
+
+        async getSupportUsers() {
+          const snapshot = await db.collection(USERS_COLLECTION).where("role", "==", "support").limit(50).get();
+          return snapshot.docs.map((doc) => toAccountShape({ id: doc.id, ...doc.data() }));
+        },
+
+        async saveSupportTicket(ticketData = {}) {
+          const ticketId = String(ticketData.id || `SUP-${Date.now()}`);
+          await db.collection("support_tickets").doc(ticketId).set({
+            ...ticketData,
+            id: ticketId,
+            status: ticketData.status || "open",
+            createdAt: ticketData.createdAt || nowIso(),
+            updatedAt: nowIso()
+          }, { merge: true });
+          return { success: true, ticketId };
         },
 
         async getUser(userId) {
