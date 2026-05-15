@@ -6,6 +6,7 @@
   let toastTimer = null;
   let unsubscribeOrdersRealtime = null;
   let unsubscribeNotificationsRealtime = null;
+  let ordersLoadVersion = 0;
   let promoStoryTimer = null;
   let promoStoryRemaining = 4500;
   let promoStoryStartedAt = 0;
@@ -89,12 +90,22 @@
     "Сад и двор",
     "Другое"
   ];
+  const SHIFT_WEEKDAY_OPTIONS = [
+    "Понедельник",
+    "Вторник",
+    "Среда",
+    "Четверг",
+    "Пятница",
+    "Суббота",
+    "Воскресенье"
+  ];
   const PROMO_CODE_LIBRARY = {
     START500: { amount: 500, label: "Стартовый бонус" },
     BONUS1000: { amount: 1000, label: "Бонус на баланс" },
     EXPRESS300: { amount: 300, label: "Express бонус" }
   };
   const PROMO_STORY_DURATION = 4500;
+  const CHAT_PHONE_PATTERN = /(?:\+?\d[\d\s().-]{8,}\d)/g;
   // Управляемые разработчиком stories/promos при входе в приложение.
   const PROMO_STORIES = [
     {
@@ -152,6 +163,7 @@
 
   let state = loadState();
   normalizeState();
+  persist();
   render();
   bootstrapAdminContent();
   setTimeout(() => bootstrapAdminContent(), 800);
@@ -197,13 +209,15 @@
         selectedCity: "Алматы",
         cityMenuOpen: false,
         createOrderCity: "Алматы",
+        createOrderMode: "task",
         createOrderFromAddress: "",
         createOrderToAddress: "",
         createOrderPhotoPreview: "",
         promoViewerOpen: false,
         promoIndex: 0,
         introScreenIndex: 0,
-        introShown: false
+        introShown: false,
+        revealedChatPhones: {}
       },
       account: null,
       orders: [],
@@ -223,7 +237,7 @@
 
   function normalizeState() {
     const fresh = createInitialState();
-    state.settings = { ...fresh.settings, ...state.settings };
+    state.settings = { ...fresh.settings };
     state.session = { ...fresh.session, ...state.session };
     
     if (!state.session.isLoggedIn) {
@@ -242,13 +256,15 @@
       selectedCity: state.ui?.selectedCity || "Алматы",
       cityMenuOpen: false,
       createOrderCity: state.ui?.createOrderCity || state.account?.city || state.ui?.selectedCity || "Алматы",
+      createOrderMode: ["task", "shift"].includes(state.ui?.createOrderMode) ? state.ui.createOrderMode : "task",
       createOrderFromAddress: state.ui?.createOrderFromAddress || "",
       createOrderToAddress: state.ui?.createOrderToAddress || "",
       createOrderPhotoPreview: state.ui?.createOrderPhotoPreview || "",
       promoViewerOpen: false,
       promoIndex: 0,
       introScreenIndex: state.ui?.introScreenIndex || 0,
-      introShown: Boolean(state.ui?.introShown)
+      introShown: Boolean(state.ui?.introShown),
+      revealedChatPhones: state.ui?.revealedChatPhones && typeof state.ui.revealedChatPhones === "object" ? state.ui.revealedChatPhones : {}
     };
     
     state.notifications = Array.isArray(state.notifications) ? state.notifications : fresh.notifications;
@@ -284,13 +300,13 @@
     }
 
     // Экземпляры карт не сериализуем в localStorage
-    document.documentElement.dataset.theme = state.settings.theme;
+    document.documentElement.dataset.theme = "light";
   }
 
   function persist() {
     // Храним в localStorage только легкое состояние. Тяжелые данные приходят из Firebase.
     const stateToSave = {
-      settings: { ...state.settings },
+      settings: { theme: "light" },
       session: { ...state.session },
       ui: {
         ...state.ui,
@@ -357,6 +373,14 @@
       toAddress,
       address: legacyAddress || toAddress || fromAddress,
       taskKind: order.taskKind || getOrderTaskKind(order),
+      orderType: order.orderType || (order.isSideJob ? "shift" : "task"),
+      isSideJob: Boolean(order.isSideJob || order.orderType === "shift"),
+      shiftRole: order.shiftRole || "",
+      shiftDate: order.shiftDate || "",
+      shiftWeekday: order.shiftWeekday || "",
+      shiftStart: order.shiftStart || "",
+      shiftEnd: order.shiftEnd || "",
+      salaryType: order.salaryType || "",
       status: order.status || "open",
       stage: order.stage || (order.status === "done" ? "delivered" : order.status === "assigned" ? "accepted" : "new"),
       budget: Number(order.budget ?? 0),
@@ -368,6 +392,7 @@
       bids: Array.isArray(order.bids) ? order.bids : [],
       chat: Array.isArray(order.chat) ? order.chat : [],
       complaints: Array.isArray(order.complaints) ? order.complaints : [],
+      reviews: Array.isArray(order.reviews) ? order.reviews : [],
       reviewedBy: Array.isArray(order.reviewedBy) ? order.reviewedBy : [],
       express: Boolean(order.express || order.urgent),
       urgent: Boolean(order.urgent || order.express),
@@ -391,6 +416,25 @@
       unsubscribeOrdersRealtime();
     }
     unsubscribeOrdersRealtime = null;
+  }
+
+  function getActiveOrdersCity() {
+    return state.ui.selectedCity || state.account?.city || "Алматы";
+  }
+
+  async function refreshOrdersForContext({ clearOrders = true } = {}) {
+    if (!state.session.isLoggedIn || !state.account) return;
+    const city = getActiveOrdersCity();
+    state.ui.selectedCity = city;
+    state.ui.createOrderCity = city;
+    state.ui.cityMenuOpen = false;
+    if (clearOrders) {
+      state.orders = [];
+      state.account.demoReady = false;
+      persist();
+      render();
+    }
+    await bootstrapAccountOrders(city);
   }
 
   function stopNotificationsRealtime() {
@@ -692,6 +736,78 @@
     return deliveryWords.some((word) => normalized.includes(word)) ? "delivery" : "service";
   }
 
+  function isSideJobOrder(order) {
+    return Boolean(order?.isSideJob || order?.orderType === "shift");
+  }
+
+  function getOrderCategoryLabel(order) {
+    if (isSideJobOrder(order)) return order.shiftRole || "Подработка";
+    return order.category || "Задача";
+  }
+
+  function getShiftDateLabel(order) {
+    const parts = [];
+    if (order.shiftDate) parts.push(formatDateOnly(order.shiftDate));
+    if (order.shiftWeekday) parts.push(order.shiftWeekday);
+    return parts.join(", ");
+  }
+
+  function getShiftTimeLabel(order) {
+    if (order.shiftStart && order.shiftEnd) return `${order.shiftStart} - ${order.shiftEnd}`;
+    if (order.shiftStart) return `с ${order.shiftStart}`;
+    if (order.shiftEnd) return `до ${order.shiftEnd}`;
+    return "";
+  }
+
+  function getShiftSalaryLabel(order) {
+    if (order.salaryType === "hour") return "Почасовая оплата";
+    if (order.salaryType === "day") return "Оплата за смену";
+    return "";
+  }
+
+  function getOrderTimeLabel(order) {
+    if (!isSideJobOrder(order)) {
+      return order.when || (order.status === "open" ? "Сегодня" : getOrderStageMeta(order.stage, order).title);
+    }
+    const date = getShiftDateLabel(order);
+    const time = getShiftTimeLabel(order);
+    return [date, time].filter(Boolean).join(" · ") || order.when || "Смена по договоренности";
+  }
+
+  function formatDateOnly(value) {
+    if (!value) return "";
+    const date = new Date(`${value}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
+  }
+
+  function renderShiftInfoSection(order) {
+    if (!isSideJobOrder(order)) return "";
+    return `
+      <section class="task-info-section shift-detail-section">
+        <h3>Подработка</h3>
+        <div class="shift-detail-grid">
+          <div><span>Кого ищут</span><strong>${escapeHtml(order.shiftRole || "Исполнитель на смену")}</strong></div>
+          <div><span>Дата</span><strong>${escapeHtml(getShiftDateLabel(order) || "По договоренности")}</strong></div>
+          <div><span>Время</span><strong>${escapeHtml(getShiftTimeLabel(order) || "По договоренности")}</strong></div>
+          <div><span>Оплата</span><strong>${escapeHtml(getShiftSalaryLabel(order) || "Уточнить")} · ${formatMoney(order.finalPrice || order.budget)}</strong></div>
+        </div>
+      </section>
+    `;
+  }
+
+  function renderDetailRouteList(order, isDelivery) {
+    if (isSideJobOrder(order)) {
+      return `<div class="task-route-list"><div><span>М</span><p>${escapeHtml(order.fromAddress || getCityCenterLabel(order.city))}</p></div></div>`;
+    }
+    return `
+      <div class="task-route-list">
+        <div><span>А</span><p>${escapeHtml(order.fromAddress || getCityCenterLabel(order.city))}</p></div>
+        ${isDelivery || order.toAddress ? `<div><span>Б</span><p>${escapeHtml(order.toAddress || "Точка Б не указана")}</p></div>` : ""}
+      </div>
+    `;
+  }
+
   function getVisibleOrderPhone(order, isOwner) {
     return isOwner
       ? order.assigneePhone || ""
@@ -708,12 +824,34 @@
     `;
   }
 
+  function renderOrderReviewsSection(order) {
+    const reviews = Array.isArray(order.reviews) ? order.reviews : [];
+    if (!reviews.length) return "";
+    return `
+      <section class="task-info-section task-order-reviews">
+        <h3>Отзывы</h3>
+        <div class="task-review-list">
+          ${reviews.slice().reverse().map((review) => `
+            <article class="task-review-card">
+              <div>
+                <strong>${escapeHtml(review.fromUserName || "Пользователь")}</strong>
+                <span>${escapeHtml(formatDateTime(review.createdAt))}</span>
+              </div>
+              <b>${escapeHtml(String(review.rating || 0))}★</b>
+              <p>${escapeHtml(review.comment || "Без комментария")}</p>
+            </article>
+          `).join("")}
+        </div>
+      </section>
+    `;
+  }
+
   function saveCurrentAccount(extraLogEvent = null) {
     if (!state.account || !window.FirebaseService?.saveAccount) {
-      return;
+      return Promise.resolve(null);
     }
 
-    window.FirebaseService.saveAccount({
+    const savePromise = window.FirebaseService.saveAccount({
       id: state.account.id,
       phone: state.account.phone,
       role: state.account.role,
@@ -743,6 +881,8 @@
         console.error("Failed to log account event:", error);
       });
     }
+
+    return savePromise;
   }
 
   function applyPromoCode(rawCode) {
@@ -865,7 +1005,8 @@
   }
 
   function render() {
-    document.documentElement.dataset.theme = state.settings.theme;
+    state.settings = { theme: "light" };
+    document.documentElement.dataset.theme = "light";
     const hasModal = Boolean(state.ui.modal);
     const hasPromoViewer = Boolean(state.ui.promoViewerOpen && getPromoStories().length);
     document.body.classList.toggle("modal-open", hasModal);
@@ -881,7 +1022,7 @@
         <main class="shell-content">
           ${state.session.isLoggedIn ? renderLoggedInView() : renderAuthView()}
         </main>
-        ${state.session.isLoggedIn && !["create", "notifications", "profile-data"].includes(state.ui.tab) ? renderBottomNav() : ""}
+        ${state.session.isLoggedIn && !["create", "side-jobs", "notifications", "profile-data"].includes(state.ui.tab) ? renderBottomNav() : ""}
       </div>
       ${renderModal()}
       ${state.session.isLoggedIn ? renderPromoStoryViewer() : ""}
@@ -959,7 +1100,7 @@
   }
 
   function renderAppHeader() {
-    if (["home", "create", "orders", "chats", "notifications", "profile", "profile-data"].includes(state.ui.tab)) {
+    if (["home", "create", "side-jobs", "orders", "chats", "notifications", "profile", "profile-data"].includes(state.ui.tab)) {
       return "";
     }
     const unread = getUnreadCount();
@@ -991,7 +1132,6 @@
         <div class="header-actions">
           <button class="icon-button support-button" data-action="open-support" aria-label="Поддержка">${ICONS.support}</button>
           <button class="icon-button" data-action="open-tab" data-tab="notifications" aria-label="Уведомления"${unread ? ` data-badge="${unread > 9 ? "9+" : unread}"` : ""}>${ICONS.bell}</button>
-          <button class="theme-button" data-action="toggle-theme" aria-label="Сменить тему">${state.settings.theme === "dark" ? "☀️" : "🌙"}</button>
         </div>
       </header>
     `;
@@ -1235,6 +1375,7 @@
   function renderLoggedInView() {
     switch (state.ui.tab) {
       case "create": return renderCreateView();
+      case "side-jobs": return renderSideJobsView();
       case "orders": return renderOrdersView();
       case "chats": return renderChatsView();
       case "notifications": return renderNotificationsView();
@@ -1279,25 +1420,26 @@
     return `
       <section class="view home-screen">
         <header class="home-ref-header">
-          <div class="home-ref-title-block">
-            <h1 class="home-ref-title">Главная</h1>
-            <div class="home-ref-city city-dropdown ${state.ui.cityMenuOpen ? "open" : ""}">
-              <button class="home-city-trigger" type="button" data-action="toggle-city-menu" aria-expanded="${state.ui.cityMenuOpen ? "true" : "false"}">
-                <span class="home-city-pin">${ICONS.pin}</span>
-                <span>${escapeHtml(state.ui.selectedCity)}</span>
-                <span class="home-city-chevron">${ICONS.chevron}</span>
-              </button>
-              ${state.ui.cityMenuOpen ? `
-                <div class="city-menu home-city-menu" role="menu" aria-label="Список городов">
-                  ${ORDER_CITY_OPTIONS.map(city => `
-                    <button class="city-option ${state.ui.selectedCity === city ? "active" : ""}" type="button" data-action="select-city" data-city="${escapeHtml(city)}" role="menuitem">
-                      <span class="city-option-name">${escapeHtml(city)}</span>
-                      ${state.ui.selectedCity === city ? '<span class="city-option-check">✓</span>' : ""}
-                    </button>
-                  `).join("")}
-                </div>
-              ` : ""}
-            </div>
+          <button class="home-sidejob-button" type="button" data-action="open-tab" data-tab="side-jobs">Подработка</button>
+          <div class="home-brand-lockup" aria-label="TRAINTUP">
+            <strong>TRAINTUP</strong>
+          </div>
+          <div class="home-ref-city city-dropdown ${state.ui.cityMenuOpen ? "open" : ""}">
+            <button class="home-city-trigger" type="button" data-action="toggle-city-menu" aria-expanded="${state.ui.cityMenuOpen ? "true" : "false"}" aria-label="Выбрать город">
+              <span class="home-city-pin">${ICONS.pin}</span>
+              <strong class="home-city-name">${escapeHtml(state.ui.selectedCity)}</strong>
+              <span class="home-city-chevron">${ICONS.chevron}</span>
+            </button>
+            ${state.ui.cityMenuOpen ? `
+              <div class="city-menu home-city-menu" role="menu" aria-label="Список городов">
+                ${ORDER_CITY_OPTIONS.map(city => `
+                  <button class="city-option ${state.ui.selectedCity === city ? "active" : ""}" type="button" data-action="select-city" data-city="${escapeHtml(city)}" role="menuitem">
+                    <span class="city-option-name">${escapeHtml(city)}</span>
+                    ${state.ui.selectedCity === city ? '<span class="city-option-check">✓</span>' : ""}
+                  </button>
+                `).join("")}
+              </div>
+            ` : ""}
           </div>
           <button class="home-bell-button" type="button" data-action="open-tab" data-tab="notifications" aria-label="Уведомления"${unread ? ` data-badge="${unread > 9 ? "9+" : unread}"` : ""}>${ICONS.bell}</button>
         </header>
@@ -1335,7 +1477,7 @@
   }
 
   function renderOrdersView() {
-    const orders = getVisibleOrders();
+    const orders = getVisibleOrders({ includeSideJobs: true });
     const labels = state.account.role === "executor" ? { available: "Доступные", work: "В работе", done: "Завершенные" } : { available: "Активные", work: "В работе", done: "Завершенные" };
     const counts = getOrdersTabCounts();
     const unread = getUnreadCount();
@@ -1403,26 +1545,63 @@
     const price = order.finalPrice || order.budget;
     const title = order.title || "Новая задача";
     const meta = getHomeTaskMeta(order);
-    const time = order.when || (order.status === "open" ? "Сегодня" : getOrderStageMeta(order.stage, order).title);
-    const location = getOrderLocationSummary(order);
+    const time = getOrderTimeLabel(order);
+    const isUrgent = Boolean(order.urgent || order.express);
+    const routeRows = getHomeTaskRouteRows(order);
+    const categoryLabel = getOrderCategoryLabel(order);
     return `
-      <article class="home-task-card ${featured ? "featured" : ""}" data-action="open-order" data-order-id="${order.id}">
-        <div class="home-task-icon ${meta.className}" aria-hidden="true">${meta.icon}</div>
-        <div class="home-task-main">
-          <div class="home-task-top">
-            <h3>${escapeHtml(title)}</h3>
-            ${featured && order.status === "open" ? '<span class="home-new-badge">Новый</span>' : ""}
+      <article class="home-task-card ${featured ? "featured" : ""} ${isUrgent ? "urgent" : ""} ${isSideJobOrder(order) ? "side-job" : ""}" data-action="open-order" data-order-id="${order.id}">
+        <div class="home-task-head">
+          <div class="home-task-icon ${meta.className}" aria-hidden="true">${meta.icon}</div>
+          <div class="home-task-title-block">
+            <div class="home-task-top">
+              <h3>${escapeHtml(title)}</h3>
+              ${isUrgent ? '<span class="home-urgent-badge">Срочно</span>' : featured && order.status === "open" ? '<span class="home-new-badge">Новый</span>' : ""}
+            </div>
+            <span class="home-task-category">${escapeHtml(categoryLabel)}</span>
           </div>
-          <p>${escapeHtml(location)}</p>
-          <span>${escapeHtml(time)}</span>
-          <strong>${formatMoney(price)}</strong>
+          <strong class="home-task-price">${formatMoney(price)}</strong>
         </div>
-        <span class="home-task-arrow" aria-hidden="true">${ICONS.chevron}</span>
+
+        <div class="home-task-route">
+          ${routeRows.map((row) => `
+            <div class="home-task-route-row ${escapeHtml(row.type)}">
+              <span class="home-task-route-pin" aria-hidden="true">${ICONS.pin}</span>
+              <p>${escapeHtml(row.text)}</p>
+            </div>
+          `).join("")}
+        </div>
+
+        <div class="home-task-footer">
+          <span>${escapeHtml(time)}</span>
+          <b>Открыть</b>
+        </div>
       </article>
     `;
   }
 
+  function getHomeTaskRouteRows(order) {
+    if (isSideJobOrder(order)) {
+      return [
+        { type: "shift-time", text: getOrderTimeLabel(order) || "Смена по договоренности" },
+        { type: "single", text: order.fromAddress || order.address || getCityCenterLabel(order.city) }
+      ];
+    }
+    const from = order.fromAddress || order.address || getCityCenterLabel(order.city);
+    const to = order.toAddress || "";
+    if (getOrderTaskKind(order) === "delivery" && to) {
+      return [
+        { type: "from", text: from },
+        { type: "to", text: to }
+      ];
+    }
+    return [{ type: "single", text: from || "Адрес уточняется" }];
+  }
+
   function getOrderLocationSummary(order) {
+    if (isSideJobOrder(order)) {
+      return `${getOrderTimeLabel(order) || "Смена"} · ${order.fromAddress || order.address || "Адрес уточняется"}`;
+    }
     if (getOrderTaskKind(order) === "delivery" && order.toAddress) {
       return `${order.fromAddress || getCityCenterLabel(order.city)} → ${order.toAddress}`;
     }
@@ -1431,16 +1610,88 @@
 
   function getHomeTaskMeta(order) {
     const source = `${order.category || ""} ${order.title || ""}`.toLowerCase();
+    if (isSideJobOrder(order)) {
+      return { className: "shift", icon: ICONS.briefcase };
+    }
     if (source.includes("груз") || source.includes("мебел") || source.includes("переезд")) {
-      return { className: "cargo", icon: ICONS.briefcase };
+      return { className: "cargo image-icon", icon: '<img src="img/order-cargo.png" alt="">' };
     }
     if (source.includes("уборк") || source.includes("дом") || source.includes("ремонт") || source.includes("сантех") || source.includes("электр")) {
-      return { className: "cleaning", icon: ICONS.list };
+      return { className: "cleaning image-icon", icon: '<img src="img/order-home.png" alt="">' };
     }
     if (source.includes("документ")) {
-      return { className: "document", icon: ICONS.briefcase };
+      return { className: "document image-icon", icon: '<img src="img/order-document.png" alt="">' };
     }
-    return { className: "courier", icon: ICONS.briefcase };
+    return { className: "courier image-icon", icon: '<img src="img/order-courier.png" alt="">' };
+  }
+
+  function renderSideJobsView() {
+    const jobs = getVisibleSideJobOrders();
+    const recommended = jobs.slice(0, 3);
+    const rest = jobs.slice(3);
+    return `
+      <section class="view sidejobs-screen">
+        <header class="sidejobs-header">
+          <button class="task-back-button" type="button" data-action="open-tab" data-tab="home" aria-label="Назад">${ICONS.chevron}</button>
+          <div>
+            <span>TRAINTUP</span>
+            <h1>Подработка</h1>
+            <p>Смены, замены и разовые выходы без обычных доставок.</p>
+          </div>
+          ${state.account.role === "customer" ? `<button class="sidejobs-create" type="button" data-action="open-create-shift">+</button>` : "<span></span>"}
+        </header>
+
+        <label class="home-search sidejobs-search">
+          <span class="home-search-icon">${ICONS.search}</span>
+          <input type="search" name="search" placeholder="Поиск подработки" value="${escapeHtml(state.ui.search)}">
+        </label>
+
+        <section class="home-ref-section">
+          <div class="home-section-head">
+            <h2>${state.account.role === "customer" ? "Ваши подработки" : "Доступные смены"}</h2>
+          </div>
+          <div class="home-task-list">
+            ${recommended.length ? recommended.map((order, index) => renderHomeTaskCard(order, index === 0)).join("") : renderEmptySideJobs()}
+          </div>
+        </section>
+
+        ${rest.length ? `
+        <section class="home-ref-section">
+          <div class="home-section-head">
+            <h2>Еще варианты</h2>
+          </div>
+          <div class="home-task-list">
+            ${rest.map((order) => renderHomeTaskCard(order, false)).join("")}
+          </div>
+        </section>
+        ` : ""}
+      </section>
+    `;
+  }
+
+  function renderEmptySideJobs() {
+    return state.account.role === "customer"
+      ? `<article class="orders-ref-empty"><strong>Подработок пока нет</strong><p>Создайте смену, если нужен человек на замену, разовый выход или помощь на несколько часов.</p><button type="button" data-action="open-create-shift">Создать подработку</button></article>`
+      : `<article class="orders-ref-empty"><strong>Смен пока нет</strong><p>Здесь будут только подработки: замены, выходы на смену и разовые работы в вашем городе.</p></article>`;
+  }
+
+  function getVisibleSideJobOrders() {
+    const search = state.ui.search.trim().toLowerCase();
+    const accountId = state.account?.id;
+    return state.orders
+      .slice()
+      .sort((a, b) => ({ open: 0, assigned: 1, done: 2 }[a.status] - { open: 0, assigned: 1, done: 2 }[b.status]))
+      .filter((order) => {
+        if (order.city !== state.ui.selectedCity || !isSideJobOrder(order)) return false;
+        if (search) {
+          const haystack = `${order.title || ""} ${order.shiftRole || ""} ${order.shiftDate || ""} ${order.shiftWeekday || ""} ${order.shiftStart || ""} ${order.shiftEnd || ""} ${order.fromAddress || ""} ${order.description || ""} ${order.requirements || ""}`.toLowerCase();
+          if (!haystack.includes(search)) return false;
+        }
+        if (state.account.role === "executor") {
+          return (order.status === "open" && order.ownerId !== accountId) || order.assigneeId === accountId;
+        }
+        return order.ownerId === accountId;
+      });
   }
 
   function renderCreateView() {
@@ -1463,23 +1714,69 @@
     const selectedCity = state.ui.createOrderCity || state.account.city || state.ui.selectedCity || ORDER_CITY_OPTIONS[0];
     const selectedFromAddress = state.ui.createOrderFromAddress || "";
     const selectedToAddress = state.ui.createOrderToAddress || "";
+    const createMode = state.ui.createOrderMode || "task";
+    const isShift = createMode === "shift";
     const categoryOptions = ["Своя категория", ...ORDER_SERVICE_OPTIONS];
     return `
       <section class="view create-ref-screen">
         <header class="create-ref-header">
           <button class="create-ref-back" type="button" data-action="open-tab" data-tab="home" aria-label="Назад">${ICONS.chevron}</button>
-          <h1>Создать задачу</h1>
+          <h1>${isShift ? "Создать подработку" : "Создать задачу"}</h1>
           <span></span>
         </header>
 
+        <div class="create-mode-tabs" aria-label="Тип публикации">
+          <button class="${!isShift ? "active" : ""}" type="button" data-action="set-create-mode" data-create-mode="task">Задача</button>
+          <button class="${isShift ? "active" : ""}" type="button" data-action="set-create-mode" data-create-mode="shift">Подработка</button>
+        </div>
+
         <form class="create-ref-form" data-form="create-order">
           <input type="hidden" name="order_city" value="${escapeHtml(selectedCity)}">
+          <input type="hidden" name="order_type" value="${isShift ? "shift" : "task"}">
 
           <label class="create-ref-field">
-            <span>Название задачи</span>
-            <input type="text" name="title" placeholder="Например: Доставка еды" required>
+            <span>${isShift ? "Название подработки" : "Название задачи"}</span>
+            <input type="text" name="title" placeholder="${isShift ? "Например: Нужен человек на смену" : "Например: Доставка еды"}" required>
           </label>
 
+          ${isShift ? `
+          <label class="create-ref-field">
+            <span>Кого ищете</span>
+            <input type="text" name="shift_role" placeholder="Например: продавец, официант, грузчик, администратор" required>
+          </label>
+
+          <div class="create-shift-grid">
+            <label class="create-ref-field">
+              <span>Дата</span>
+              <input type="date" name="shift_date" required>
+            </label>
+            <label class="create-ref-field create-ref-select">
+              <span>День недели</span>
+              <select name="shift_weekday" required>
+                ${SHIFT_WEEKDAY_OPTIONS.map((day) => `<option value="${escapeHtml(day)}">${escapeHtml(day)}</option>`).join("")}
+              </select>
+            </label>
+          </div>
+
+          <div class="create-shift-grid">
+            <label class="create-ref-field">
+              <span>Смена с</span>
+              <input type="time" name="shift_start" required>
+            </label>
+            <label class="create-ref-field">
+              <span>Смена до</span>
+              <input type="time" name="shift_end" required>
+            </label>
+          </div>
+
+          <label class="create-ref-field create-ref-select">
+            <span>Как считается оплата</span>
+            <select name="salary_type" required>
+              <option value="day">За смену</option>
+              <option value="hour">Почасовая</option>
+            </select>
+          </label>
+          ` : `
           <label class="create-ref-field create-ref-select">
             <span>Категория</span>
             <select name="service" required>
@@ -1491,28 +1788,29 @@
             <span>Если категории нет в списке</span>
             <input type="text" name="custom_service" placeholder="Например: Выгул собаки">
           </label>
+          `}
 
           <label class="create-ref-field">
             <span>Описание</span>
-            <textarea name="description" placeholder="Подробно опишите задачу" required></textarea>
+            <textarea name="description" placeholder="${isShift ? "Опишите смену: что делать, форма одежды, условия, перерыв" : "Подробно опишите задачу"}" required></textarea>
           </label>
 
           <label class="create-ref-field">
             <span>Требования</span>
-            <textarea name="requirements" placeholder="Например: взять свой инструмент, быть на месте к 14:00, аккуратно упаковать вещи"></textarea>
+            <textarea name="requirements" placeholder="${isShift ? "Например: опыт от 1 года, прийти за 15 минут, иметь санитарную книжку" : "Например: взять свой инструмент, быть на месте к 14:00, аккуратно упаковать вещи"}"></textarea>
             <small>Пишите сами любые условия. Можно каждое требование с новой строки.</small>
           </label>
 
           <label class="create-ref-field">
-            <span>Точка А</span>
-            <input type="text" name="order_from_address" placeholder="Откуда забрать или где выполнить задачу" value="${escapeHtml(selectedFromAddress)}" required>
+            <span>${isShift ? "Адрес смены" : "Точка А"}</span>
+            <input type="text" name="order_from_address" placeholder="${isShift ? "Где нужно выйти на смену" : "Откуда забрать или где выполнить задачу"}" value="${escapeHtml(selectedFromAddress)}" required>
           </label>
 
-          <label class="create-ref-field">
+          ${isShift ? "" : `<label class="create-ref-field">
             <span>Точка Б</span>
             <input type="text" name="order_to_address" placeholder="Куда доставить, если это доставка" value="${escapeHtml(selectedToAddress)}">
             <small>Не обязательно, если это не доставка. Для помощи по дому, уборки или ремонта достаточно точки А.</small>
-          </label>
+          </label>`}
 
           <label class="create-ref-field">
             <span>Номер для связи</span>
@@ -1521,11 +1819,21 @@
           </label>
 
           <label class="create-ref-field">
-            <span>Бюджет</span>
-            <input type="number" name="budget" min="1" step="any" inputmode="decimal" placeholder="Например: 2500 ₸" required>
+            <span>${isShift ? "Оплата" : "Бюджет"}</span>
+            <input type="number" name="budget" min="1" step="any" inputmode="decimal" placeholder="${isShift ? "Например: 15000 ₸" : "Например: 2500 ₸"}" required>
+            ${isShift ? "<small>Если выбрана почасовая оплата, укажите ставку за час.</small>" : ""}
           </label>
 
-          <button class="create-ref-submit" type="submit">Продолжить</button>
+          <label class="create-urgent-toggle">
+            <input type="checkbox" name="urgent" value="1">
+            <span class="create-urgent-mark">!</span>
+            <span class="create-urgent-copy">
+              <strong>Срочно</strong>
+              <small>Выделим заказ красной рамкой на главной</small>
+            </span>
+          </label>
+
+          <button class="create-ref-submit" type="submit">${isShift ? "Опубликовать подработку" : "Продолжить"}</button>
         </form>
       </section>
     `;
@@ -1620,7 +1928,10 @@
   }
 
   function getUserChatMessages(order) {
-    return Array.isArray(order.chat) ? order.chat.filter((message) => message.role !== "system" && !String(message.text || "").trim().startsWith("Предлагаю ")) : [];
+    return Array.isArray(order.chat) ? order.chat.filter((message) => {
+      const text = String(message.text || "").trim();
+      return message.role !== "system" && !text.startsWith("Предлагаю ") && !text.startsWith("Отклик на подработку");
+    }) : [];
   }
 
   function getLastUserChatMessage(order) {
@@ -1644,6 +1955,7 @@
   function renderChatListCard(order) {
     const other = getChatOtherMeta(order);
     const lastMessage = getLastUserChatMessage(order);
+    const preview = getSafeChatPreview(lastMessage?.text || "") || "Чат открыт. Напишите первый вопрос по заказу.";
     const status = order.status === "done" ? { label: "Завершен", className: "done" } : { label: "В работе", className: "work" };
     return `
       <article class="chat-ref-card" data-action="open-chat" data-order-id="${order.id}">
@@ -1657,7 +1969,7 @@
             <span>${escapeHtml(order.title || "Заказ")}</span>
             <b class="${status.className}">${escapeHtml(status.label)}</b>
           </div>
-          <p>${escapeHtml(lastMessage?.text || "Чат открыт. Напишите первый вопрос по заказу.")}</p>
+          <p>${escapeHtml(preview)}</p>
         </div>
       </article>
     `;
@@ -1724,7 +2036,6 @@
           ${renderProfileMenuItem("my-data", ICONS.user, "Мои данные", "Имя, город и описание профиля", "open-tab", "profile-data")}
           ${renderProfileMenuItem("documents", ICONS.shield, "Мои документы", "Удостоверение и проверка аккаунта", "profile-placeholder")}
           ${renderProfileMenuItem("reviews", "★", "Мои отзывы", "Оценки от заказчиков и исполнителей", "profile-placeholder")}
-          ${renderProfileMenuItem("notifications", ICONS.bell, "Уведомления", `${getUnreadCount()} непрочитанных`, "open-tab", "notifications")}
           ${state.account.role !== "support" ? renderProfileMenuItem("role", ICONS.briefcase, "Сменить роль", `Сейчас: ${roleLabel}`, "switch-role") : ""}
           ${renderProfileMenuItem("settings", ICONS.list, "Настройки", "Язык, безопасность и приложение", "open-settings")}
           ${renderProfileMenuItem("support", ICONS.support, "Помощь и поддержка", "Вопросы по заказам и аккаунту", "profile-placeholder")}
@@ -1813,11 +2124,11 @@
     const tabs = [
       { id: "home", label: "Главная", icon: ICONS.home },
       { id: "orders", label: "Заказы", icon: ICONS.list },
-      { id: "create", label: "", icon: ICONS.plus, extraClass: "nav-create", aria: "Создать заказ" },
+      { id: "create", label: "", icon: ICONS.plus, extraClass: "nav-create", aria: "Создать заказ", createMode: "task" },
       { id: "chats", label: "Чаты", icon: ICONS.chat },
       { id: "profile", label: "Профиль", icon: ICONS.user }
     ];
-    return `\n      <nav class="bottom-nav" style="--nav-count:${tabs.length}">${tabs.map((tab) => `<button class="nav-item ${tab.extraClass || ""} ${state.ui.tab === tab.id ? "active" : ""}" data-action="open-tab" data-tab="${tab.id}" aria-label="${escapeHtml(tab.aria || tab.label)}">${tab.icon}${tab.label ? `<span>${escapeHtml(tab.label)}</span>` : ""}</button>`).join("")}</nav>\n    `;
+    return `\n      <nav class="bottom-nav" style="--nav-count:${tabs.length}">${tabs.map((tab) => `<button class="nav-item ${tab.extraClass || ""} ${state.ui.tab === tab.id ? "active" : ""}" data-action="open-tab" data-tab="${tab.id}"${tab.createMode ? ` data-create-mode="${escapeHtml(tab.createMode)}"` : ""} aria-label="${escapeHtml(tab.aria || tab.label)}">${tab.icon}${tab.label ? `<span>${escapeHtml(tab.label)}</span>` : ""}</button>`).join("")}</nav>\n    `;
   }
 
   function renderOrderCard(order) {
@@ -1825,7 +2136,7 @@
     const meta = getHomeTaskMeta(order);
     const status = getOrderStatusMeta(order);
     const route = getOrderLocationSummary(order);
-    const time = order.when || (order.status === "open" ? "Сегодня" : getOrderStageMeta(order.stage, order).title);
+    const time = getOrderTimeLabel(order);
     
     return `
       <article class="orders-ref-card" data-action="open-order" data-order-id="${order.id}">
@@ -1837,7 +2148,7 @@
           </div>
           <p>${escapeHtml(route)}</p>
           <div class="orders-ref-meta">
-            <span>${escapeHtml(order.category || "Задача")}</span>
+            <span>${escapeHtml(getOrderCategoryLabel(order))}</span>
             <span>${escapeHtml(time)}</span>
           </div>
           <strong>${formatMoney(price)}</strong>
@@ -1879,10 +2190,12 @@
       return '<div class="modal-layer" hidden></div>';
     }
 
-    if (["detail", "bargain", "order-accepted", "chat", "completed", "review", "wallet", "commission"].includes(state.ui.modal.type)) {
+    if (["detail", "bargain", "order-accepted", "chat", "completed", "review", "wallet", "commission", "user-profile"].includes(state.ui.modal.type)) {
       let body = "";
       if (state.ui.modal.type === "wallet") {
         body = renderWalletModal();
+      } else if (state.ui.modal.type === "user-profile") {
+        body = renderUserProfileModal(state.ui.modal.userId, state.ui.modal.userName);
       } else {
         const order = getOrderById(state.ui.modal.orderId);
         if (!order) return '<div class="modal-layer" hidden></div>';
@@ -1962,10 +2275,6 @@
       title = "Оставить отзыв";
       body = renderReviewModal(order);
     }
-    if (state.ui.modal.type === "user-profile") {
-      title = "Профиль пользователя";
-      body = renderUserProfileModal(state.ui.modal.userId, state.ui.modal.userName);
-    }
     if (state.ui.modal.type === "activation-animation") {
       title = "";
       body = renderActivationAnimation();
@@ -2008,6 +2317,7 @@
     const isAssigned = order.status === "assigned";
     const stageMeta = getOrderStageMeta(order.stage, order);
     const isDelivery = getOrderTaskKind(order) === "delivery";
+    const isSideJob = isSideJobOrder(order);
     const canSeePhone = order.status !== "open" && (isOwner || isAssignee);
     const contactLabel = isOwner ? "Телефон исполнителя" : "Телефон заказчика";
     const visiblePhone = getVisibleOrderPhone(order, isOwner);
@@ -2024,7 +2334,7 @@
             <div class="task-detail-icon ${getHomeTaskMeta(order).className}" aria-hidden="true">${getHomeTaskMeta(order).icon}</div>
             <div class="task-detail-title-block">
               <h2>${escapeHtml(order.title)}</h2>
-              <span>${escapeHtml(order.category || "Задача")}</span>
+              <span>${escapeHtml(getOrderCategoryLabel(order))}</span>
             </div>
           </div>
           <strong class="task-detail-price">${formatMoney(order.finalPrice || order.budget)}</strong>
@@ -2037,13 +2347,10 @@
               <strong>${escapeHtml(stageMeta.title)}</strong>
             </div>
             <div class="task-work-row">
-              <span>Время</span>
-              <strong>${escapeHtml(order.when || "По договоренности")}</strong>
+              <span>${isSideJob ? "Смена" : "Время"}</span>
+              <strong>${escapeHtml(getOrderTimeLabel(order) || "По договоренности")}</strong>
             </div>
-            <div class="task-route-list">
-              <div><span>А</span><p>${escapeHtml(order.fromAddress || getCityCenterLabel(order.city))}</p></div>
-              ${isDelivery || order.toAddress ? `<div><span>Б</span><p>${escapeHtml(order.toAddress || "Точка Б не указана")}</p></div>` : ""}
-            </div>
+            ${renderDetailRouteList(order, isDelivery)}
             <div class="task-contact-note ${canSeePhone ? "" : "locked"}">
               <span>${escapeHtml(contactLabel)}</span>
               <strong>${canSeePhone ? escapeHtml(visiblePhone || "Не указан") : "Скрыт до принятия заказа"}</strong>
@@ -2059,18 +2366,18 @@
               </div>
             </div>
           </section>
+          ${renderShiftInfoSection(order)}
           ${renderOrderRequirementsSection(order)}
+          ${renderOrderReviewsSection(order)}
         ` : `
+          ${renderShiftInfoSection(order)}
           <section class="task-info-section">
             <h3>Описание</h3>
             <p>${escapeHtml(order.description || "Описание будет уточнено в чате.")}</p>
           </section>
           <section class="task-info-section">
-            <h3>${isDelivery ? "Маршрут" : "Адрес выполнения"}</h3>
-            <div class="task-route-list">
-              <div><span>А</span><p>${escapeHtml(order.fromAddress || getCityCenterLabel(order.city))}</p></div>
-              ${isDelivery || order.toAddress ? `<div><span>Б</span><p>${escapeHtml(order.toAddress || "Точка Б не указана")}</p></div>` : ""}
-            </div>
+            <h3>${isSideJob ? "Адрес смены" : isDelivery ? "Маршрут" : "Адрес выполнения"}</h3>
+            ${renderDetailRouteList(order, isDelivery)}
             ${canSeePhone ? `
               <div class="task-contact-note">
                 <span>${escapeHtml(contactLabel)}</span>
@@ -2086,6 +2393,7 @@
             </div>
             <span class="task-rating">★ ${Number(order.ownerRating || 4.9).toFixed(1)}</span>
           </section>
+          ${renderOrderReviewsSection(order)}
         `}
 
         ${isOwner && isOpen ? renderOwnerCandidates(order) : ""}
@@ -2099,16 +2407,17 @@
 
   function renderOrderAcceptedModal(order) {
     const isOwner = order.ownerId === state.account.id;
+    const sideJob = isSideJobOrder(order);
     return `
       <div class="task-success-screen">
         <div class="task-success-mark" aria-hidden="true">✓</div>
-        <h1>${isOwner ? "Исполнитель назначен" : "Заказ принят"}</h1>
-        <p>${isOwner ? "Исполнитель получил заказ и свяжется с вами." : "Теперь заказ находится в работе."}</p>
+        <h1>${isOwner ? "Исполнитель назначен" : sideJob ? "Подработка принята" : "Заказ принят"}</h1>
+        <p>${isOwner ? (sideJob ? "Исполнитель получил подработку и сможет написать вам в чате." : "Исполнитель получил заказ и свяжется с вами.") : sideJob ? "Теперь смена находится в работе." : "Теперь заказ находится в работе."}</p>
         <article class="task-success-order">
           <div class="task-detail-icon ${getHomeTaskMeta(order).className}" aria-hidden="true">${getHomeTaskMeta(order).icon}</div>
           <div>
             <strong>${escapeHtml(order.title)}</strong>
-            <span>${escapeHtml(order.when || "По договоренности")}</span>
+            <span>${escapeHtml(getOrderTimeLabel(order) || "По договоренности")}</span>
             <b>${formatMoney(order.finalPrice || order.budget)}</b>
           </div>
         </article>
@@ -2157,13 +2466,85 @@
     `;
   }
 
+  function getChatPhoneMatches(text) {
+    const source = String(text || "");
+    const matches = [];
+    const pattern = new RegExp(CHAT_PHONE_PATTERN.source, "g");
+    let match;
+    while ((match = pattern.exec(source)) !== null) {
+      const raw = match[0];
+      const digits = raw.replace(/\D/g, "");
+      if (digits.length < 10 || digits.length > 15) continue;
+      matches.push({
+        raw,
+        digits,
+        index: match.index,
+        end: match.index + raw.length
+      });
+    }
+    return matches;
+  }
+
+  function getChatPhoneRevealKey(message, index, digits) {
+    return [
+      message.id || message.createdAt || "message",
+      index,
+      digits.slice(-4)
+    ].join(":");
+  }
+
+  function getSafeChatPreview(text) {
+    const source = String(text || "");
+    const matches = getChatPhoneMatches(source);
+    if (!matches.length) return source;
+    let result = "";
+    let cursor = 0;
+    matches.forEach((match) => {
+      result += source.slice(cursor, match.index);
+      result += "номер скрыт";
+      cursor = match.end;
+    });
+    return result + source.slice(cursor);
+  }
+
+  function renderChatMessageText(message) {
+    const source = String(message.text || "");
+    const matches = getChatPhoneMatches(source);
+    if (!matches.length || message.role === "system") return escapeHtml(source);
+    let html = "";
+    let cursor = 0;
+    matches.forEach((match, index) => {
+      const key = getChatPhoneRevealKey(message, index, match.digits);
+      const revealed = Boolean(state.ui.revealedChatPhones?.[key]);
+      html += escapeHtml(source.slice(cursor, match.index));
+      html += revealed
+        ? `<span class="chat-phone-visible">${escapeHtml(match.raw)}</span>`
+        : renderHiddenChatPhone(key);
+      cursor = match.end;
+    });
+    return html + escapeHtml(source.slice(cursor));
+  }
+
+  function renderHiddenChatPhone(key) {
+    return `
+      <button class="chat-phone-warning" type="button" data-action="reveal-chat-phone" data-phone-key="${escapeHtml(key)}">
+        <span class="chat-phone-shield" aria-hidden="true">${ICONS.shield}</span>
+        <span class="chat-phone-copy">
+          <strong>Номер скрыт</strong>
+          <small>Оставайтесь в чате TRAINTUP. Переход в другие мессенджеры может увести диалог с платформы: мошенники часто просят предоплату, коды или меняют условия заказа.</small>
+          <b>Нажмите, чтобы показать номер</b>
+        </span>
+      </button>
+    `;
+  }
+
   function renderTaskChatMessage(message) {
     const own = message.senderId === state.account.id;
     const system = message.role === "system";
     return `
       <div class="task-chat-bubble ${own ? "me" : ""} ${system ? "system" : ""}">
         ${!own && !system ? `<strong>${escapeHtml(message.senderName || "Пользователь")}</strong>` : ""}
-        <p>${escapeHtml(message.text)}</p>
+        <p>${renderChatMessageText(message)}</p>
         <span>${escapeHtml(formatDateTime(message.createdAt))}</span>
       </div>
     `;
@@ -2233,16 +2614,25 @@
         <h3>Отклики (${order.bids.length})</h3>
         ${order.bids.slice().sort((a, b) => a.price - b.price).map((bid) => `
           <article class="task-bid-card">
-            <div class="task-bid-avatar">${escapeHtml(getInitials(bid.userName))}</div>
-            <div class="task-bid-main">
-              <div class="task-bid-top">
-                <strong>${escapeHtml(bid.userName)}</strong>
-                <b>${formatMoney(bid.price)}</b>
-              </div>
-              <p>${escapeHtml(bid.note || "Готов выполнить задачу")}</p>
-              <span>${escapeHtml(formatDateTime(bid.createdAt))}</span>
+            <button class="task-bid-profile" type="button" data-action="view-user-profile" data-user-id="${escapeHtml(bid.userId)}" data-user-name="${escapeHtml(bid.userName)}" data-order-id="${escapeHtml(order.id)}" data-bid-id="${escapeHtml(bid.id)}" aria-label="Открыть профиль ${escapeHtml(bid.userName || "исполнителя")}">
+              <span class="task-bid-avatar">${renderAvatar(bid.userAvatar || bid.avatar || "", bid.userName, 42)}</span>
+              <span class="task-bid-main">
+                <span class="task-bid-top">
+                  <strong>${escapeHtml(bid.userName || "Исполнитель")}</strong>
+                  <b>${formatMoney(bid.price)}</b>
+                </span>
+                <span class="task-bid-meta">
+                  ${Number(bid.userRating || 0) > 0 ? `<span>★ ${Number(bid.userRating || 0).toFixed(1)}</span>` : "<span>Профиль</span>"}
+                  ${Number(bid.userJobsDone || 0) > 0 ? `<span>${Number(bid.userJobsDone || 0)} заказов</span>` : ""}
+                </span>
+                <span class="task-bid-note">${escapeHtml(bid.note || "Готов выполнить задачу")}</span>
+                <span>${escapeHtml(formatDateTime(bid.createdAt))}</span>
+              </span>
+            </button>
+            <div class="task-bid-actions">
+              <button class="task-profile-link" type="button" data-action="view-user-profile" data-user-id="${escapeHtml(bid.userId)}" data-user-name="${escapeHtml(bid.userName)}" data-order-id="${escapeHtml(order.id)}" data-bid-id="${escapeHtml(bid.id)}">Профиль</button>
+              <button class="task-accept-bid" type="button" data-action="accept-bid" data-order-id="${escapeHtml(order.id)}" data-bid-id="${escapeHtml(bid.id)}">Принять</button>
             </div>
-            <button class="task-accept-bid" type="button" data-action="accept-bid" data-order-id="${order.id}" data-bid-id="${bid.id}">Принять</button>
           </article>
         `).join("")}
       </section>
@@ -2253,14 +2643,14 @@
     const canReview = order.status === "done" && !order.reviewedBy.includes(state.account.id);
     if (canReview) return `<button class="task-primary-button" type="button" data-action="open-review" data-order-id="${order.id}">Оставить отзыв</button>`;
     if (order.status === "done") return '<button class="task-success-button" type="button">Завершено</button>';
-    if (isOwner && order.status === "assigned") return `<button class="task-primary-button task-green-button" type="button" data-action="complete-order" data-order-id="${order.id}">Завершить заказ</button>`;
+    if (isOwner && order.status === "assigned") return `<button class="task-primary-button task-green-button" type="button" data-action="complete-order" data-order-id="${order.id}">${isSideJobOrder(order) ? "Завершить подработку" : "Завершить заказ"}</button>`;
     if (isAssignee && order.status === "assigned") {
       if (order.stage !== "delivered") {
         return `<button class="task-primary-button" type="button" data-action="advance-stage" data-order-id="${order.id}">Следующий этап: ${escapeHtml(getOrderStageMeta(getNextOrderStage(order.stage), order).title)}</button>`;
       }
       return `<button class="task-primary-button task-green-button" type="button" data-action="complete-order" data-order-id="${order.id}">Подтвердить выполнение</button>`;
     }
-    if (state.account.role === "executor" && !isOwner && order.status === "open") return `<button class="task-primary-button task-green-button" type="button" data-action="open-bargain" data-order-id="${order.id}">Откликнуться на задачу</button><button class="task-secondary-button" type="button" data-action="take-order" data-order-id="${order.id}">Взять за ${formatMoney(order.finalPrice || order.budget)}</button>`;
+    if (state.account.role === "executor" && !isOwner && order.status === "open") return `<button class="task-primary-button task-green-button" type="button" data-action="open-bargain" data-order-id="${order.id}">${isSideJobOrder(order) ? "Откликнуться на подработку" : "Откликнуться на задачу"}</button><button class="task-secondary-button" type="button" data-action="take-order" data-order-id="${order.id}">${isSideJobOrder(order) ? "Взять смену за" : "Взять за"} ${formatMoney(order.finalPrice || order.budget)}</button>`;
     if (isOwner && order.status === "open") return '<button class="task-secondary-button" type="button">Ожидаем отклики</button>';
     return '<button class="task-secondary-button" type="button">Заказ уже занят</button>';
   }
@@ -2271,7 +2661,7 @@
       <div class="task-offer-screen">
         <header class="task-screen-header">
           <button class="task-back-button" type="button" data-action="open-order" data-order-id="${order.id}" aria-label="Назад">${ICONS.chevron}</button>
-          <h1>Отклик на задачу</h1>
+          <h1>${isSideJobOrder(order) ? "Отклик на подработку" : "Отклик на задачу"}</h1>
           <span></span>
         </header>
 
@@ -2285,7 +2675,7 @@
 
         <form class="task-offer-form" data-form="offer" data-order-id="${order.id}">
           <label class="task-offer-field">
-            <span>Предложите свою цену</span>
+            <span>${isSideJobOrder(order) ? "Предложите оплату" : "Предложите свою цену"}</span>
             <input type="number" name="price" min="500" step="100" inputmode="decimal" placeholder="2 500 ₸" value="${myBid ? escapeHtml(String(myBid.price)) : escapeHtml(String(order.finalPrice || order.budget || ""))}" required>
           </label>
 
@@ -2293,7 +2683,7 @@
 
           <label class="task-offer-field">
             <span>Напишите сообщение заказчику</span>
-            <textarea name="note" placeholder="Расскажите, почему вы подходите для этой задачи">${myBid ? escapeHtml(myBid.note || "") : ""}</textarea>
+            <textarea name="note" placeholder="${isSideJobOrder(order) ? "Расскажите, почему вы подходите для этой смены" : "Расскажите, почему вы подходите для этой задачи"}">${myBid ? escapeHtml(myBid.note || "") : ""}</textarea>
           </label>
 
           <button class="task-primary-button" type="submit">Отправить отклик</button>
@@ -2445,44 +2835,49 @@
 
   function renderUserProfileModal(userId, userName) {
     const modalData = state.ui.modal?.type === "user-profile" && state.ui.modal.userId === userId ? state.ui.modal : {};
+    const safeUserId = String(userId || "");
     const baseUser = { 
-      id: userId.substring(0, 8),
+      id: safeUserId.substring(0, 8),
       name: userName || "Пользователь", 
-      rating: 4.8, 
-      jobsDone: 47, 
+      rating: 0, 
+      jobsDone: 0, 
       verified: false, 
-      about: "Опытный исполнитель с положительной репутацией",
+      about: "Пользователь пока не добавил описание.",
       avatar: "",
-      responseTime: "~5 мин",
-      city: "Алматы"
+      responseTime: "",
+      city: state.ui.selectedCity || "Алматы"
     };
     const user = { ...baseUser, ...(modalData.user || {}) };
+    const userRating = Number(user.rating || 0);
+    const userJobsDone = Number(user.jobsDone || 0);
     const reviews = Array.isArray(modalData.reviews) ? modalData.reviews : [];
+    const reviewsLoading = !modalData.reviewsLoaded && Boolean(window.FirebaseService?.getUserReviews);
+    const backAction = modalData.returnOrderId
+      ? `data-action="open-order" data-order-id="${escapeHtml(modalData.returnOrderId)}"`
+      : 'data-action="close-modal"';
     
     // Попытка загрузить реальные данные из Firebase (non-blocking)
     if (window.FirebaseService) {
       if (!modalData.userLoaded) {
         window.FirebaseService.getUser(userId)
         .then(fbUser => {
-          if (fbUser) {
-            if (state.ui.modal?.type === "user-profile" && state.ui.modal.userId === userId) {
-              state.ui.modal = {
-                ...state.ui.modal,
-                user: {
-                  name: fbUser.name || userName,
-                  id: fbUser.id ? fbUser.id.substring(0, 8) : userId.substring(0, 8),
-                  rating: fbUser.rating || 0,
-                  jobsDone: fbUser.jobsDone || 0,
-                  verified: fbUser.verificationStatus === "verified",
-                  about: fbUser.about || "Профиль",
-                  avatar: fbUser.avatar || "",
-                  city: fbUser.city || "Алматы",
-                  responseTime: fbUser.responseTime || "~5 мин"
-                },
-                userLoaded: true
-              };
-              render();
-            }
+          if (state.ui.modal?.type === "user-profile" && state.ui.modal.userId === userId) {
+            state.ui.modal = {
+              ...state.ui.modal,
+              user: fbUser ? {
+                name: fbUser.name || userName || user.name,
+                id: fbUser.id ? fbUser.id.substring(0, 8) : safeUserId.substring(0, 8),
+                rating: Number(fbUser.rating || 0),
+                jobsDone: Number(fbUser.jobsDone || 0),
+                verified: fbUser.verificationStatus === "verified",
+                about: fbUser.about || "Пользователь пока не добавил описание.",
+                avatar: fbUser.avatar || "",
+                city: fbUser.city || state.ui.selectedCity || "Алматы",
+                responseTime: fbUser.responseTime || ""
+              } : state.ui.modal.user,
+              userLoaded: true
+            };
+            render();
           }
         })
         .catch(err => console.error("Ошибка загрузки профиля:", err));
@@ -2505,66 +2900,63 @@
     }
     
     return `
-      <div class="profile-modal-content">
-        <!-- Header с аватаром -->
-        <div class="profile-header">
-          <div class="profile-avatar-section">
-            ${renderAvatar(user.avatar, user.name, 80)}
-            ${user.verified ? '<span class="verify-badge">✓</span>' : ''}
-          </div>
-          <div class="profile-info">
-            <h2 class="profile-name">${escapeHtml(user.name)}</h2>
-            <p class="profile-city">📍 ${escapeHtml(user.city)}</p>
-            <div class="profile-badges">
-              ${user.verified ? '<span class="badge badge-verified">Верифицирован</span>' : '<span class="badge badge-unverified">Не верифицирован</span>'}
-            </div>
-          </div>
-        </div>
+      <div class="user-profile-screen">
+        <header class="task-screen-header user-profile-topbar">
+          <button class="task-back-button" type="button" ${backAction} aria-label="Назад">${ICONS.chevron}</button>
+          <h1>Профиль</h1>
+          <span></span>
+        </header>
 
-        <!-- Статистика -->
-        <div class="profile-stats">
-          <div class="stat-item">
-            <div class="stat-icon">⭐</div>
-            <div class="stat-content">
-              <div class="stat-value">${user.rating.toFixed(1)}</div>
-              <div class="stat-label">Рейтинг</div>
-            </div>
+        <section class="user-profile-hero">
+          <div class="user-profile-photo">
+            ${renderAvatar(user.avatar, user.name, 96)}
+            ${user.verified ? '<span class="user-profile-verify">✓</span>' : ''}
           </div>
-          <div class="stat-item">
-            <div class="stat-icon">✅</div>
-            <div class="stat-content">
-              <div class="stat-value">${user.jobsDone}</div>
-              <div class="stat-label">Выполнено</div>
-            </div>
+          <div class="user-profile-identity">
+            <h2>${escapeHtml(user.name)}</h2>
+            <p><span>${ICONS.pin}</span>${escapeHtml(user.city)}</p>
+            <span class="user-profile-status ${user.verified ? "verified" : ""}">${user.verified ? "Документы проверены" : "Документы не проверены"}</span>
           </div>
-          <div class="stat-item">
-            <div class="stat-icon">⏱</div>
-            <div class="stat-content">
-              <div class="stat-value">${user.responseTime}</div>
-              <div class="stat-label">Ответ</div>
-            </div>
-          </div>
-        </div>
+        </section>
 
-        <!-- Об исполнителе -->
-        <div class="profile-section">
-          <h3 class="section-title">О пользователе</h3>
-          <p class="profile-bio">${escapeHtml(user.about)}</p>
-        </div>
+        <section class="user-profile-stats">
+          <article>
+            <strong>${userRating.toFixed(1)}</strong>
+            <span>Рейтинг</span>
+          </article>
+          <article>
+            <strong>${userJobsDone}</strong>
+            <span>Выполнено</span>
+          </article>
+          <article>
+            <strong>${escapeHtml(user.responseTime || user.id || "ID")}</strong>
+            <span>${user.responseTime ? "Ответ" : "Профиль"}</span>
+          </article>
+        </section>
 
-        <div class="profile-section">
-          <h3 class="section-title">Отзывы</h3>
-          ${reviews.length ? reviews.slice(0, 5).map((review) => `
-            <div class="offer-item">
-              <div class="card-row"><strong>${escapeHtml(review.fromUserName || "Пользователь")}</strong><span class="offer-price">${escapeHtml(String(review.rating || 0))}★</span></div>
+        <section class="user-profile-card">
+          <h3>О человеке</h3>
+          <p>${escapeHtml(user.about)}</p>
+        </section>
+
+        <section class="user-profile-card">
+          <div class="user-profile-section-head">
+            <h3>Отзывы</h3>
+            <b>${reviews.length}</b>
+          </div>
+          <div class="user-profile-review-list">
+            ${reviews.length ? reviews.slice(0, 5).map((review) => `
+            <article class="user-profile-review">
+              <div>
+                <strong>${escapeHtml(review.fromUserName || "Пользователь")}</strong>
+                <span>${escapeHtml(String(review.rating || 0))}★</span>
+              </div>
               <p>${escapeHtml(review.comment || "Без комментария")}</p>
               <small>${escapeHtml(formatDateTime(review.createdAt))}</small>
-            </div>
-          `).join("") : `<p class="helper">Отзывов пока нет.</p>`}
-        </div>
-
-        <!-- Действие -->
-        <button class="btn btn-primary btn-block" data-action="close-modal">Узнать больше</button>
+            </article>
+            `).join("") : `<div class="user-profile-empty">${reviewsLoading ? "Загружаем отзывы..." : "Отзывов пока нет."}</div>`}
+          </div>
+        </section>
       </div>
     `;
   }
@@ -2627,6 +3019,7 @@
 
   function renderReviewModal(order) {
     const targetName = order.ownerId === state.account.id ? order.assigneeName : order.ownerName;
+    const ratingGroupId = `review-rating-${String(order.id || "order").replace(/[^a-zA-Z0-9_-]/g, "")}`;
     return `
       <form class="task-review-screen" data-form="review" data-order-id="${order.id}">
         <header class="task-screen-header">
@@ -2649,16 +3042,15 @@
         </article>
 
         <div class="task-rating-control" aria-label="Оценка">
-          <label><input type="radio" name="rating" value="1"><span>★</span></label>
-          <label><input type="radio" name="rating" value="2"><span>★</span></label>
-          <label><input type="radio" name="rating" value="3"><span>★</span></label>
-          <label><input type="radio" name="rating" value="4"><span>★</span></label>
-          <label><input type="radio" name="rating" value="5" checked><span>★</span></label>
+          ${[5, 4, 3, 2, 1].map((value) => `
+            <input id="${escapeHtml(`${ratingGroupId}-${value}`)}" type="radio" name="rating" value="${value}" ${value === 5 ? "checked" : ""}>
+            <label for="${escapeHtml(`${ratingGroupId}-${value}`)}" aria-label="${value} из 5">★</label>
+          `).join("")}
         </div>
 
         <label class="task-offer-field">
           <span>Комментарий</span>
-          <textarea name="comment" maxlength="250" placeholder="Ваш отзыв">Спасибо, все отлично!</textarea>
+          <textarea name="comment" maxlength="250" placeholder="Напишите свой отзыв"></textarea>
         </label>
 
         <button class="task-primary-button" type="submit">Отправить</button>
@@ -2779,21 +3171,26 @@
 
   function renderMessageBubble(message) {
     const roleClass = message.senderId === state.account.id ? "me" : message.role === "system" ? "system" : "";
-    return `<div class="bubble ${roleClass}"><strong>${escapeHtml(message.senderName)}</strong><p>${escapeHtml(message.text)}</p><small>${escapeHtml(formatDateTime(message.createdAt))}</small></div>`;
+    return `<div class="bubble ${roleClass}"><strong>${escapeHtml(message.senderName)}</strong><p>${renderChatMessageText(message)}</p><small>${escapeHtml(formatDateTime(message.createdAt))}</small></div>`;
   }
 
   function renderAvatar(src, name) {
     return src ? `<div class="avatar" style="border-radius: 50%; overflow: hidden;"><img src="${src}" alt="Аватар" style="width:100%;height:100%;object-fit:cover"></div>` : `<div class="avatar" style="border-radius: 50%; overflow: hidden;">${escapeHtml(getInitials(name))}</div>`;
   }
 
-  function getVisibleOrders() {
+  function getVisibleOrders(options = {}) {
+    const sideJobsOnly = Boolean(options.sideJobsOnly);
+    const includeSideJobs = Boolean(options.includeSideJobs);
     const search = state.ui.search.trim().toLowerCase();
     return state.orders.slice().sort((a, b) => ({ open: 0, assigned: 1, done: 2 }[a.status] - { open: 0, assigned: 1, done: 2 }[b.status])).filter((order) => {
       // Фильтр по городу
       if (order.city !== state.ui.selectedCity) return false;
+      const sideJob = isSideJobOrder(order);
+      if (sideJobsOnly && !sideJob) return false;
+      if (!sideJobsOnly && !includeSideJobs && sideJob) return false;
       
       if (search) {
-        const haystack = `${order.title} ${order.fromAddress || ""} ${order.toAddress || order.address} ${order.city} ${order.description} ${order.requirements || ""}`.toLowerCase();
+        const haystack = `${order.title} ${order.fromAddress || ""} ${order.toAddress || order.address} ${order.city} ${order.description} ${order.requirements || ""} ${order.shiftRole || ""} ${order.shiftDate || ""} ${order.shiftWeekday || ""} ${order.shiftStart || ""} ${order.shiftEnd || ""}`.toLowerCase();
         if (!haystack.includes(search)) return false;
       }
       if (state.account.role === "executor") {
@@ -2855,17 +3252,24 @@
       const nextCity = String(target.dataset.city || "").trim();
       if (!nextCity) return;
       state.ui.selectedCity = nextCity;
+      state.ui.createOrderCity = nextCity;
       state.ui.cityMenuOpen = false;
+      state.ui.homeFilter = "available";
       persist();
       render();
       if (state.session.isLoggedIn) {
-        bootstrapAccountOrders();
+        refreshOrdersForContext({ clearOrders: true });
       }
-      showToast(`Город: ${nextCity}`);
+      showToast(`Город: ${nextCity}. Обновляем заказы`);
       return;
     }
-    if (action === "toggle-theme") {
-      state.settings.theme = state.settings.theme === "dark" ? "light" : "dark";
+    if (action === "reveal-chat-phone") {
+      const key = String(target.dataset.phoneKey || "");
+      if (!key) return;
+      state.ui.revealedChatPhones = {
+        ...(state.ui.revealedChatPhones || {}),
+        [key]: true
+      };
       persist();
       render();
       return;
@@ -2954,6 +3358,24 @@
     }
     if (action === "open-tab") {
       state.ui.tab = target.dataset.tab || "home";
+      if (state.ui.tab === "create" && target.dataset.createMode) {
+        state.ui.createOrderMode = target.dataset.createMode;
+      }
+      state.ui.modal = null;
+      state.ui.cityMenuOpen = false;
+      persist();
+      render();
+      return;
+    }
+    if (action === "set-create-mode") {
+      state.ui.createOrderMode = target.dataset.createMode === "shift" ? "shift" : "task";
+      persist();
+      render();
+      return;
+    }
+    if (action === "open-create-shift") {
+      state.ui.tab = "create";
+      state.ui.createOrderMode = "shift";
       state.ui.modal = null;
       state.ui.cityMenuOpen = false;
       persist();
@@ -3081,8 +3503,20 @@
     if (action === "view-user-profile") {
       const userId = target.dataset.userId;
       const userName = target.dataset.userName;
-      
-      state.ui.modal = { type: "user-profile", userId: userId, userName: userName };
+      const order = target.dataset.orderId ? getOrderById(target.dataset.orderId) : null;
+      const bid = order?.bids?.find((item) => item.id === target.dataset.bidId);
+      const bidUser = bid ? {
+        name: bid.userName || userName || "Исполнитель",
+        rating: Number(bid.userRating || 0),
+        jobsDone: Number(bid.userJobsDone || 0),
+        verified: Boolean(bid.userVerified),
+        about: bid.userAbout || "Исполнитель пока не добавил описание.",
+        avatar: bid.userAvatar || bid.avatar || "",
+        city: bid.userCity || order?.city || state.ui.selectedCity || "Алматы",
+        responseTime: bid.userResponseTime || ""
+      } : null;
+
+      state.ui.modal = { type: "user-profile", userId: userId, userName: userName, user: bidUser, returnOrderId: order?.id || "" };
       persist();
       render();
       return;
@@ -3161,7 +3595,7 @@
     }
     if (action === "welcome-to-home") {
       state.ui.modal = null;
-      state.ui.tab = "home";
+      state.ui.tab = isShift ? "side-jobs" : "home";
       persist();
       render();
       return;
@@ -3216,13 +3650,17 @@
     if (action === "switch-role") {
       state.account.role = state.account.role === "executor" ? "customer" : "executor";
       state.ui.tab = state.account.role === "customer" ? "create" : "home";
+      state.ui.homeFilter = "available";
+      state.ui.homeCategory = "all";
+      state.ui.search = "";
+      state.ui.modal = null;
       saveCurrentAccount({
         name: "role_switched",
         data: { accountId: state.account.id, role: state.account.role }
       });
       persist();
-      bootstrapAccountOrders();
       render();
+      refreshOrdersForContext({ clearOrders: true });
       showToast(`Роль переключена: ${getRoleLabel(state.account.role)}`);
       return;
     }
@@ -3242,6 +3680,7 @@
       return;
     }
     if (action === "deactivate-online") {
+      ordersLoadVersion += 1;
       stopOrdersRealtime();
       state.account.isOnline = false;
       state.orders = [];
@@ -3303,21 +3742,31 @@
 
     if (formName === "create-order") {
       if (!ensureAccountAllowed("Создание заказа")) return;
+      const orderType = String(data.get("order_type") || state.ui.createOrderMode || "task") === "shift" ? "shift" : "task";
+      const isShift = orderType === "shift";
       const selectedService = String(data.get("service") || "Своя категория").trim();
       const customService = String(data.get("custom_service") || "").trim();
-      const service = customService || (selectedService === "Своя категория" ? "" : selectedService);
+      const shiftRole = String(data.get("shift_role") || "").trim();
+      const service = isShift ? "Подработка" : (customService || (selectedService === "Своя категория" ? "" : selectedService));
       const city = String(data.get("order_city") || state.ui.createOrderCity || state.account.city || "Алматы").trim();
       const fromAddress = String(data.get("order_from_address") || state.ui.createOrderFromAddress || "").trim();
       const toAddress = String(data.get("order_to_address") || data.get("address") || state.ui.createOrderToAddress || "").trim();
       const title = String(data.get("title") || "").trim();
-      const when = "По договоренности";
+      const shiftDate = String(data.get("shift_date") || "").trim();
+      const shiftWeekday = String(data.get("shift_weekday") || "").trim();
+      const shiftStart = String(data.get("shift_start") || "").trim();
+      const shiftEnd = String(data.get("shift_end") || "").trim();
+      const salaryType = String(data.get("salary_type") || "").trim();
+      const when = isShift
+        ? [getShiftDateLabel({ shiftDate, shiftWeekday }), getShiftTimeLabel({ shiftStart, shiftEnd })].filter(Boolean).join(" · ")
+        : "По договоренности";
       const description = String(data.get("description") || "").trim();
       const requirements = String(data.get("requirements") || "").trim();
       const senderPhone = String(data.get("sender_phone") || state.account.phone || "").trim();
       const recipientPhone = String(data.get("recipient_phone") || "").trim();
       const budget = Number(data.get("budget") || 0);
       const payment = "Уточнить в чате";
-      const isExpress = false;
+      const isExpress = data.get("urgent") === "1";
       let orderPhoto = state.ui.createOrderPhotoPreview || "";
       const photoFile = form.querySelector('input[name="order_photo"]')?.files?.[0];
 
@@ -3330,10 +3779,14 @@
       }
 
       if (!title || !service || !fromAddress || budget <= 0) {
-        showToast("Заполните название, категорию, точку А и бюджет");
+        showToast(isShift ? "Заполните название, адрес смены и оплату" : "Заполните название, категорию, точку А и бюджет");
         return;
       }
-      const taskKind = getOrderTaskKind(service);
+      if (isShift && (!shiftRole || !shiftDate || !shiftWeekday || !shiftStart || !shiftEnd || !salaryType)) {
+        showToast("Укажите кого ищете, дату, день недели и время смены");
+        return;
+      }
+      const taskKind = isShift ? "service" : getOrderTaskKind(service);
       if (taskKind === "delivery" && !toAddress) {
         showToast("Для доставки укажите точку Б");
         return;
@@ -3352,6 +3805,14 @@
         payment,
         category: service || guessCategory(title),
         taskKind,
+        orderType,
+        isSideJob: isShift,
+        shiftRole,
+        shiftDate,
+        shiftWeekday,
+        shiftStart,
+        shiftEnd,
+        salaryType,
         urgent: isExpress,
         express: isExpress,
         photo: orderPhoto,
@@ -3366,7 +3827,8 @@
         assigneeName: "",
         finalPrice: budget,
         bids: [],
-        chat: [{ id: generateId("MSG"), senderId: "system", senderName: "TezTap", role: "system", text: "Заказ опубликован и ждет откликов.", createdAt: new Date().toISOString() }],
+        chat: [{ id: generateId("MSG"), senderId: "system", senderName: "TezTap", role: "system", text: isShift ? "Подработка опубликована и ждет откликов." : "Заказ опубликован и ждет откликов.", createdAt: new Date().toISOString() }],
+        reviews: [],
         reviewedBy: [],
         completedAt: "",
         commissionSettled: false
@@ -3386,6 +3848,7 @@
       }
 
       state.ui.tab = "home";
+      state.ui.createOrderMode = "task";
       state.ui.homeFilter = "available";
       state.ui.selectedCity = city;
       state.ui.createOrderCity = city;
@@ -3395,7 +3858,7 @@
       persist();
       render();
       bootstrapAccountOrders();
-      showToast("Заказ опубликован");
+      showToast(isShift ? "Подработка опубликована" : "Заказ опубликован");
       return;
     }
 
@@ -3485,6 +3948,13 @@
         userId: state.account.id,
         userName: state.account.name,
         userPhone: state.account.phone || "",
+        userAvatar: state.account.avatar || "",
+        userRating: Number(state.account.rating || 0),
+        userJobsDone: Number(state.account.jobsDone || 0),
+        userVerified: state.account.verificationStatus === "verified",
+        userCity: state.account.city || state.ui.selectedCity || "",
+        userAbout: state.account.about || "",
+        userResponseTime: state.account.responseTime || "",
         price,
         note,
         createdAt: new Date().toISOString()
@@ -3504,10 +3974,11 @@
       }
 
       if (order.ownerId && order.ownerId !== state.account.id) {
+        const sideJob = isSideJobOrder(order);
         sendNotificationToUser(
           order.ownerId,
-          "Новый отклик",
-          `${state.account.name} предложил ${formatMoney(price)} по заказу ${order.title}.`,
+          sideJob ? "Новый отклик на подработку" : "Новый отклик",
+          sideJob ? `${state.account.name} откликнулся на подработку ${order.title} за ${formatMoney(price)}.` : `${state.account.name} предложил ${formatMoney(price)} по заказу ${order.title}.`,
           { type: "bid_created", orderId: order.id }
         );
       }
@@ -3565,7 +4036,7 @@
         sendNotificationToUser(
           messageRecipientId,
           "Новое сообщение",
-          `${state.account.name}: ${text}`,
+          `${state.account.name}: ${getSafeChatPreview(text)}`,
           { type: "chat_message", orderId: order.id }
         );
       }
@@ -3617,19 +4088,25 @@
         showToast("Имя и город обязательны");
         return;
       }
+      const cityChanged = city !== state.account.city || city !== state.ui.selectedCity;
       state.account.name = name;
       state.account.city = city;
       state.account.about = about;
       state.ui.selectedCity = city;
       state.ui.createOrderCity = city;
+      state.ui.homeFilter = "available";
+      state.ui.search = "";
       updateOwnOrdersMeta();
-      saveCurrentAccount({
+      await saveCurrentAccount({
         name: "profile_updated",
         data: { accountId: state.account.id, name, city }
       });
       persist();
       render();
-      showToast("Профиль сохранен");
+      if (cityChanged) {
+        await refreshOrdersForContext({ clearOrders: true });
+      }
+      showToast(cityChanged ? "Профиль сохранен, заказы обновлены" : "Профиль сохранен");
       return;
     }
 
@@ -3713,28 +4190,57 @@
         showToast("Некому оставить отзыв");
         return;
       }
+      if (toUserId === state.account.id) {
+        showToast("Нельзя оценить самого себя");
+        return;
+      }
+
+      const review = {
+        id: generateId("REV"),
+        orderId: order.id,
+        fromUserId: state.account.id,
+        fromUserName: state.account.name,
+        toUserId,
+        toUserName,
+        rating,
+        comment,
+        createdAt: new Date().toISOString()
+      };
+      order.reviews = [...(Array.isArray(order.reviews) ? order.reviews : []), review];
+      order.reviewedBy = Array.from(new Set([...(Array.isArray(order.reviewedBy) ? order.reviewedBy : []), state.account.id]));
+
+      let savedRemotely = true;
       if (window.FirebaseService?.addReview) {
-        window.FirebaseService.addReview({
-          orderId: order.id,
-          fromUserId: state.account.id,
-          fromUserName: state.account.name,
-          toUserId,
-          toUserName,
-          rating,
-          comment
-        }).catch((error) => console.error("Failed to save review:", error));
+        try {
+          await window.FirebaseService.addReview(review);
+        } catch (error) {
+          savedRemotely = false;
+          console.error("Failed to save review:", error);
+        }
       }
       if (window.FirebaseService?.addUserRating) {
-        window.FirebaseService.addUserRating(toUserId, rating).catch((error) => console.error("Failed to update rating:", error));
+        try {
+          await window.FirebaseService.addUserRating(toUserId, rating);
+        } catch (error) {
+          savedRemotely = false;
+          console.error("Failed to update rating:", error);
+        }
       }
-      order.reviewedBy = [...order.reviewedBy, state.account.id];
       if (window.FirebaseService?.updateOrder) {
-        window.FirebaseService.updateOrder(order.id, { reviewedBy: order.reviewedBy }).catch((error) => console.error("Failed to update review flag:", error));
+        try {
+          await window.FirebaseService.updateOrder(order.id, {
+            reviewedBy: order.reviewedBy,
+            reviews: order.reviews
+          });
+        } catch (error) {
+          savedRemotely = false;
+          console.error("Failed to update review flag:", error);
+        }
       }
       state.ui.modal = { type: "detail", orderId: order.id };
       persist();
       render();
-      showToast("Отзыв сохранен");
+      showToast(savedRemotely ? "Отзыв сохранен" : "Отзыв сохранен на устройстве, синхронизация не ответила");
       return;
     }
   }
@@ -4010,14 +4516,15 @@
     render();
   }
 
-  async function bootstrapAccountOrders() {
+  async function bootstrapAccountOrders(forcedCity = "") {
     if (!state.account) return;
 
-    const city = state.ui.selectedCity || state.account.city || "Алматы";
+    const city = forcedCity || getActiveOrdersCity();
+    const loadVersion = ++ordersLoadVersion;
 
     if (!window.FirebaseService) {
       setTimeout(() => {
-        if (state.session.isLoggedIn && state.account) {
+        if (loadVersion === ordersLoadVersion && state.session.isLoggedIn && state.account) {
           bootstrapAccountOrders();
         }
       }, 400);
@@ -4026,34 +4533,44 @@
 
     stopOrdersRealtime();
 
+    const applyOrders = (orders) => {
+      if (loadVersion !== ordersLoadVersion) return;
+      if (city !== getActiveOrdersCity()) return;
+      state.orders = Array.isArray(orders) ? orders.map((order) => normalizeOrder(order)) : [];
+      state.account.demoReady = true;
+      persist();
+      render();
+    };
+
     if (window.FirebaseService.subscribeOrdersByCity) {
       unsubscribeOrdersRealtime = window.FirebaseService.subscribeOrdersByCity(
         city,
         (orders) => {
           if (!state.session.isLoggedIn || !state.account) return;
-          state.orders = Array.isArray(orders) ? orders.map((order) => normalizeOrder(order)) : [];
-          state.account.demoReady = true;
-          persist();
-          render();
+          applyOrders(orders);
         },
         (error) => {
+          if (loadVersion !== ordersLoadVersion) return;
           console.error("Ошибка realtime загрузки заказов:", error);
           showToast("Не удалось подключить обновление заказов");
         }
       );
-      return;
     }
 
-    try {
-      const orders = await window.FirebaseService.getOrdersByCity(city);
-      state.orders = Array.isArray(orders) ? orders.map((order) => normalizeOrder(order)) : [];
-      state.account.demoReady = true;
-      persist();
-      render();
-    } catch (error) {
-      console.error("Ошибка загрузки заказов:", error);
-      showToast("Ошибка загрузки заказов");
-      state.orders = [];
+    if (window.FirebaseService.getOrdersByCity) {
+      try {
+        const orders = await window.FirebaseService.getOrdersByCity(city);
+        applyOrders(orders);
+      } catch (error) {
+        if (loadVersion !== ordersLoadVersion) return;
+        console.error("Ошибка загрузки заказов:", error);
+        if (!window.FirebaseService.subscribeOrdersByCity) {
+          showToast("Ошибка загрузки заказов");
+          state.orders = [];
+          persist();
+          render();
+        }
+      }
     }
   }
 
@@ -4102,7 +4619,8 @@
   async function takeOrder(orderId) {
     const order = getOrderById(orderId);
     if (!order) return;
-    if (!ensureAccountAllowed("Взять заказ")) return;
+    const sideJob = isSideJobOrder(order);
+    if (!ensureAccountAllowed(sideJob ? "Взять подработку" : "Взять заказ")) return;
     if (state.account.role !== "executor") {
       showToast("Этот режим доступен исполнителю");
       return;
@@ -4134,7 +4652,7 @@
         order.assigneeName = state.account.name;
         order.assigneePhone = state.account.phone || "";
         order.finalPrice = order.finalPrice || order.budget;
-        order.chat.push({ id: generateId("MSG"), senderId: "system", senderName: "TezTap", role: "system", text: `${state.account.name} взял заказ в работу.`, createdAt: new Date().toISOString() });
+        order.chat.push({ id: generateId("MSG"), senderId: "system", senderName: "TezTap", role: "system", text: sideJob ? `${state.account.name} взял подработку в работу.` : `${state.account.name} взял заказ в работу.`, createdAt: new Date().toISOString() });
       }
     } catch (error) {
       console.error("Failed to take order:", error);
@@ -4145,8 +4663,8 @@
     if (order.ownerId && order.ownerId !== state.account.id) {
       sendNotificationToUser(
         order.ownerId,
-        "Заказ взят в работу",
-        `${state.account.name} взял заказ ${order.title}.`,
+        sideJob ? "Подработка взята в работу" : "Заказ взят в работу",
+        sideJob ? `${state.account.name} взял подработку ${order.title}.` : `${state.account.name} взял заказ ${order.title}.`,
         { type: "order_taken", orderId: order.id }
       );
     }
@@ -4162,7 +4680,7 @@
 
     persist();
     render();
-    showToast("Заказ принят в работу");
+    showToast(sideJob ? "Подработка принята в работу" : "Заказ принят в работу");
   }
 
   async function completeOrder(orderId) {
@@ -4267,6 +4785,7 @@
   async function acceptBid(orderId, bidId) {
     const order = getOrderById(orderId);
     if (!order) return;
+    const sideJob = isSideJobOrder(order);
     if (!ensureAccountAllowed("Выбор исполнителя")) return;
     const bid = order.bids.find((item) => item.id === bidId);
     if (!bid) return;
@@ -4282,7 +4801,7 @@
         order.assigneeName = bid.userName;
         order.assigneePhone = bid.userPhone || "";
         order.finalPrice = bid.price;
-        order.chat.push({ id: generateId("MSG"), senderId: "system", senderName: "TezTap", role: "system", text: `Заказчик принял предложение ${bid.userName} на ${formatMoney(bid.price)}.`, createdAt: new Date().toISOString() });
+        order.chat.push({ id: generateId("MSG"), senderId: "system", senderName: "TezTap", role: "system", text: sideJob ? `Заказчик принял отклик ${bid.userName} на подработку за ${formatMoney(bid.price)}.` : `Заказчик принял предложение ${bid.userName} на ${formatMoney(bid.price)}.`, createdAt: new Date().toISOString() });
       }
     } catch (error) {
       console.error("Failed to accept bid:", error);
@@ -4293,8 +4812,8 @@
     if (bid.userId && bid.userId !== state.account.id) {
       sendNotificationToUser(
         bid.userId,
-        "Вас выбрали исполнителем",
-        `Заказчик принял ваш отклик по заказу ${order.title}.`,
+        sideJob ? "Вас выбрали на подработку" : "Вас выбрали исполнителем",
+        sideJob ? `Заказчик принял ваш отклик на подработку ${order.title}.` : `Заказчик принял ваш отклик по заказу ${order.title}.`,
         { type: "bid_accepted", orderId: order.id }
       );
     }

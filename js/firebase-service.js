@@ -87,6 +87,14 @@
           when: orderData.when || "",
           budget: Number(orderData.budget ?? 0),
           taskKind: orderData.taskKind || "",
+          orderType: orderData.orderType || (orderData.isSideJob ? "shift" : "task"),
+          isSideJob: Boolean(orderData.isSideJob || orderData.orderType === "shift"),
+          shiftRole: orderData.shiftRole || "",
+          shiftDate: orderData.shiftDate || "",
+          shiftWeekday: orderData.shiftWeekday || "",
+          shiftStart: orderData.shiftStart || "",
+          shiftEnd: orderData.shiftEnd || "",
+          salaryType: orderData.salaryType || "",
           senderPhone: orderData.senderPhone || orderData.sender_phone || "",
           recipientPhone: orderData.recipientPhone || orderData.recipient_phone || "",
           payment: orderData.payment || "Kaspi",
@@ -108,6 +116,7 @@
           bids: Array.isArray(orderData.bids) ? orderData.bids : [],
           chat: Array.isArray(orderData.chat) ? orderData.chat : [],
           complaints: Array.isArray(orderData.complaints) ? orderData.complaints : [],
+          reviews: Array.isArray(orderData.reviews) ? orderData.reviews : [],
           reviewedBy: Array.isArray(orderData.reviewedBy) ? orderData.reviewedBy : [],
           completedAt: orderData.completedAt || "",
           commissionSettled: Boolean(orderData.commissionSettled),
@@ -366,6 +375,7 @@
             }
 
             const currentOrder = toOrderShape({ id: snapshot.id, ...snapshot.data() });
+            const sideJob = Boolean(currentOrder.isSideJob || currentOrder.orderType === "shift");
             if (currentOrder.status !== "open") {
               throw new Error("Этот заказ уже недоступен");
             }
@@ -387,7 +397,7 @@
                   senderId: "system",
                   senderName: "TRAINTUP",
                   role: "system",
-                  text: `${executorData?.name || "Исполнитель"} взял заказ в работу.`,
+                  text: sideJob ? `${executorData?.name || "Исполнитель"} взял подработку в работу.` : `${executorData?.name || "Исполнитель"} взял заказ в работу.`,
                   createdAt: now
                 }
               ]
@@ -410,6 +420,7 @@
             }
 
             const currentOrder = toOrderShape({ id: snapshot.id, ...snapshot.data() });
+            const sideJob = Boolean(currentOrder.isSideJob || currentOrder.orderType === "shift");
             if (currentOrder.status !== "open") {
               throw new Error("Откликнуться можно только на открытый заказ");
             }
@@ -420,11 +431,20 @@
               userId: String(bidData?.userId || ""),
               userName: bidData?.userName || "",
               userPhone: bidData?.userPhone || "",
+              userAvatar: bidData?.userAvatar || "",
+              userRating: Number(bidData?.userRating || 0),
+              userJobsDone: Number(bidData?.userJobsDone || 0),
+              userVerified: Boolean(bidData?.userVerified),
+              userCity: bidData?.userCity || "",
+              userAbout: bidData?.userAbout || "",
+              userResponseTime: bidData?.userResponseTime || "",
               price: Number(bidData?.price || 0),
               note: bidData?.note || "",
               createdAt: bidData?.createdAt || now
             };
-            const bidText = nextBid.note ? `Предлагаю ${nextBid.price} ₸. ${nextBid.note}` : `Предлагаю ${nextBid.price} ₸.`;
+            const bidText = nextBid.note
+              ? `${sideJob ? "Отклик на подработку:" : "Предлагаю"} ${nextBid.price} ₸. ${nextBid.note}`
+              : `${sideJob ? "Отклик на подработку:" : "Предлагаю"} ${nextBid.price} ₸.`;
 
             const nextOrder = {
               ...currentOrder,
@@ -460,6 +480,7 @@
             }
 
             const currentOrder = toOrderShape({ id: snapshot.id, ...snapshot.data() });
+            const sideJob = Boolean(currentOrder.isSideJob || currentOrder.orderType === "shift");
             const bid = currentOrder.bids.find((item) => item.id === bidId);
             if (!bid) {
               throw new Error("Отклик не найден");
@@ -482,7 +503,7 @@
                   senderId: "system",
                   senderName: "TRAINTUP",
                   role: "system",
-                  text: `Заказчик принял предложение ${bid.userName} на ${bid.price} ₸.`,
+                  text: sideJob ? `Заказчик принял отклик ${bid.userName} на подработку за ${bid.price} ₸.` : `Заказчик принял предложение ${bid.userName} на ${bid.price} ₸.`,
                   createdAt: now
                 }
               ]
@@ -704,7 +725,7 @@
         },
 
         async addReview(reviewData) {
-          const reviewId = Date.now().toString();
+          const reviewId = String(reviewData?.id || Date.now().toString());
           await db.collection("reviews").doc(reviewId).set({
             ...reviewData,
             id: reviewId,
