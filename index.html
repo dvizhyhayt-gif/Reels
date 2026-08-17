@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-<link rel="stylesheet" href="css/style.css?v=6">
+<link rel="stylesheet" href="css/style.css?v=7">
 
 </head>
 <body>
@@ -42,23 +42,7 @@
 <main>
 <section class="hero">
   <div class="container hero-layout">
-    <article class="featured">
-      <div class="featured-art"><img src="img/Banner1.png" alt="Orbit Tap"></div>
-      <div class="featured-content">
-        <span class="featured-badge"><i class="fa-solid fa-crown"></i> ТОП ИГРА</span>
-        <h1>AYUGAME</h1>
-        <p>Простая аркада: успей нажать на движущуюся цель и набери как можно больше очков за 30 секунд. Открывай, побеждай, зарабатывай!</p>
-        <div class="hero-meta">
-          <span><i class="fa-solid fa-star"></i> 4.7</span>
-          <span><i class="fa-solid fa-users"></i> <span data-online-game="orbit-tap">0</span> игроков</span>
-          <span><i class="fa-solid fa-desktop"></i> <i class="fa-solid fa-mobile-screen-button"></i> ПК + телефон</span>
-        </div>
-        <div class="hero-actions">
-          <button class="btn btn-primary" onclick="openGameProfile('orbit-tap')"><i class="fa-solid fa-circle-play"></i> Играть сейчас</button>
-        </div>
-      </div>
-      <span class="featured-online">Сейчас в игре: <strong id="featuredOnline">0</strong></span>
-    </article>
+    <article class="featured empty" id="featuredGame"><div class="featured-empty"><i class="fa-solid fa-gamepad"></i><h1>AYUVERSE</h1><p>Первая опубликованная игра появится здесь</p></div></article>
     <aside class="hero-side">
       <div class="side-stat">
         <i class="fa-solid fa-arrow-trend-up"></i>
@@ -66,7 +50,7 @@
       </div>
       <div class="side-stat">
         <i class="fa-solid fa-border-all"></i>
-        <div><span>Каталог игр</span><strong>2</strong><small>игры доступны сейчас</small></div>
+        <div><span>Каталог игр</span><strong id="catalogCount">0</strong><small>игр доступно сейчас</small></div>
       </div>
       <button class="catalog-button" onclick="scrollGames()">Перейти в каталог <i class="fa-solid fa-arrow-right"></i></button>
       <div class="side-platforms"><span>Платформы</span><div><i class="fa-solid fa-globe"></i><i class="fa-solid fa-desktop"></i><i class="fa-solid fa-mobile-screen-button"></i></div></div>
@@ -86,16 +70,7 @@
     <button class="chip" data-filter="mobile">📱 Телефон</button>
     <button class="chip" data-filter="pc">🖥 ПК</button>
   </div>
-  <div class="cards-row" id="gameRow">
-    <article class="game-card" data-name="Orbit Tap" data-tags="all action mobile pc" onclick="openGameProfile('orbit-tap')">
-      <div class="game-thumb"><img src="img/bannerMini1.png" alt="Orbit Tap"><button class="heart" onclick="fav(event,this)"><i class="fa-regular fa-heart"></i></button></div>
-      <div class="game-info"><div class="game-name">Orbit Tap</div><div class="game-dev">AYUVERSE Studio</div><div class="game-bottom"><span><span data-online-game="orbit-tap">0</span> сейчас</span><span class="rating">★ 4.7</span></div><div class="device-tags"><span><i class="fa-solid fa-desktop"></i> ПК</span><span><i class="fa-solid fa-mobile-screen-button"></i> Телефон</span></div></div>
-    </article>
-    <article class="game-card g2" data-name="Quick Math" data-tags="all logic mobile pc" onclick="openGameProfile('quick-math')">
-      <div class="game-thumb"><img src="img/bannermini2.png" alt="Quick Math"><button class="heart" onclick="fav(event,this)"><i class="fa-regular fa-heart"></i></button></div>
-      <div class="game-info"><div class="game-name">Quick Math</div><div class="game-dev">AYUVERSE Studio</div><div class="game-bottom"><span><span data-online-game="quick-math">0</span> сейчас</span><span class="rating">★ 4.6</span></div><div class="device-tags"><span><i class="fa-solid fa-desktop"></i> ПК</span><span><i class="fa-solid fa-mobile-screen-button"></i> Телефон</span></div></div>
-    </article>
-  </div>
+  <div class="cards-row" id="gameRow"><div class="catalog-empty">Опубликованных игр пока нет</div></div>
 </section>
 
 <div class="overlay" id="gameOverlay">
@@ -198,7 +173,10 @@
         <label>Версия игры *<input name="version" required placeholder="Например: 1.0.0"></label>
         <label>Язык игры *<select name="language" required><option value="">Выберите язык</option><option>Русский</option><option>Казахский</option><option>Английский</option></select></label>
         <label class="form-wide">Теги <em>(необязательно)</em><input name="tags" maxlength="100" placeholder="гонки, аркада, мультиплеер"></label>
-        <label class="form-wide">ZIP-архив HTML-игры *<input id="gameArchive" type="file" accept=".zip,application/zip" required><em>В корне архива должны находиться index.html и обложка cover.webp. Максимум 50 МБ.</em></label>
+        <label class="form-wide">Обложка игры 1280×720 *<input id="gameCover" type="file" accept="image/png,image/jpeg,image/webp" required><em>JPG, PNG или WebP, максимум 5 МБ.</em></label>
+        <label class="form-wide">Большой баннер 1600×720 *<input id="gameBanner" type="file" accept="image/png,image/jpeg,image/webp" required><em>Используется, когда игра становится топовой.</em></label>
+        <label class="form-wide">Скриншоты 1280×720, от 3 до 5 *<input id="gameScreens" type="file" accept="image/png,image/jpeg,image/webp" multiple required><em>Выберите одновременно от 3 до 5 изображений.</em></label>
+        <label class="form-wide">ZIP-архив HTML-игры *<input id="gameArchive" type="file" accept=".zip,application/zip" required><em>В корне архива должен находиться index.html. Максимум 50 МБ.</em></label>
         <div class="submission-actions form-wide"><button type="button" class="btn btn-dark" onclick="closeGameSubmission()">Отмена</button><button id="gameSubmitButton" class="btn btn-primary" type="submit">Отправить на модерацию <i class="fa-solid fa-arrow-right"></i></button></div>
       </form>
     </div>
@@ -212,10 +190,16 @@
     <div class="moderation-list" id="moderationList"></div>
   </div>
 </div>
+<div class="overlay" id="myGamesOverlay">
+  <div class="moderation-modal">
+    <header class="moderation-head"><div><h2>Мои игры</h2><p>Заявки, публикации и обновления</p></div><button class="close" onclick="closeMyGames()">×</button></header>
+    <div class="moderation-list" id="myGamesList"></div>
+  </div>
+</div>
 <div class="toast" id="toastBox"></div>
 
-<script type="module" src="js/firebase.js?v=2"></script>
-<script src="js/app.js?v=7"></script>
+<script type="module" src="js/firebase.js?v=3"></script>
+<script src="js/app.js?v=8"></script>
 
 </body>
 </html>

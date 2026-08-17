@@ -1,15 +1,6 @@
-const games = {
-  'orbit-tap': {
-    name:'Orbit Tap', image:'img/bannerMini1.png', developer:'AYUVERSE Studio', rating:'4.7', reviews:'18', category:'Аркада', plays:'',
-    description:'Нажимай на движущуюся цель как можно быстрее. Раунд длится 30 секунд.', devices:['ПК','Телефон']
-  },
-  'quick-math': {
-    name:'Quick Math', image:'img/bannermini2.png', developer:'AYUVERSE Studio', rating:'4.6', reviews:'12', category:'Логика', plays:'',
-    description:'Решай примеры на скорость. За 30 секунд набери максимум правильных ответов.', devices:['ПК','Телефон']
-  }
-};
+const games={};
 
-let authMode='register', currentGame=null, gameTimer=null, gameScore=0, currentUser=null, selectedAvatar='bear';
+let authMode='register',currentGame=null,currentUser=null,selectedAvatar='bear',liveCounts={site:0,games:{}},currentTop=null,editingGame=null,developerGames=[];
 const avatars={bear:'🐻',panda:'🐼',wolf:'🐺',fox:'🦊'};
 const overlay=document.getElementById('overlay');
 const gameOverlay=document.getElementById('gameOverlay');
@@ -18,6 +9,7 @@ const profileOverlay=document.getElementById('profileOverlay');
 const avatarOverlay=document.getElementById('avatarOverlay');
 const submitGameOverlay=document.getElementById('submitGameOverlay');
 const moderationOverlay=document.getElementById('moderationOverlay');
+const myGamesOverlay=document.getElementById('myGamesOverlay');
 const title=document.getElementById('modalTitle');
 const sub=document.getElementById('modalSub');
 const registerBox=document.getElementById('registerBox');
@@ -47,73 +39,51 @@ function scrollGames(){
   document.getElementById('games').scrollIntoView({behavior:'smooth'});
 }
 
-async function post(url,body){try{return await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})}catch{return null}}
 async function firebase(){if(!window.firebaseApi)await new Promise(resolve=>addEventListener('firebase-ready',resolve,{once:true}));return window.firebaseApi}
-async function heartbeat(game=currentGame){await post('/api/heartbeat',{game})}
+async function heartbeat(game=currentGame){try{await (await firebase()).heartbeat(game||'')}catch{}}
 async function updateLiveCounts(){
-  try{
-    const data=await (await fetch('/api/online',{cache:'no-store'})).json();
-    const site=document.getElementById('siteOnline'); if(site)site.textContent=data.site;
-    const featured=document.getElementById('featuredOnline'); if(featured)featured.textContent=data.games['orbit-tap']||0;
-    document.querySelectorAll('[data-online-game]').forEach(el=>el.textContent=data.games[el.dataset.onlineGame]||0);
-  }catch{}
+  try{liveCounts=await (await firebase()).online();document.getElementById('siteOnline').textContent=liveCounts.site;document.querySelectorAll('[data-online-game]').forEach(el=>el.textContent=liveCounts.games[el.dataset.onlineGame]||0);selectTopGame()}catch{}
 }
-async function getGameStats(){
-  try{return await (await fetch('/api/games',{cache:'no-store'})).json()}catch{return {}}
+function selectTopGame(){
+  const ids=Object.keys(games);if(!ids.length)return;let top=currentTop&&games[currentTop]?currentTop:ids[0];ids.forEach(id=>{if((liveCounts.games[id]||0)>(liveCounts.games[top]||0))top=id});if(top!==currentTop){currentTop=top;renderFeatured(top)}else{const n=document.getElementById('featuredOnline');if(n)n.textContent=liveCounts.games[top]||0}
+}
+function renderFeatured(slug){
+  const game=games[slug],box=document.getElementById('featuredGame');box.classList.remove('empty');box.innerHTML=`<div class="featured-art"><img src="${escapeHtml(game.banner)}" alt=""></div><div class="featured-content"><span class="featured-badge"><i class="fa-solid fa-crown"></i> ТОП ИГРА</span><h1>${escapeHtml(game.name)}</h1><p>${escapeHtml(game.description)}</p><div class="hero-meta"><span><i class="fa-solid fa-users"></i> <b id="featuredOnline">${liveCounts.games[slug]||0}</b> игроков</span><span><i class="fa-solid fa-play"></i> ${game.plays||0} запусков</span></div><div class="hero-actions"><button class="btn btn-primary" onclick="openGameProfile('${slug}')"><i class="fa-solid fa-circle-play"></i> Играть сейчас</button></div></div>`
 }
 
 async function openGameProfile(slug){
   const game=games[slug]; if(!game)return;
-  const stats=await getGameStats(); game.plays=stats[slug]?.plays||0;
-  const online=(await getOnline())?.games?.[slug]||0;
+  const online=liveCounts.games[slug]||0;
   document.getElementById('gameProfile').innerHTML=`
     <div class="game-profile-cover">
-      <img src="${game.image}" alt="${game.name}">
+      <img src="${escapeHtml(game.banner)}" alt="${escapeHtml(game.name)}">
       <button class="profile-back" onclick="closeGameProfile()"><i class="fa-solid fa-arrow-left"></i></button>
     </div>
     <div class="game-profile-body">
       <h2 class="profile-title">${game.name}</h2>
       <div class="profile-dev">${game.developer}</div>
       <div class="profile-tags"><span>${game.category}</span><span>Онлайн</span><span>${game.devices.join(' + ')}</span></div>
-      <div class="profile-rating"><b>★ ${game.rating}</b><span>${game.reviews} отзывов</span><span>${online} играют сейчас</span></div>
+      <div class="profile-rating"><b>${game.plays||0} запусков</b><span>${online} играют сейчас</span></div>
       <button class="btn btn-primary profile-play" onclick="startGame('${slug}')"><i class="fa-solid fa-play"></i> Играть</button>
       <div class="game-about"><h3>Описание</h3><p>${game.description}</p></div>
-      <div class="game-about"><h3>Скриншоты</h3><div class="game-screens"><img src="${game.image}" alt=""><img src="${game.image}" alt=""><img src="${game.image}" alt=""></div></div>
+      <div class="game-about"><h3>Скриншоты</h3><div class="game-screens">${game.screenshots.map(x=>`<img src="${escapeHtml(x)}" alt="">`).join('')}</div></div>
     </div>`;
   gameOverlay.classList.add('open'); lock(true);
 }
-async function getOnline(){try{return await (await fetch('/api/online',{cache:'no-store'})).json()}catch{return null}}
 function closeGameProfile(){gameOverlay.classList.remove('open'); if(!playOverlay.classList.contains('open'))lock(false)}
 
 async function startGame(slug){
   const game=games[slug]; if(!game)return;
   currentGame=slug;
-  await (await firebase()).play(slug);
+  await (await firebase()).play(slug,game.id);game.plays=(game.plays||0)+1;
   await heartbeat(slug);
   gameOverlay.classList.remove('open');
   playOverlay.classList.add('open'); lock(true);
-  gameScore=0;
-  if(game.url)document.getElementById('gameWindow').innerHTML=`<div class="play-head"><strong>${escapeHtml(game.name)}</strong><button class="btn btn-dark game-close" onclick="closeGame()">Выйти</button></div><iframe class="external-game" src="${game.url}" sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-popups" allowfullscreen></iframe>`;
-  else if(slug==='orbit-tap')startOrbit(); else startMath();
+  document.getElementById('gameWindow').innerHTML=`<div class="play-head"><strong>${escapeHtml(game.name)}</strong><button class="btn btn-dark game-close" onclick="closeGame()">Выйти</button></div><iframe class="external-game" src="${game.url}" sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-popups" allowfullscreen></iframe>`;
 }
 function closeGame(){
-  clearInterval(gameTimer); gameTimer=null; currentGame=null; heartbeat(null);
+  currentGame=null;heartbeat(null);
   playOverlay.classList.remove('open'); lock(false); updateLiveCounts();
-}
-function startOrbit(){
-  const box=document.getElementById('gameWindow');
-  box.innerHTML=`<div class="play-head"><strong>Orbit Tap</strong><div><span class="play-meta">Очки: <b id="score">0</b></span> <button class="btn btn-dark game-close" onclick="closeGame()">Выйти</button></div></div><div class="game-stage" id="orbitStage"><div class="game-stage-inner"><h2>Лови цель</h2><p>30 секунд. Тапай или кликай по синей цели.</p><div class="game-score">Время: <span id="time">30</span></div></div><button class="game-target" id="target"></button></div>`;
-  const stage=document.getElementById('orbitStage'), target=document.getElementById('target'), score=document.getElementById('score'), time=document.getElementById('time');
-  const move=()=>{const maxX=Math.max(40,stage.clientWidth-100), maxY=Math.max(90,stage.clientHeight-90);target.style.left=(15+Math.random()*maxX)+'px';target.style.top=(65+Math.random()*maxY)+'px'};
-  target.onclick=()=>{gameScore++;score.textContent=gameScore;move()}; move();
-  let left=30; gameTimer=setInterval(()=>{left--;time.textContent=left;if(left<=0){clearInterval(gameTimer);toast('Раунд окончен: '+gameScore+' очков')}} ,1000);
-}
-function startMath(){
-  const box=document.getElementById('gameWindow');
-  box.innerHTML=`<div class="play-head"><strong>Quick Math</strong><div><span class="play-meta">Очки: <b id="score">0</b></span> <button class="btn btn-dark game-close" onclick="closeGame()">Выйти</button></div></div><div class="game-stage"><div class="game-stage-inner"><h2>Решай быстрее</h2><p>Выбирай правильный ответ.</p><div class="game-score">Время: <span id="time">30</span></div><div class="math-box"><div class="math-question" id="question"></div><div class="math-options" id="options"></div></div></div></div>`;
-  const question=document.getElementById('question'), options=document.getElementById('options'), score=document.getElementById('score'), time=document.getElementById('time');
-  function round(){const a=1+Math.floor(Math.random()*12),b=1+Math.floor(Math.random()*12),answer=a+b;question.textContent=`${a} + ${b} = ?`;const values=[answer,answer+1+Math.floor(Math.random()*3),answer-1,answer+3].sort(()=>Math.random()-.5);options.innerHTML=values.map(v=>`<button>${v}</button>`).join('');options.querySelectorAll('button').forEach(btn=>btn.onclick=()=>{if(Number(btn.textContent)===answer){gameScore++;score.textContent=gameScore}round()})} round();
-  let left=30; gameTimer=setInterval(()=>{left--;time.textContent=left;if(left<=0){clearInterval(gameTimer);toast('Раунд окончен: '+gameScore+' правильных')}} ,1000);
 }
 async function fav(e,button){
   e.stopPropagation();
@@ -130,7 +100,7 @@ overlay.onclick=e=>{if(e.target===overlay)closeAuth()};
 gameOverlay.onclick=e=>{if(e.target===gameOverlay)closeGameProfile()};
 playOverlay.onclick=e=>{if(e.target===playOverlay)closeGame()};
 profileOverlay.onclick=e=>{if(e.target===profileOverlay)closeProfile()};
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeAuth();closeGameProfile();closeGame();closeProfile();closeGameSubmission();closeModeration()}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeAuth();closeGameProfile();closeGame();closeProfile();closeGameSubmission();closeModeration();closeMyGames()}});
 document.querySelectorAll('.role').forEach(role=>role.onclick=()=>{document.querySelectorAll('.role').forEach(x=>x.classList.remove('selected'));role.classList.add('selected')});
 submit.onclick=async()=>{
   const body={email:document.getElementById('email').value.trim(),password:document.getElementById('password').value};
@@ -142,7 +112,7 @@ submit.onclick=async()=>{
   try{
     const api=await firebase(),registered=authMode==='register';
     currentUser=registered?await api.register(body):await api.login(body.email,body.password);
-    closeAuth();renderAccount();
+    closeAuth();renderAccount();heartbeat();updateLiveCounts();
     if(registered){avatarOverlay.classList.add('open');lock(true)}else toast('Вход выполнен: '+currentUser.username);
   }catch(error){toast(error.message||'Не удалось выполнить вход')}
 };
@@ -206,14 +176,14 @@ async function openProfile(){
   const favs=gamesById.filter(([id])=>currentUser.favorites.includes(id));
   const history=gamesById.filter(([id])=>currentUser.history.includes(id));
   const developer=currentUser.role==='developer', avatar=avatars[currentUser.avatar]||escapeHtml(currentUser.username.slice(0,1).toUpperCase());
-  const recentCards=history.map(([id,g])=>`<button class="dashboard-game" onclick="closeProfile();openGameProfile('${id}')"><img src="${g.image}" alt=""><strong>${g.name}</strong><span>★ ${g.rating}</span></button>`).join('');
-  const favoriteCards=favs.map(([id,g])=>`<button class="favorite-game" onclick="closeProfile();openGameProfile('${id}')"><img src="${g.image}" alt=""><span><strong>${g.name}</strong><small>${g.category} · ★ ${g.rating}</small></span></button>`).join('');
+  const recentCards=history.map(([id,g])=>`<button class="dashboard-game" onclick="closeProfile();openGameProfile('${id}')"><img src="${g.image}" alt=""><strong>${g.name}</strong><span>${g.plays||0} запусков</span></button>`).join('');
+  const favoriteCards=favs.map(([id,g])=>`<button class="favorite-game" onclick="closeProfile();openGameProfile('${id}')"><img src="${g.image}" alt=""><span><strong>${g.name}</strong><small>${g.category}</small></span></button>`).join('');
   document.getElementById('profileModal').innerHTML=`
     <div class="profile-dashboard">
       <aside class="profile-sidebar">
         <div class="profile-user"><div class="profile-avatar-large">${avatar}</div><div><h2>${escapeHtml(currentUser.username)}</h2><p>${escapeHtml(currentUser.email)}</p><span class="role-badge">${developer?'Разработчик':'Игрок'}</span></div></div>
         <div class="profile-side-stats"><div><b>${history.length}</b><span>Сыграно</span></div><div><b>${favs.length}</b><span>Избранное</span></div></div>
-        <nav class="profile-menu"><button class="active"><i class="fa-solid fa-house"></i> Обзор</button>${developer?'<button onclick="openGameSubmission()"><i class="fa-solid fa-cloud-arrow-up"></i> Добавить игру</button>':''}${owner?'<button onclick="openModeration()"><i class="fa-solid fa-shield-halved"></i> Модерация</button>':''}<button onclick="document.getElementById('profileFavorites').scrollIntoView({behavior:'smooth'})"><i class="fa-regular fa-heart"></i> Избранное</button></nav>
+        <nav class="profile-menu"><button class="active"><i class="fa-solid fa-house"></i> Обзор</button>${developer?'<button onclick="openMyGames()"><i class="fa-solid fa-table-list"></i> Мои игры</button><button onclick="openGameSubmission()"><i class="fa-solid fa-cloud-arrow-up"></i> Добавить игру</button>':''}${owner?'<button onclick="openModeration()"><i class="fa-solid fa-shield-halved"></i> Модерация</button>':''}<button onclick="document.getElementById('profileFavorites').scrollIntoView({behavior:'smooth'})"><i class="fa-regular fa-heart"></i> Избранное</button></nav>
         <button class="profile-logout" onclick="logout()"><i class="fa-solid fa-arrow-right-from-bracket"></i> Выйти из аккаунта</button>
       </aside>
       <main class="profile-content">
@@ -227,37 +197,51 @@ async function openProfile(){
   document.getElementById('profileOverlay').classList.add('open');lock(true);
 }
 function closeProfile(){document.getElementById('profileOverlay').classList.remove('open');if(!overlay.classList.contains('open')&&!gameOverlay.classList.contains('open')&&!playOverlay.classList.contains('open'))lock(false)}
-function openGameSubmission(){
-  if(currentUser?.role!=='developer')return; profileOverlay.classList.remove('open'); submitGameOverlay.classList.add('open'); lock(true);
-  const developer=document.getElementById('gameDeveloper'); if(!developer.value)developer.value=currentUser.username;
+function openGameSubmission(game=null){
+  if(currentUser?.role!=='developer')return;editingGame=game;profileOverlay.classList.remove('open');myGamesOverlay.classList.remove('open');submitGameOverlay.classList.add('open');lock(true);
+  const form=document.getElementById('gameSubmissionForm');form.reset();document.querySelector('.submission-head h2').textContent=game?'Обновить игру':'Отправить игру на модерацию';
+  ['gameArchive','gameCover','gameBanner','gameScreens'].forEach(id=>document.getElementById(id).required=!game);
+  if(game){['name','category','description','developer','website','version','language','tags'].forEach(name=>{if(form.elements[name])form.elements[name].value=game[name]||''});document.querySelectorAll('.platform-option').forEach(x=>x.classList.toggle('active',game.platforms?.includes(x.dataset.platform)))}
+  else{document.getElementById('gameDeveloper').value=currentUser.username;document.querySelectorAll('.platform-option').forEach((x,i)=>x.classList.toggle('active',i===0))}
+  document.getElementById('gameNameCount').textContent=form.elements.name.value.length;document.getElementById('gameDescriptionCount').textContent=form.elements.description.value.length;
 }
-function closeGameSubmission(){submitGameOverlay.classList.remove('open');if(!overlay.classList.contains('open'))lock(false)}
+function closeGameSubmission(){submitGameOverlay.classList.remove('open');editingGame=null;if(!overlay.classList.contains('open'))lock(false)}
 submitGameOverlay.onclick=e=>{if(e.target===submitGameOverlay)closeGameSubmission()};
 document.querySelectorAll('.platform-option').forEach(button=>button.onclick=()=>button.classList.toggle('active'));
 [['gameName','gameNameCount'],['gameDescription','gameDescriptionCount']].forEach(([field,count])=>document.getElementById(field).oninput=e=>document.getElementById(count).textContent=e.target.value.length);
+const imageSize=file=>new Promise((resolve,reject)=>{const image=new Image(),url=URL.createObjectURL(file);image.onload=()=>{URL.revokeObjectURL(url);resolve([image.width,image.height])};image.onerror=reject;image.src=url});
+async function validImage(file,width,height,label){if(!file||!['image/jpeg','image/png','image/webp'].includes(file.type)||file.size>5*1024*1024)throw new Error(`${label}: JPG, PNG или WebP до 5 МБ`);const size=await imageSize(file);if(size[0]!==width||size[1]!==height)throw new Error(`${label}: нужен размер ${width}×${height}`)}
 document.getElementById('gameSubmissionForm').onsubmit=async e=>{
-  e.preventDefault();const form=e.currentTarget,file=document.getElementById('gameArchive').files[0],button=document.getElementById('gameSubmitButton');
-  if(!file||!/\.zip$/i.test(file.name)||file.size>50*1024*1024){toast('Выберите ZIP до 50 МБ');return}
+  e.preventDefault();const form=e.currentTarget,archive=document.getElementById('gameArchive').files[0],cover=document.getElementById('gameCover').files[0],banner=document.getElementById('gameBanner').files[0],screens=[...document.getElementById('gameScreens').files],button=document.getElementById('gameSubmitButton'),edit=editingGame;
+  if((!edit&&!archive)||(archive&&(!/\.zip$/i.test(archive.name)||archive.size>50*1024*1024))){toast('Выберите ZIP до 50 МБ');return}if((!edit||screens.length)&&(screens.length<3||screens.length>5)){toast('Нужно выбрать от 3 до 5 скриншотов');return}
   button.disabled=true;button.textContent='Загрузка архива...';
   try{
     const api=await firebase(),values=Object.fromEntries(new FormData(form)),name=values.name.trim();
-    const archivePath=await api.uploadArchive(file),slug=name.toLowerCase().replace(/[^a-z0-9а-яё]+/gi,'-').replace(/^-|-$/g,'').slice(0,45)||'game-'+Date.now();
-    await api.submitGame({...values,name,slug,archivePath,platforms:[...document.querySelectorAll('.platform-option.active')].map(x=>x.dataset.platform)});
-    form.reset();document.querySelectorAll('.platform-option').forEach((x,i)=>x.classList.toggle('active',i===0));closeGameSubmission();toast('Игра отправлена на модерацию');
+    if(cover)await validImage(cover,1280,720,'Обложка');if(banner)await validImage(banner,1600,720,'Баннер');for(const image of screens)await validImage(image,1280,720,'Скриншот');
+    button.textContent='Загрузка файлов...';const data={...values,name,slug:edit?.slug||name.toLowerCase().replace(/[^a-z0-9а-яё]+/gi,'-').replace(/^-|-$/g,'').slice(0,45)||'game-'+Date.now(),archivePath:archive?await api.uploadArchive(archive):edit.archivePath,coverUrl:cover?await api.uploadMedia(cover):edit.coverUrl,bannerUrl:banner?await api.uploadMedia(banner):edit.bannerUrl,screenshotUrls:screens.length?await Promise.all(screens.map(api.uploadMedia)):edit.screenshotUrls,platforms:[...document.querySelectorAll('.platform-option.active')].map(x=>x.dataset.platform)};
+    if(edit)await api.updateGame(edit.id,data);else await api.submitGame(data);form.reset();closeGameSubmission();toast(edit?'Обновление отправлено на модерацию':'Игра отправлена на модерацию');if(edit)openMyGames();
   }catch(error){toast(error.message||'Не удалось отправить игру')}finally{button.disabled=false;button.innerHTML='Отправить на модерацию <i class="fa-solid fa-arrow-right"></i>'}
 };
 
 let moderationGames=[];
+const statusName=status=>({pending:'На модерации',approved:'Одобрена',published:'Опубликована',rejected:'Отклонена'}[status]||status);
+function statusLine(game){const current={pending:0,approved:1,published:2,rejected:0}[game.status],steps=['Отправлена','Одобрена','Опубликована'];return `<div class="status-line">${steps.map((x,i)=>`<span class="${i<current?'done':i===current?'current':''}">${x}</span>`).join('')}</div>`}
+function mediaGallery(game){return `<div class="moderation-media">${[game.bannerUrl,game.coverUrl,...(game.screenshotUrls||[])].filter(Boolean).map(url=>`<a href="${escapeHtml(url)}" target="_blank"><img src="${escapeHtml(url)}" alt=""></a>`).join('')}</div>`}
+function submissionCard(game,owner=false){return `<article class="moderation-card"><div class="moderation-main"><span class="moderation-status ${game.status}">${statusName(game.status)}</span><h3>${escapeHtml(game.name)}</h3><p>${escapeHtml(game.developer)} · ${escapeHtml(game.category)} · ${escapeHtml(game.version)}</p><small>${escapeHtml(game.description)}${game.reason?`<br>Причина: ${escapeHtml(game.reason)}`:''}</small>${statusLine(game)}${mediaGallery(game)}</div><div class="moderation-actions">${owner?`<button class="btn btn-dark" onclick="openSubmittedArchive('${game.id}')">Скачать ZIP</button>`:''}${owner&&game.status==='pending'?`<button class="btn btn-dark reject" onclick="rejectSubmission('${game.id}')">Отклонить</button><button class="btn btn-primary" onclick="approveSubmission('${game.id}')">Одобрить</button>`:''}${!owner?`<button class="btn btn-primary" onclick="editMyGame('${game.id}')">Изменить</button>`:''}${game.publicUrl?`<a class="btn btn-dark" target="_blank" href="${game.publicUrl}">Открыть</a>`:''}</div></article>`}
 async function openModeration(){
   const api=await firebase();if(!api.isOwner())return;
   closeProfile();moderationOverlay.classList.add('open');lock(true);const list=document.getElementById('moderationList');list.innerHTML='<div class="profile-empty">Загрузка заявок...</div>';
-  try{moderationGames=await api.getSubmissions();list.innerHTML=moderationGames.map(game=>`<article class="moderation-card"><div><span class="moderation-status ${game.status}">${game.status==='pending'?'На проверке':game.status==='approved'?'Одобрена':'Отклонена'}</span><h3>${escapeHtml(game.name)}</h3><p>${escapeHtml(game.developer)} · ${escapeHtml(game.category)} · ${escapeHtml(game.version)}</p><small>${escapeHtml(game.description)}</small></div><div class="moderation-actions"><button class="btn btn-dark" onclick="openSubmittedArchive('${game.id}')">Скачать ZIP</button>${game.status==='pending'?`<button class="btn btn-dark reject" onclick="rejectSubmission('${game.id}')">Отклонить</button><button class="btn btn-primary" onclick="approveSubmission('${game.id}')">Одобрить</button>`:''}${game.publicUrl?`<a class="btn btn-dark" target="_blank" href="${game.publicUrl}">Открыть</a>`:''}</div></article>`).join('')||'<div class="profile-empty">Заявок пока нет</div>'}catch(error){list.innerHTML=`<div class="profile-empty">${escapeHtml(error.message)}</div>`}
+  try{moderationGames=await api.getSubmissions();list.innerHTML=moderationGames.map(game=>submissionCard(game,true)).join('')||'<div class="profile-empty">Заявок пока нет</div>'}catch(error){list.innerHTML=`<div class="profile-empty">${escapeHtml(error.message)}</div>`}
 }
 function closeModeration(){moderationOverlay.classList.remove('open');if(!document.querySelector('.overlay.open'))lock(false)}
 moderationOverlay.onclick=e=>{if(e.target===moderationOverlay)closeModeration()};
+async function openMyGames(){closeProfile();myGamesOverlay.classList.add('open');lock(true);const list=document.getElementById('myGamesList');list.innerHTML='<div class="profile-empty">Загрузка игр...</div>';try{developerGames=await (await firebase()).getMyGames();list.innerHTML=developerGames.map(game=>submissionCard(game)).join('')||'<div class="profile-empty">Вы ещё не отправляли игры</div>'}catch(error){list.innerHTML=`<div class="profile-empty">${escapeHtml(error.message)}</div>`}}
+function closeMyGames(){myGamesOverlay.classList.remove('open');if(!document.querySelector('.overlay.open'))lock(false)}
+myGamesOverlay.onclick=e=>{if(e.target===myGamesOverlay)closeMyGames()};
+function editMyGame(id){const game=developerGames.find(x=>x.id===id);if(game)openGameSubmission(game)}
 async function openSubmittedArchive(id){try{window.open(await (await firebase()).downloadArchive(moderationGames.find(x=>x.id===id).archivePath),'_blank')}catch(error){toast(error.message)}}
 async function rejectSubmission(id){const reason=prompt('Причина отклонения:')||'Не соответствует требованиям';try{await (await firebase()).rejectGame(id,reason);toast('Заявка отклонена');openModeration()}catch(error){toast(error.message)}}
-async function approveSubmission(id){try{toast('Игра публикуется...');const url=await (await firebase()).approveGame(moderationGames.find(x=>x.id===id));toast('Игра опубликована');openModeration();loadPublishedGames()}catch(error){toast(error.message)}}
+async function approveSubmission(id){try{toast('Публикация игры...');await (await firebase()).approveGame(moderationGames.find(x=>x.id===id));toast('Игра опубликована');openModeration();loadPublishedGames()}catch(error){toast(error.message)}}
 async function logout(){await (await firebase()).logout();currentUser=null;closeProfile();renderAccount();toast('Вы вышли из аккаунта')}
 async function toggleFavorite(slug,active){
   if(!currentUser){toast('Сначала войди в аккаунт');return false}
@@ -265,14 +249,13 @@ async function toggleFavorite(slug,active){
 }
 
 async function loadPublishedGames(){
-  try{for(const item of await (await firebase()).getPublishedGames()){
-    const slug='published-'+item.id;if(document.querySelector(`[data-published="${item.id}"]`))continue;
-    const image=item.url.replace(/\/$/,'')+'/cover.webp';games[slug]={name:item.name,image,developer:item.developer,rating:'Новая',reviews:'0',category:item.category,plays:'',description:item.description,devices:item.platforms||['ПК'],url:item.url};
-    document.getElementById('gameRow').insertAdjacentHTML('beforeend',`<article class="game-card" data-published="${item.id}" data-name="${escapeHtml(item.name)}" data-tags="all" onclick="openGameProfile('${slug}')"><div class="game-thumb"><img src="${image}" onerror="this.onerror=null;this.src='img/bannerMini1.png'" alt=""><button class="heart" onclick="fav(event,this)"><i class="fa-regular fa-heart"></i></button></div><div class="game-info"><div class="game-name">${escapeHtml(item.name)}</div><div class="game-dev">${escapeHtml(item.developer)}</div><div class="game-bottom"><span>Опубликована</span><span class="rating">Новая</span></div></div></article>`);
-  }}catch{}
+  try{const items=await (await firebase()).getPublishedGames(),row=document.getElementById('gameRow');Object.keys(games).forEach(id=>delete games[id]);row.innerHTML='';
+    items.forEach(item=>{const slug='published-'+item.id,tags=`all ${item.platforms?.includes('ПК')?'pc':''} ${item.platforms?.includes('Мобильные')?'mobile':''}`;games[slug]={id:item.id,name:item.name,image:item.coverUrl,banner:item.bannerUrl,screenshots:item.screenshotUrls||[],developer:item.developer,category:item.category,plays:item.plays||0,description:item.description,devices:item.platforms||['ПК'],url:item.url};row.insertAdjacentHTML('beforeend',`<article class="game-card" data-published="${item.id}" data-name="${escapeHtml(item.name)}" data-tags="${tags}" onclick="openGameProfile('${slug}')"><div class="game-thumb"><img src="${escapeHtml(item.coverUrl)}" alt=""><button class="heart" onclick="fav(event,this)"><i class="fa-regular fa-heart"></i></button></div><div class="game-info"><div class="game-name">${escapeHtml(item.name)}</div><div class="game-dev">${escapeHtml(item.developer)}</div><div class="game-bottom"><span><b data-online-game="${slug}">0</b> сейчас</span><span>${item.plays||0} запусков</span></div></div></article>`)});
+    document.getElementById('catalogCount').textContent=items.length;if(!items.length){row.innerHTML='<div class="catalog-empty">Опубликованных игр пока нет</div>';currentTop=null;document.getElementById('featuredGame').className='featured empty';document.getElementById('featuredGame').innerHTML='<div class="featured-empty"><i class="fa-solid fa-gamepad"></i><h1>AYUVERSE</h1><p>Первая опубликованная игра появится здесь</p></div>'}renderAccount();selectTopGame();
+  }catch(error){console.error(error)}
 }
 
 const search=document.getElementById('search');
 search.addEventListener('input',()=>{const q=search.value.toLowerCase().trim();document.querySelectorAll('#gameRow .game-card').forEach(card=>card.style.display=card.dataset.name.toLowerCase().includes(q)?'block':'none')});
 document.querySelectorAll('#chips .chip').forEach(chip=>chip.onclick=()=>{document.querySelectorAll('#chips .chip').forEach(x=>x.classList.remove('active'));chip.classList.add('active');const f=chip.dataset.filter;document.querySelectorAll('#gameRow .game-card').forEach(card=>card.style.display=f==='all'||card.dataset.tags.includes(f)?'block':'none')});
-setInterval(()=>{heartbeat();updateLiveCounts()},15000); updateLiveCounts(); loadMe(); loadPublishedGames();
+setInterval(()=>{heartbeat();updateLiveCounts()},15000);setInterval(loadPublishedGames,60000);(async()=>{await loadMe();await loadPublishedGames();await heartbeat();await updateLiveCounts()})();

@@ -4,6 +4,7 @@ const OWNER_UID='KfR8Z39adYPI5z0L2wOV4Hc5tqO2';
 const FIREBASE_KEY='AIzaSyD_-yLKP8BVysojwzrl9Xlg0959Z4bONRU';
 const SUPABASE_URL='https://kxijwexpydfqvhennnok.supabase.co';
 const BUCKET='game-submissions';
+const MEDIA_BUCKET='game-media';
 const json=(status,data)=>({statusCode:status,headers:{'Content-Type':'application/json','Cache-Control':'no-store'},body:JSON.stringify(data)});
 const encoded=path=>path.split('/').map(encodeURIComponent).join('/');
 const signedUrl=url=>url.startsWith('http')?url:`${SUPABASE_URL}/storage/v1${url}`;
@@ -23,6 +24,13 @@ async function storageCall(path,body){
   const response=await fetch(`${SUPABASE_URL}/storage/v1/object/${path}`,{method:'POST',headers:{Authorization:`Bearer ${key}`,apikey:key,'Content-Type':'application/json'},body:JSON.stringify(body)});
   const data=await response.json();if(!response.ok)throw new Error(data.message||data.error||'Ошибка хранилища');return data;
 }
+async function ensureMediaBucket(){
+  const key=process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const headers={Authorization:`Bearer ${key}`,apikey:key,'Content-Type':'application/json'};
+  if((await fetch(`${SUPABASE_URL}/storage/v1/bucket/${MEDIA_BUCKET}`,{headers})).ok)return;
+  const response=await fetch(`${SUPABASE_URL}/storage/v1/bucket`,{method:'POST',headers,body:JSON.stringify({id:MEDIA_BUCKET,name:MEDIA_BUCKET,public:true,file_size_limit:5242880,allowed_mime_types:['image/jpeg','image/png','image/webp']})});
+  if(!response.ok)throw new Error('Не удалось создать хранилище изображений');
+}
 exports.handler=async event=>{
   if(event.httpMethod!=='POST')return json(405,{error:'Метод запрещён'});
   try{
@@ -33,6 +41,14 @@ exports.handler=async event=>{
       if(!/\.zip$/i.test(request.name)||request.size>50*1024*1024)throw new Error('Нужен ZIP до 50 МБ');
       const path=`${user.uid}/${crypto.randomUUID()}.zip`;
       const signed=await storageCall(`upload/sign/${BUCKET}/${encoded(path)}`,{});return json(200,{path,token:signed.token});
+    }
+    if(request.action==='sign-media'){
+      const role=(await profile(user.uid,user.token)).role?.stringValue;
+      if(role!=='developer'&&user.uid!==OWNER_UID)throw new Error('Нужен аккаунт разработчика');
+      if(!['image/jpeg','image/png','image/webp'].includes(request.type)||request.size>5*1024*1024)throw new Error('Нужно изображение до 5 МБ');
+      await ensureMediaBucket();const ext={"image/jpeg":'jpg',"image/png":'png',"image/webp":'webp'}[request.type];
+      const path=`${user.uid}/${crypto.randomUUID()}.${ext}`,signed=await storageCall(`upload/sign/${MEDIA_BUCKET}/${encoded(path)}`,{});
+      return json(200,{path,token:signed.token,url:`${SUPABASE_URL}/storage/v1/object/public/${MEDIA_BUCKET}/${encoded(path)}`});
     }
     if(user.uid!==OWNER_UID)throw new Error('Нет доступа к модерации');
     if(request.action==='download'){

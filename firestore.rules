@@ -24,11 +24,21 @@ service cloud.firestore {
         && request.resource.data.status == 'pending'
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'developer';
       allow read: if owner() || (request.auth != null && resource.data.developerId == request.auth.uid);
-      allow update, delete: if owner();
+      allow update, delete: if owner() || (request.auth != null
+        && resource.data.developerId == request.auth.uid
+        && request.resource.data.developerId == request.auth.uid
+        && request.resource.data.status == 'pending');
     }
     match /publishedGames/{id} {
       allow read: if true;
-      allow write: if owner();
+      allow create, delete: if owner();
+      allow update: if owner() || (request.auth != null
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['plays'])
+        && request.resource.data.plays == resource.data.plays + 1);
+    }
+    match /gamePresence/{uid} {
+      allow read: if true;
+      allow create, update, delete: if request.auth != null && request.auth.uid == uid;
     }
   }
 }
