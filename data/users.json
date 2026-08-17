@@ -1,0 +1,55 @@
+{
+  "63a16199-4bd6-4338-8461-f75c3b6306a1": {
+    "id": "63a16199-4bd6-4338-8461-f75c3b6306a1",
+    "username": "muzurantov.rv@mail.ru",
+    "email": "muzurantov.rv@mail.ru",
+    "role": "player",
+    "hash": "08480b792cbac19578051493fad2619cfa17e1c73037a4929626996ff40fbcd02727c8644fe7e58f37df52f8c46deb379731e9b04c44432e0f55c814dbc6c57c",
+    "salt": "854297042093e85ba392c490c171f31f",
+    "favorites": [],
+    "history": [],
+    "createdAt": "2026-08-16T17:47:35.938Z"
+  },
+  "ead98c77-4d8f-412f-95d3-e8abbe67cfde": {
+    "id": "ead98c77-4d8f-412f-95d3-e8abbe67cfde",
+    "username": "Muzurantov",
+    "email": "muzurantov.rv@mail.r",
+    "role": "developer",
+    "avatar": "panda",
+    "hash": "aa6af4e6c40637c4f78f5d7c137d13f0f7f1ca35bd5cec2067671daf56f6bc5ee1f687bc69421ea4515718d44c382ec9224dad0418b78962119e16f9e3b22f9c",
+    "salt": "a29c1ffa03f073b0e7ee680042de67f6",
+    "favorites": [
+      "quick-math"
+    ],
+    "history": [
+      "orbit-tap"
+    ],
+    "createdAt": "2026-08-16T20:52:19.835Z"
+  },
+  "a860b54a-1aa8-4449-9e38-645882c62218": {
+    "id": "a860b54a-1aa8-4449-9e38-645882c62218",
+    "username": "Muzurant",
+    "email": "muzurantov@mail.ru",
+    "role": "player",
+    "avatar": "fox",
+    "hash": "0d5c6ec83493aaf5fb067112ad56624f82123dc0c717044c9b05add708f4042235ef48f036e2e5062e709c9c59814913c0a84020c72d8c1e7fc560b99d407e6b",
+    "salt": "d502e8360bf66ec0f516fde21608ef37",
+    "favorites": [],
+    "history": [],
+    "createdAt": "2026-08-16T20:55:43.269Z"
+  },
+  "e722d9a3-d07e-4393-a8c8-a3a9cecf4b2f": {
+    "id": "e722d9a3-d07e-4393-a8c8-a3a9cecf4b2f",
+    "username": "Admin",
+    "email": "admin@mail.ru",
+    "role": "developer",
+    "avatar": "wolf",
+    "hash": "bef54f33c2820abcd5dc1cb184f1790ff1205391e80628de485f38b1dc86c8a4350135b06e3e177f6ffd151cd79193f0b75484f9e97b4f6867dd7d4b212f1679",
+    "salt": "65c1b24648593432ebc81db026a612cd",
+    "favorites": [],
+    "history": [
+      "orbit-tap"
+    ],
+    "createdAt": "2026-08-16T21:17:22.175Z"
+  }
+}
