@@ -6,6 +6,7 @@ const SUPABASE_URL='https://kxijwexpydfqvhennnok.supabase.co';
 const BUCKET='game-submissions';
 const json=(status,data)=>({statusCode:status,headers:{'Content-Type':'application/json','Cache-Control':'no-store'},body:JSON.stringify(data)});
 const encoded=path=>path.split('/').map(encodeURIComponent).join('/');
+const signedUrl=url=>url.startsWith('http')?url:`${SUPABASE_URL}/storage/v1${url}`;
 
 async function identity(event){
   const token=(event.headers.authorization||'').replace(/^Bearer\s+/,'');
@@ -36,12 +37,12 @@ exports.handler=async event=>{
     if(user.uid!==OWNER_UID)throw new Error('Нет доступа к модерации');
     if(request.action==='download'){
       const signed=await storageCall(`sign/${BUCKET}/${encoded(request.path)}`,{expiresIn:600});
-      return json(200,{url:signed.signedURL?.startsWith('http')?signed.signedURL:SUPABASE_URL+signed.signedURL});
+      return json(200,{url:signedUrl(signed.signedURL)});
     }
     if(request.action==='publish'){
       const secret=process.env.NETLIFY_TOKEN;if(!secret)throw new Error('Не настроен токен Netlify');
       const signed=await storageCall(`sign/${BUCKET}/${encoded(request.path)}`,{expiresIn:600});
-      const archive=await fetch(signed.signedURL?.startsWith('http')?signed.signedURL:SUPABASE_URL+signed.signedURL);
+      const archive=await fetch(signedUrl(signed.signedURL));
       if(!archive.ok)throw new Error('Архив не загружен');
       const slug=String(request.slug||'game').replace(/[^a-z0-9-]/g,'').replace(/^-+|-+$/g,'').slice(0,35)||'game';
       const siteName=`ayu-${slug}-${crypto.randomBytes(3).toString('hex')}`;
