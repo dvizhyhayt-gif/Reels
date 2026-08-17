@@ -47,6 +47,7 @@ function scrollGames(){
 }
 
 async function post(url,body){try{return await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})}catch{return null}}
+async function firebase(){if(!window.firebaseApi)await new Promise(resolve=>addEventListener('firebase-ready',resolve,{once:true}));return window.firebaseApi}
 async function heartbeat(game=currentGame){await post('/api/heartbeat',{game})}
 async function updateLiveCounts(){
   try{
@@ -86,7 +87,7 @@ function closeGameProfile(){gameOverlay.classList.remove('open'); if(!playOverla
 async function startGame(slug){
   const game=games[slug]; if(!game)return;
   currentGame=slug;
-  await post('/api/play',{game:slug});
+  await (await firebase()).play(slug);
   await heartbeat(slug);
   gameOverlay.classList.remove('open');
   playOverlay.classList.add('open'); lock(true);
@@ -136,12 +137,12 @@ submit.onclick=async()=>{
     body.role=document.querySelector('.role.selected')?.dataset.role||'player';
     if(!/^[A-Za-z][A-Za-z0-9_]{2,19}$/.test(body.username)){toast('Логин: 3–20 английских букв, цифр или _');return}
   }
-  const res=await post(authMode==='register'?'/api/auth/register':'/api/auth/login',body);
-  if(!res){toast('Сервер недоступен');return}
-  const data=await res.json();
-  if(!res.ok){toast(data.error||'Не удалось выполнить вход');return}
-  const registered=authMode==='register'; currentUser=data.user; closeAuth(); renderAccount();
-  if(registered){avatarOverlay.classList.add('open');lock(true)}else toast('✅ Вход выполнен: '+currentUser.username);
+  try{
+    const api=await firebase(),registered=authMode==='register';
+    currentUser=registered?await api.register(body):await api.login(body.email,body.password);
+    closeAuth();renderAccount();
+    if(registered){avatarOverlay.classList.add('open');lock(true)}else toast('Вход выполнен: '+currentUser.username);
+  }catch(error){toast(error.message||'Не удалось выполнить вход')}
 };
 
 document.querySelectorAll('.avatar-option').forEach(button=>button.onclick=()=>{
@@ -149,14 +150,13 @@ document.querySelectorAll('.avatar-option').forEach(button=>button.onclick=()=>{
   document.querySelectorAll('.avatar-option').forEach(item=>item.classList.toggle('active',item===button));
 });
 async function saveAvatar(avatar){
-  const res=await post('/api/avatar',{avatar}); if(!res||!res.ok){toast('Не удалось сохранить аватар');return}
-  currentUser=(await res.json()).user; avatarOverlay.classList.remove('open'); lock(false); renderAccount(); toast('Аккаунт готов');
+  try{currentUser=await (await firebase()).saveAvatar(avatar);avatarOverlay.classList.remove('open');lock(false);renderAccount();toast('Аккаунт готов')}catch{toast('Не удалось сохранить аватар')}
 }
 document.getElementById('avatarContinue').onclick=()=>saveAvatar(selectedAvatar);
 document.getElementById('avatarSkip').onclick=()=>saveAvatar('');
 
 async function loadMe(){
-  try{const data=await (await fetch('/api/me',{cache:'no-store'})).json();currentUser=data.user;renderAccount()}catch{}
+  try{currentUser=await (await firebase()).me();renderAccount()}catch{}
 }
 function escapeHtml(value){return String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function renderAccount(){
@@ -233,12 +233,10 @@ submitGameOverlay.onclick=e=>{if(e.target===submitGameOverlay)closeGameSubmissio
 document.querySelectorAll('.platform-option').forEach(button=>button.onclick=()=>button.classList.toggle('active'));
 [['gameName','gameNameCount'],['gameDescription','gameDescriptionCount']].forEach(([field,count])=>document.getElementById(field).oninput=e=>document.getElementById(count).textContent=e.target.value.length);
 document.getElementById('gameSubmissionForm').onsubmit=e=>{e.preventDefault();toast('Основная информация заполнена')};
-async function logout(){await post('/api/auth/logout',{});currentUser=null;closeProfile();renderAccount();toast('Вы вышли из аккаунта')}
+async function logout(){await (await firebase()).logout();currentUser=null;closeProfile();renderAccount();toast('Вы вышли из аккаунта')}
 async function toggleFavorite(slug,active){
   if(!currentUser){toast('Сначала войди в аккаунт');return false}
-  const res=await post('/api/favorite',{game:slug,active});
-  if(!res)return false; const data=await res.json(); if(!res.ok){toast(data.error||'Не удалось сохранить');return false}
-  currentUser.favorites=data.favorites; return true
+  try{currentUser.favorites=await (await firebase()).favorite(slug,active);return true}catch{toast('Не удалось сохранить');return false}
 }
 
 const search=document.getElementById('search');

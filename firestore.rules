@@ -1,10 +1,19 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Временные правила для разработки - разрешают все операции
-    // ВАЖНО: Перед продакшеном установить более строгие правила!
-    match /{document=**} {
-      allow read, write: if true;
+    match /users/{uid} {
+      allow read, create: if request.auth != null && request.auth.uid == uid;
+      allow update: if request.auth != null && request.auth.uid == uid
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.username == resource.data.username
+        && request.resource.data.role == resource.data.role;
+    }
+    match /usernames/{name} {
+      allow read: if true;
+      allow create: if request.auth != null
+        && request.resource.data.uid == request.auth.uid
+        && !exists(/databases/$(database)/documents/usernames/$(name));
     }
   }
 }
