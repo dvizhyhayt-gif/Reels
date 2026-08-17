@@ -1,6 +1,9 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function owner() {
+      return request.auth != null && request.auth.uid == 'KfR8Z39adYPI5z0L2wOV4Hc5tqO2';
+    }
     match /users/{uid} {
       allow read, create: if request.auth != null && request.auth.uid == uid;
       allow update: if request.auth != null && request.auth.uid == uid
@@ -14,6 +17,18 @@ service cloud.firestore {
       allow create: if request.auth != null
         && request.resource.data.uid == request.auth.uid
         && !exists(/databases/$(database)/documents/usernames/$(name));
+    }
+    match /gameSubmissions/{id} {
+      allow create: if request.auth != null
+        && request.resource.data.developerId == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'developer';
+      allow read: if owner() || (request.auth != null && resource.data.developerId == request.auth.uid);
+      allow update, delete: if owner();
+    }
+    match /publishedGames/{id} {
+      allow read: if true;
+      allow write: if owner();
     }
   }
 }

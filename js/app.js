@@ -17,6 +17,7 @@ const playOverlay=document.getElementById('playOverlay');
 const profileOverlay=document.getElementById('profileOverlay');
 const avatarOverlay=document.getElementById('avatarOverlay');
 const submitGameOverlay=document.getElementById('submitGameOverlay');
+const moderationOverlay=document.getElementById('moderationOverlay');
 const title=document.getElementById('modalTitle');
 const sub=document.getElementById('modalSub');
 const registerBox=document.getElementById('registerBox');
@@ -92,7 +93,8 @@ async function startGame(slug){
   gameOverlay.classList.remove('open');
   playOverlay.classList.add('open'); lock(true);
   gameScore=0;
-  if(slug==='orbit-tap')startOrbit(); else startMath();
+  if(game.url)document.getElementById('gameWindow').innerHTML=`<div class="play-head"><strong>${escapeHtml(game.name)}</strong><button class="btn btn-dark game-close" onclick="closeGame()">Выйти</button></div><iframe class="external-game" src="${game.url}" sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-popups" allowfullscreen></iframe>`;
+  else if(slug==='orbit-tap')startOrbit(); else startMath();
 }
 function closeGame(){
   clearInterval(gameTimer); gameTimer=null; currentGame=null; heartbeat(null);
@@ -128,7 +130,7 @@ overlay.onclick=e=>{if(e.target===overlay)closeAuth()};
 gameOverlay.onclick=e=>{if(e.target===gameOverlay)closeGameProfile()};
 playOverlay.onclick=e=>{if(e.target===playOverlay)closeGame()};
 profileOverlay.onclick=e=>{if(e.target===profileOverlay)closeProfile()};
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeAuth();closeGameProfile();closeGame();closeProfile();closeGameSubmission()}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeAuth();closeGameProfile();closeGame();closeProfile();closeGameSubmission();closeModeration()}});
 document.querySelectorAll('.role').forEach(role=>role.onclick=()=>{document.querySelectorAll('.role').forEach(x=>x.classList.remove('selected'));role.classList.add('selected')});
 submit.onclick=async()=>{
   const body={email:document.getElementById('email').value.trim(),password:document.getElementById('password').value};
@@ -199,6 +201,7 @@ function renderAccount(){
 
 async function openProfile(){
   if(!currentUser){openAuth('login');return}
+  const owner=(await firebase()).isOwner();
   const gamesById=Object.entries(games);
   const favs=gamesById.filter(([id])=>currentUser.favorites.includes(id));
   const history=gamesById.filter(([id])=>currentUser.history.includes(id));
@@ -210,7 +213,7 @@ async function openProfile(){
       <aside class="profile-sidebar">
         <div class="profile-user"><div class="profile-avatar-large">${avatar}</div><div><h2>${escapeHtml(currentUser.username)}</h2><p>${escapeHtml(currentUser.email)}</p><span class="role-badge">${developer?'Разработчик':'Игрок'}</span></div></div>
         <div class="profile-side-stats"><div><b>${history.length}</b><span>Сыграно</span></div><div><b>${favs.length}</b><span>Избранное</span></div></div>
-        <nav class="profile-menu"><button class="active"><i class="fa-solid fa-house"></i> Обзор</button>${developer?'<button onclick="openGameSubmission()"><i class="fa-solid fa-cloud-arrow-up"></i> Добавить игру</button>':''}<button onclick="document.getElementById('profileFavorites').scrollIntoView({behavior:'smooth'})"><i class="fa-regular fa-heart"></i> Избранное</button></nav>
+        <nav class="profile-menu"><button class="active"><i class="fa-solid fa-house"></i> Обзор</button>${developer?'<button onclick="openGameSubmission()"><i class="fa-solid fa-cloud-arrow-up"></i> Добавить игру</button>':''}${owner?'<button onclick="openModeration()"><i class="fa-solid fa-shield-halved"></i> Модерация</button>':''}<button onclick="document.getElementById('profileFavorites').scrollIntoView({behavior:'smooth'})"><i class="fa-regular fa-heart"></i> Избранное</button></nav>
         <button class="profile-logout" onclick="logout()"><i class="fa-solid fa-arrow-right-from-bracket"></i> Выйти из аккаунта</button>
       </aside>
       <main class="profile-content">
@@ -232,14 +235,44 @@ function closeGameSubmission(){submitGameOverlay.classList.remove('open');if(!ov
 submitGameOverlay.onclick=e=>{if(e.target===submitGameOverlay)closeGameSubmission()};
 document.querySelectorAll('.platform-option').forEach(button=>button.onclick=()=>button.classList.toggle('active'));
 [['gameName','gameNameCount'],['gameDescription','gameDescriptionCount']].forEach(([field,count])=>document.getElementById(field).oninput=e=>document.getElementById(count).textContent=e.target.value.length);
-document.getElementById('gameSubmissionForm').onsubmit=e=>{e.preventDefault();toast('Основная информация заполнена')};
+document.getElementById('gameSubmissionForm').onsubmit=async e=>{
+  e.preventDefault();const form=e.currentTarget,file=document.getElementById('gameArchive').files[0],button=document.getElementById('gameSubmitButton');
+  if(!file||!/\.zip$/i.test(file.name)||file.size>50*1024*1024){toast('Выберите ZIP до 50 МБ');return}
+  button.disabled=true;button.textContent='Загрузка архива...';
+  try{
+    const api=await firebase(),values=Object.fromEntries(new FormData(form)),name=values.name.trim();
+    const archivePath=await api.uploadArchive(file),slug=name.toLowerCase().replace(/[^a-z0-9а-яё]+/gi,'-').replace(/^-|-$/g,'').slice(0,45)||'game-'+Date.now();
+    await api.submitGame({...values,name,slug,archivePath,platforms:[...document.querySelectorAll('.platform-option.active')].map(x=>x.dataset.platform)});
+    form.reset();document.querySelectorAll('.platform-option').forEach((x,i)=>x.classList.toggle('active',i===0));closeGameSubmission();toast('Игра отправлена на модерацию');
+  }catch(error){toast(error.message||'Не удалось отправить игру')}finally{button.disabled=false;button.innerHTML='Отправить на модерацию <i class="fa-solid fa-arrow-right"></i>'}
+};
+
+let moderationGames=[];
+async function openModeration(){
+  const api=await firebase();if(!api.isOwner())return;
+  closeProfile();moderationOverlay.classList.add('open');lock(true);const list=document.getElementById('moderationList');list.innerHTML='<div class="profile-empty">Загрузка заявок...</div>';
+  try{moderationGames=await api.getSubmissions();list.innerHTML=moderationGames.map(game=>`<article class="moderation-card"><div><span class="moderation-status ${game.status}">${game.status==='pending'?'На проверке':game.status==='approved'?'Одобрена':'Отклонена'}</span><h3>${escapeHtml(game.name)}</h3><p>${escapeHtml(game.developer)} · ${escapeHtml(game.category)} · ${escapeHtml(game.version)}</p><small>${escapeHtml(game.description)}</small></div><div class="moderation-actions"><button class="btn btn-dark" onclick="openSubmittedArchive('${game.id}')">Скачать ZIP</button>${game.status==='pending'?`<button class="btn btn-dark reject" onclick="rejectSubmission('${game.id}')">Отклонить</button><button class="btn btn-primary" onclick="approveSubmission('${game.id}')">Одобрить</button>`:''}${game.publicUrl?`<a class="btn btn-dark" target="_blank" href="${game.publicUrl}">Открыть</a>`:''}</div></article>`).join('')||'<div class="profile-empty">Заявок пока нет</div>'}catch(error){list.innerHTML=`<div class="profile-empty">${escapeHtml(error.message)}</div>`}
+}
+function closeModeration(){moderationOverlay.classList.remove('open');if(!document.querySelector('.overlay.open'))lock(false)}
+moderationOverlay.onclick=e=>{if(e.target===moderationOverlay)closeModeration()};
+async function openSubmittedArchive(id){try{window.open(await (await firebase()).downloadArchive(moderationGames.find(x=>x.id===id).archivePath),'_blank')}catch(error){toast(error.message)}}
+async function rejectSubmission(id){const reason=prompt('Причина отклонения:')||'Не соответствует требованиям';try{await (await firebase()).rejectGame(id,reason);toast('Заявка отклонена');openModeration()}catch(error){toast(error.message)}}
+async function approveSubmission(id){try{toast('Игра публикуется...');const url=await (await firebase()).approveGame(moderationGames.find(x=>x.id===id));toast('Игра опубликована');openModeration();loadPublishedGames()}catch(error){toast(error.message)}}
 async function logout(){await (await firebase()).logout();currentUser=null;closeProfile();renderAccount();toast('Вы вышли из аккаунта')}
 async function toggleFavorite(slug,active){
   if(!currentUser){toast('Сначала войди в аккаунт');return false}
   try{currentUser.favorites=await (await firebase()).favorite(slug,active);return true}catch{toast('Не удалось сохранить');return false}
 }
 
+async function loadPublishedGames(){
+  try{for(const item of await (await firebase()).getPublishedGames()){
+    const slug='published-'+item.id;if(document.querySelector(`[data-published="${item.id}"]`))continue;
+    const image=item.url.replace(/\/$/,'')+'/cover.webp';games[slug]={name:item.name,image,developer:item.developer,rating:'Новая',reviews:'0',category:item.category,plays:'',description:item.description,devices:item.platforms||['ПК'],url:item.url};
+    document.getElementById('gameRow').insertAdjacentHTML('beforeend',`<article class="game-card" data-published="${item.id}" data-name="${escapeHtml(item.name)}" data-tags="all" onclick="openGameProfile('${slug}')"><div class="game-thumb"><img src="${image}" onerror="this.onerror=null;this.src='img/bannerMini1.png'" alt=""><button class="heart" onclick="fav(event,this)"><i class="fa-regular fa-heart"></i></button></div><div class="game-info"><div class="game-name">${escapeHtml(item.name)}</div><div class="game-dev">${escapeHtml(item.developer)}</div><div class="game-bottom"><span>Опубликована</span><span class="rating">Новая</span></div></div></article>`);
+  }}catch{}
+}
+
 const search=document.getElementById('search');
 search.addEventListener('input',()=>{const q=search.value.toLowerCase().trim();document.querySelectorAll('#gameRow .game-card').forEach(card=>card.style.display=card.dataset.name.toLowerCase().includes(q)?'block':'none')});
 document.querySelectorAll('#chips .chip').forEach(chip=>chip.onclick=()=>{document.querySelectorAll('#chips .chip').forEach(x=>x.classList.remove('active'));chip.classList.add('active');const f=chip.dataset.filter;document.querySelectorAll('#gameRow .game-card').forEach(card=>card.style.display=f==='all'||card.dataset.tags.includes(f)?'block':'none')});
-setInterval(()=>{heartbeat();updateLiveCounts()},15000); updateLiveCounts(); loadMe();
+setInterval(()=>{heartbeat();updateLiveCounts()},15000); updateLiveCounts(); loadMe(); loadPublishedGames();
