@@ -260,3 +260,4 @@ label{font-size:10px;font-weight:700;color:#aeb7c2;display:block;margin:13px 0 7
   .profile-block{margin-top:22px;padding-top:19px}.dashboard-games{display:grid;grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:180px;overflow-x:auto;padding-bottom:5px}.dashboard-game,.add-game-tile{min-height:180px}.favorite-games{grid-template-columns:1fr}.profile-cta{align-items:stretch;flex-direction:column}.profile-cta .btn{width:100%;min-width:0}
 }
 @media(max-width:600px){.avatar-modal{padding:24px 18px}.avatar-preview{width:112px;height:112px;font-size:58px}.avatar-option{font-size:27px}}
+.review-done{margin-top:15px;padding:15px;border:1px dashed rgba(85,217,138,.3);border-radius:10px;color:var(--green);font-size:10px}
