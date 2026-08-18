@@ -69,7 +69,7 @@ async function rejectGame(id,reason){await updateDoc(doc(db,'gameSubmissions',id
 async function approveGame(game){
   const deployed=await gameApi({action:'publish',path:game.archivePath,slug:game.slug});
   const ref=doc(db,'publishedGames',game.id),old=await getDoc(ref);
-  await setDoc(ref,{name:game.name,developer:game.developer,description:game.description,category:game.category,platforms:game.platforms,url:deployed.url,coverUrl:game.coverUrl,bannerUrl:game.bannerUrl,screenshotUrls:game.screenshotUrls,status:'published',mediaVersion:2,plays:old.data()?.plays||0,createdAt:serverTimestamp()});
+  await setDoc(ref,{name:game.name,developer:game.developer,description:game.description,category:game.category,mode:game.mode||'Онлайн игра',platforms:game.platforms,language:game.language,version:game.version,url:deployed.url,coverUrl:game.coverUrl,bannerUrl:game.bannerUrl,screenshotUrls:game.screenshotUrls,status:'published',mediaVersion:2,plays:old.data()?.plays||0,createdAt:serverTimestamp()});
   await updateDoc(doc(db,'gameSubmissions',game.id),{status:'published',publicUrl:deployed.url,reviewedAt:serverTimestamp()});return deployed.url;
 }
 async function getPublishedGames(){return (await getDocs(collection(db,'publishedGames'))).docs.map(item=>({id:item.id,...item.data()})).filter(x=>x.mediaVersion===2)}

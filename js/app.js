@@ -53,20 +53,33 @@ function renderFeatured(slug){
 
 async function openGameProfile(slug){
   const game=games[slug]; if(!game)return;
-  const online=liveCounts.games[slug]||0;
+  const online=liveCounts.games[slug]||0,screens=game.screenshots||[],mode=game.mode||'Онлайн игра';
+  const controls=(game.devices||[]).map(device=>device==='ПК'?'<i class="fa-solid fa-desktop" title="ПК"></i>':'<i class="fa-solid fa-mobile-screen-button" title="Телефон"></i>').join('');
   document.getElementById('gameProfile').innerHTML=`
-    <div class="game-profile-cover">
-      <img src="${escapeHtml(game.banner)}" alt="${escapeHtml(game.name)}">
+    <div class="game-profile-hero">
+      <img class="game-profile-banner" src="${escapeHtml(game.banner)}" alt="${escapeHtml(game.name)}">
+      <div class="game-profile-shade"></div>
       <button class="profile-back" onclick="closeGameProfile()"><i class="fa-solid fa-arrow-left"></i></button>
+      <div class="game-profile-intro">
+        <img class="game-profile-icon" src="${escapeHtml(game.image)}" alt="">
+        <div class="game-profile-heading">
+          <h2>${escapeHtml(game.name)}</h2><p>${escapeHtml(game.category)}</p>
+          <div class="game-profile-stats"><span><i class="fa-solid fa-user-group"></i> ${online} сейчас</span><span><i class="fa-solid fa-play"></i> ${game.plays||0} запусков</span></div>
+          <button class="btn btn-primary profile-play" onclick="startGame('${slug}')"><i class="fa-solid fa-play"></i> Играть</button>
+        </div>
+      </div>
     </div>
     <div class="game-profile-body">
-      <h2 class="profile-title">${game.name}</h2>
-      <div class="profile-dev">${game.developer}</div>
-      <div class="profile-tags"><span>${game.category}</span><span>Онлайн</span><span>${game.devices.join(' + ')}</span></div>
-      <div class="profile-rating"><b>${game.plays||0} запусков</b><span>${online} играют сейчас</span></div>
-      <button class="btn btn-primary profile-play" onclick="startGame('${slug}')"><i class="fa-solid fa-play"></i> Играть</button>
-      <div class="game-about"><h3>Описание</h3><p>${game.description}</p></div>
-      <div class="game-about"><h3>Скриншоты</h3><div class="game-screens">${game.screenshots.map(x=>`<img src="${escapeHtml(x)}" alt="">`).join('')}</div></div>
+      <div class="game-facts">
+        <div><i class="fa-solid fa-gamepad"></i><span>Жанр<b>${escapeHtml(game.category)}</b></span></div>
+        <div><i class="fa-solid fa-users"></i><span>Режим<b>${escapeHtml(mode)}</b></span></div>
+        <div><i class="fa-solid fa-computer-mouse"></i><span>Управление<b class="control-icons">${controls}</b></span></div>
+      </div>
+      <section class="game-about"><h3>Скриншоты</h3><div class="game-screens">${screens.map(x=>`<img src="${escapeHtml(x)}" alt="">`).join('')}</div></section>
+      <div class="game-info-grid">
+        <section class="game-about game-description"><h3>Описание</h3><p>${escapeHtml(game.description)}</p></section>
+        <aside class="game-information"><h3>Информация</h3><p><span>Жанр</span><b>${escapeHtml(game.category)}</b></p><p><span>Режим</span><b>${escapeHtml(mode)}</b></p><p><span>Управление</span><b class="control-icons">${controls}</b></p><p><span>Разработчик</span><b>${escapeHtml(game.developer)}</b></p>${game.language?`<p><span>Язык</span><b>${escapeHtml(game.language)}</b></p>`:''}${game.version?`<p><span>Версия</span><b>${escapeHtml(game.version)}</b></p>`:''}</aside>
+      </div>
     </div>`;
   gameOverlay.classList.add('open'); lock(true);
 }
@@ -201,7 +214,7 @@ function openGameSubmission(game=null){
   if(currentUser?.role!=='developer')return;editingGame=game;profileOverlay.classList.remove('open');myGamesOverlay.classList.remove('open');submitGameOverlay.classList.add('open');lock(true);
   const form=document.getElementById('gameSubmissionForm');form.reset();document.querySelector('.submission-head h2').textContent=game?'Обновить игру':'Отправить игру на модерацию';
   ['gameArchive','gameCover','gameBanner','gameScreens'].forEach(id=>document.getElementById(id).required=!game);
-  if(game){['name','category','description','developer','website','version','language','tags'].forEach(name=>{if(form.elements[name])form.elements[name].value=game[name]||''});document.querySelectorAll('.platform-option').forEach(x=>x.classList.toggle('active',game.platforms?.includes(x.dataset.platform)))}
+  if(game){['name','category','mode','description','developer','website','version','language','tags'].forEach(name=>{if(form.elements[name])form.elements[name].value=game[name]||''});document.querySelectorAll('.platform-option').forEach(x=>x.classList.toggle('active',game.platforms?.includes(x.dataset.platform)))}
   else{document.getElementById('gameDeveloper').value=currentUser.username;document.querySelectorAll('.platform-option').forEach((x,i)=>x.classList.toggle('active',i===0))}
   document.getElementById('gameNameCount').textContent=form.elements.name.value.length;document.getElementById('gameDescriptionCount').textContent=form.elements.description.value.length;
 }
@@ -250,7 +263,7 @@ async function toggleFavorite(slug,active){
 
 async function loadPublishedGames(){
   try{const items=await (await firebase()).getPublishedGames(),row=document.getElementById('gameRow');Object.keys(games).forEach(id=>delete games[id]);row.innerHTML='';
-    items.forEach(item=>{const slug='published-'+item.id,tags=`all ${item.platforms?.includes('ПК')?'pc':''} ${item.platforms?.includes('Мобильные')?'mobile':''}`;games[slug]={id:item.id,name:item.name,image:item.coverUrl,banner:item.bannerUrl,screenshots:item.screenshotUrls||[],developer:item.developer,category:item.category,plays:item.plays||0,description:item.description,devices:item.platforms||['ПК'],url:item.url};row.insertAdjacentHTML('beforeend',`<article class="game-card" data-published="${item.id}" data-name="${escapeHtml(item.name)}" data-tags="${tags}" onclick="openGameProfile('${slug}')"><div class="game-thumb"><img src="${escapeHtml(item.coverUrl)}" alt=""><button class="heart" onclick="fav(event,this)"><i class="fa-regular fa-heart"></i></button></div><div class="game-info"><div class="game-name">${escapeHtml(item.name)}</div><div class="game-dev">${escapeHtml(item.developer)}</div><div class="game-bottom"><span><b data-online-game="${slug}">0</b> сейчас</span><span>${item.plays||0} запусков</span></div></div></article>`)});
+    items.forEach(item=>{const slug='published-'+item.id,tags=`all ${item.platforms?.includes('ПК')?'pc':''} ${item.platforms?.includes('Мобильные')?'mobile':''}`;games[slug]={id:item.id,name:item.name,image:item.coverUrl,banner:item.bannerUrl,screenshots:item.screenshotUrls||[],developer:item.developer,category:item.category,mode:item.mode||'Онлайн игра',language:item.language,version:item.version,plays:item.plays||0,description:item.description,devices:item.platforms||['ПК'],url:item.url};row.insertAdjacentHTML('beforeend',`<article class="game-card" data-published="${item.id}" data-name="${escapeHtml(item.name)}" data-tags="${tags}" onclick="openGameProfile('${slug}')"><div class="game-thumb"><img src="${escapeHtml(item.coverUrl)}" alt=""><button class="heart" onclick="fav(event,this)"><i class="fa-regular fa-heart"></i></button></div><div class="game-info"><div class="game-name">${escapeHtml(item.name)}</div><div class="game-dev">${escapeHtml(item.developer)}</div><div class="game-bottom"><span><b data-online-game="${slug}">0</b> сейчас</span><span>${item.plays||0} запусков</span></div></div></article>`)});
     document.getElementById('catalogCount').textContent=items.length;if(!items.length){row.innerHTML='<div class="catalog-empty">Опубликованных игр пока нет</div>';currentTop=null;document.getElementById('featuredGame').className='featured empty';document.getElementById('featuredGame').innerHTML='<div class="featured-empty"><i class="fa-solid fa-gamepad"></i><h1>AYUVERSE</h1><p>Первая опубликованная игра появится здесь</p></div>'}renderAccount();selectTopGame();
   }catch(error){console.error(error)}
 }

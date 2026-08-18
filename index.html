@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-<link rel="stylesheet" href="css/style.css?v=7">
+<link rel="stylesheet" href="css/style.css?v=8">
 
 </head>
 <body>
@@ -166,7 +166,8 @@
         <h3>Основная информация</h3>
         <label class="form-wide">Название игры *<span class="field-wrap"><input id="gameName" name="name" maxlength="50" required placeholder="Введите название игры"><small><b id="gameNameCount">0</b> / 50</small></span></label>
         <label>Категория *<select name="category" required><option value="">Выберите категорию</option><option>Аркада</option><option>Гонки</option><option>Логика</option><option>Экшен</option></select></label>
-        <div><label>Платформа *</label><div class="platform-list"><button type="button" data-platform="ПК" class="platform-option active"><i class="fa-solid fa-desktop"></i> ПК</button><button type="button" data-platform="Мобильные" class="platform-option"><i class="fa-solid fa-mobile-screen-button"></i> Мобильные</button></div></div>
+        <label>Режим игры *<select name="mode" required><option>Онлайн игра</option><option>Офлайн</option></select></label>
+        <div class="form-wide"><label>Управление *</label><div class="platform-list"><button type="button" data-platform="ПК" class="platform-option active"><i class="fa-solid fa-desktop"></i> ПК</button><button type="button" data-platform="Мобильные" class="platform-option"><i class="fa-solid fa-mobile-screen-button"></i> Мобильные</button></div></div>
         <label class="form-wide">Краткое описание *<span class="field-wrap"><textarea id="gameDescription" name="description" maxlength="300" required placeholder="Расскажите о вашей игре в нескольких предложениях..."></textarea><small><b id="gameDescriptionCount">0</b> / 300</small></span></label>
         <label>Разработчик *<input id="gameDeveloper" name="developer" required placeholder="Название вашей студии"></label>
         <label>Сайт игры <em>(необязательно)</em><input name="website" type="url" placeholder="https://ваш-сайт.com"></label>
