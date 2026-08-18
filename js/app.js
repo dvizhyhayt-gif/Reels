@@ -1,6 +1,6 @@
 const games={};
 
-let authMode='register',currentGame=null,currentUser=null,selectedAvatar='bear',liveCounts={site:0,games:{}},currentTop=null,editingGame=null,developerGames=[];
+let authMode='register',currentGame=null,currentUser=null,selectedAvatar='bear',liveCounts={site:0,games:{}},currentTop=null,editingGame=null,developerGames=[],reviewRating=0;
 const avatars={bear:'🐻',panda:'🐼',wolf:'🐺',fox:'🦊'};
 const overlay=document.getElementById('overlay');
 const gameOverlay=document.getElementById('gameOverlay');
@@ -55,6 +55,8 @@ async function openGameProfile(slug){
   const game=games[slug]; if(!game)return;
   const online=liveCounts.games[slug]||0,screens=game.screenshots||[],mode=game.mode||'Онлайн игра';
   const controls=(game.devices||[]).map(device=>device==='ПК'?'<i class="fa-solid fa-desktop" title="ПК"></i>':'<i class="fa-solid fa-mobile-screen-button" title="Телефон"></i>').join('');
+  const own=game.reviews?.find(x=>x.uid===currentUser?.uid),played=currentUser?.history?.includes(slug);reviewRating=own?.rating||0;
+  const comments=(game.reviews||[]).filter(x=>x.comment).map(review=>`<article class="review-card"><div class="review-avatar">${avatars[review.avatar]||escapeHtml(review.username.slice(0,1).toUpperCase())}</div><div><strong>${escapeHtml(review.username)}</strong><span>${'★'.repeat(review.rating)}${'☆'.repeat(5-review.rating)}</span><p>${escapeHtml(review.comment)}</p></div></article>`).join('');
   document.getElementById('gameProfile').innerHTML=`
     <div class="game-profile-hero">
       <img class="game-profile-banner" src="${escapeHtml(game.banner)}" alt="${escapeHtml(game.name)}">
@@ -80,8 +82,14 @@ async function openGameProfile(slug){
         <section class="game-about game-description"><h3>Описание</h3><p>${escapeHtml(game.description)}</p></section>
         <aside class="game-information"><h3>Информация</h3><p><span>Жанр</span><b>${escapeHtml(game.category)}</b></p><p><span>Режим</span><b>${escapeHtml(mode)}</b></p><p><span>Управление</span><b class="control-icons">${controls}</b></p><p><span>Разработчик</span><b>${escapeHtml(game.developer)}</b></p>${game.language?`<p><span>Язык</span><b>${escapeHtml(game.language)}</b></p>`:''}${game.version?`<p><span>Версия</span><b>${escapeHtml(game.version)}</b></p>`:''}</aside>
       </div>
+      <section class="game-reviews"><h3>Отзывы</h3>${played?`<div class="review-form"><div class="review-stars">${[1,2,3,4,5].map(n=>`<button class="${n<=reviewRating?'active':''}" onclick="selectReviewRating(${n})">★</button>`).join('')}</div><textarea id="reviewComment" maxlength="500" placeholder="Комментарий необязателен">${escapeHtml(own?.comment||'')}</textarea><button class="btn btn-primary" onclick="submitReview('${slug}')">${own?'Обновить':'Отправить'}</button></div>`:`<div class="review-locked">Сыграйте в игру, чтобы поставить оценку</div>`}<div class="review-list">${comments||'<div class="review-empty">Комментариев пока нет</div>'}</div></section>
     </div>`;
   gameOverlay.classList.add('open'); lock(true);
+}
+function selectReviewRating(value){reviewRating=value;document.querySelectorAll('.review-stars button').forEach((button,i)=>button.classList.toggle('active',i<value))}
+async function submitReview(slug){
+  if(!reviewRating){toast('Поставьте оценку от 1 до 5');return}
+  try{const game=games[slug];await (await firebase()).saveReview(game.id,reviewRating,document.getElementById('reviewComment').value);toast('Оценка сохранена');await loadPublishedGames();openGameProfile(slug)}catch(error){toast(error.message)}
 }
 function closeGameProfile(){gameOverlay.classList.remove('open'); if(!playOverlay.classList.contains('open'))lock(false)}
 
@@ -89,6 +97,7 @@ async function startGame(slug){
   const game=games[slug]; if(!game)return;
   currentGame=slug;
   await (await firebase()).play(slug,game.id);game.plays=(game.plays||0)+1;
+  if(currentUser){currentUser.history||=[];if(!currentUser.history.includes(slug))currentUser.history.push(slug)}
   await heartbeat(slug);
   gameOverlay.classList.remove('open');
   playOverlay.classList.add('open'); lock(true);
@@ -262,8 +271,8 @@ async function toggleFavorite(slug,active){
 }
 
 async function loadPublishedGames(){
-  try{const items=await (await firebase()).getPublishedGames(),row=document.getElementById('gameRow');Object.keys(games).forEach(id=>delete games[id]);row.innerHTML='';
-    items.forEach(item=>{const slug='published-'+item.id,tags=`all ${item.platforms?.includes('ПК')?'pc':''} ${item.platforms?.includes('Мобильные')?'mobile':''}`;games[slug]={id:item.id,name:item.name,image:item.coverUrl,banner:item.bannerUrl,screenshots:item.screenshotUrls||[],developer:item.developer,category:item.category,mode:item.mode||'Онлайн игра',language:item.language,version:item.version,plays:item.plays||0,description:item.description,devices:item.platforms||['ПК'],url:item.url};row.insertAdjacentHTML('beforeend',`<article class="game-card" data-published="${item.id}" data-name="${escapeHtml(item.name)}" data-tags="${tags}" onclick="openGameProfile('${slug}')"><div class="game-thumb"><img src="${escapeHtml(item.coverUrl)}" alt=""><button class="heart" onclick="fav(event,this)"><i class="fa-regular fa-heart"></i></button></div><div class="game-info"><div class="game-name">${escapeHtml(item.name)}</div><div class="game-dev">${escapeHtml(item.developer)}</div><div class="game-bottom"><span><b data-online-game="${slug}">0</b> сейчас</span><span>${item.plays||0} запусков</span></div></div></article>`)});
+  try{const api=await firebase(),[items,reviews]=await Promise.all([api.getPublishedGames(),api.getReviews()]),row=document.getElementById('gameRow');Object.keys(games).forEach(id=>delete games[id]);row.innerHTML='';
+    items.forEach(item=>{const slug='published-'+item.id,tags=`all ${item.platforms?.includes('ПК')?'pc':''} ${item.platforms?.includes('Мобильные')?'mobile':''}`,gameReviews=reviews.filter(x=>x.gameId===item.id),rating=gameReviews.reduce((sum,x)=>sum+x.rating,0)/gameReviews.length;games[slug]={id:item.id,name:item.name,image:item.coverUrl,banner:item.bannerUrl,screenshots:item.screenshotUrls||[],developer:item.developer,category:item.category,mode:item.mode||'Онлайн игра',language:item.language,version:item.version,plays:item.plays||0,description:item.description,devices:item.platforms||['ПК'],url:item.url,reviews:gameReviews};row.insertAdjacentHTML('beforeend',`<article class="game-card" data-published="${item.id}" data-name="${escapeHtml(item.name)}" data-tags="${tags}" onclick="openGameProfile('${slug}')"><div class="game-thumb"><img src="${escapeHtml(item.coverUrl)}" alt=""><button class="heart" onclick="fav(event,this)"><i class="fa-regular fa-heart"></i></button></div><div class="game-info"><div class="game-name">${escapeHtml(item.name)}</div><div class="game-dev">${escapeHtml(item.developer)}</div><div class="game-bottom"><span><b data-online-game="${slug}">0</b> сейчас</span><span>${item.plays||0} запусков</span>${gameReviews.length>=5?`<span class="card-rating">★ ${rating.toFixed(1)}</span>`:''}</div></div></article>`)});
     document.getElementById('catalogCount').textContent=items.length;if(!items.length){row.innerHTML='<div class="catalog-empty">Опубликованных игр пока нет</div>';currentTop=null;document.getElementById('featuredGame').className='featured empty';document.getElementById('featuredGame').innerHTML='<div class="featured-empty"><i class="fa-solid fa-gamepad"></i><h1>AYUVERSE</h1><p>Первая опубликованная игра появится здесь</p></div>'}renderAccount();selectTopGame();
   }catch(error){console.error(error)}
 }

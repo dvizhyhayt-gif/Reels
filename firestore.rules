@@ -40,5 +40,18 @@ service cloud.firestore {
       allow read: if true;
       allow create, update, delete: if request.auth != null && request.auth.uid == uid;
     }
+    match /gameReviews/{reviewId} {
+      allow read: if true;
+      allow create, update: if request.auth != null
+        && request.auth.token.firebase.sign_in_provider != 'anonymous'
+        && reviewId == request.resource.data.gameId + '_' + request.auth.uid
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['gameId', 'uid', 'rating', 'comment', 'username', 'avatar', 'updatedAt'])
+        && request.resource.data.rating >= 1 && request.resource.data.rating <= 5
+        && request.resource.data.comment is string && request.resource.data.comment.size() <= 500
+        && request.resource.data.username == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.username
+        && request.resource.data.avatar == get(/databases/$(database)/documents/users/$(request.auth.uid)).data.avatar
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.history.hasAny(['published-' + request.resource.data.gameId]);
+    }
   }
 }

@@ -73,6 +73,13 @@ async function approveGame(game){
   await updateDoc(doc(db,'gameSubmissions',game.id),{status:'published',publicUrl:deployed.url,reviewedAt:serverTimestamp()});return deployed.url;
 }
 async function getPublishedGames(){return (await getDocs(collection(db,'publishedGames'))).docs.map(item=>({id:item.id,...item.data()})).filter(x=>x.mediaVersion===2)}
+async function getReviews(){return (await getDocs(collection(db,'gameReviews'))).docs.map(item=>item.data())}
+async function saveReview(gameId,rating,comment){
+  if(!auth.currentUser||auth.currentUser.isAnonymous)throw new Error('Войдите в аккаунт');
+  const user=await profile(auth.currentUser.uid),slug='published-'+gameId;
+  if(!user?.history?.includes(slug))throw new Error('Сначала сыграйте в эту игру');
+  await setDoc(doc(db,'gameReviews',gameId+'_'+auth.currentUser.uid),{gameId,uid:auth.currentUser.uid,rating,comment:comment.trim(),username:user.username,avatar:user.avatar||'',updatedAt:serverTimestamp()});
+}
 
-window.firebaseApi={register,login,me,saveAvatar,favorite,play,heartbeat,online,uploadArchive,uploadMedia,submitGame,updateGame,getSubmissions,getMyGames,downloadArchive,rejectGame,approveGame,getPublishedGames,isOwner:()=>auth.currentUser?.uid===OWNER_UID,logout};
+window.firebaseApi={register,login,me,saveAvatar,favorite,play,heartbeat,online,uploadArchive,uploadMedia,submitGame,updateGame,getSubmissions,getMyGames,downloadArchive,rejectGame,approveGame,getPublishedGames,getReviews,saveReview,isOwner:()=>auth.currentUser?.uid===OWNER_UID,logout};
 window.dispatchEvent(new Event('firebase-ready'));
